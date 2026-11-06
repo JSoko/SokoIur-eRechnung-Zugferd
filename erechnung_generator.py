@@ -6,10 +6,6 @@ import argparse
 import re
 import webbrowser
 import time
-import threading
-import subprocess
-import urllib.request
-import urllib.error
 from datetime import datetime, timedelta
 from io import BytesIO
 import tkinter as tk
@@ -375,18 +371,36 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     else: y_tabelle -= 10
 
     y_tabelle = check_page_break(y_tabelle, 20)
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(60, y_tabelle, "Pos.")
-    c.drawString(100, y_tabelle, "Bezeichnung")
-    c.drawRightString(350, y_tabelle, "Menge")
-    c.drawRightString(440, y_tabelle, "Einzelpreis")
-    c.drawRightString(530, y_tabelle, "Gesamt")
-    y_tabelle -= 20
     
-    c.setFont("Helvetica", 10)
+    # --- NEU: Dynamische Steuer-Spalte und kompaktere Schrift ---
+    table_font_size = 9
+    c.setFont("Helvetica-Bold", table_font_size)
+    
+    # Prüfen, ob von 19% abweichende Steuersätze vorliegen (z.B. 0%, 7%) oder ein Mix existiert
+    steuersaetze = set(safe_float(p.get('Steuersatz', 19.0)) for p in positionen)
+    show_tax = steuersaetze != {19.0}
+    
+    c.drawString(60, y_tabelle, "Pos.")
+    c.drawString(95, y_tabelle, "Bezeichnung")
+    if show_tax:
+        c.drawRightString(320, y_tabelle, "Menge")
+        c.drawRightString(390, y_tabelle, "Einzelpreis")
+        c.drawRightString(450, y_tabelle, "MwSt")
+        c.drawRightString(530, y_tabelle, "Gesamt")
+        bez_width = 200
+    else:
+        c.drawRightString(350, y_tabelle, "Menge")
+        c.drawRightString(440, y_tabelle, "Einzelpreis")
+        c.drawRightString(530, y_tabelle, "Gesamt")
+        bez_width = 230
+        
+    y_tabelle -= 18
+    
+    c.setFont("Helvetica", table_font_size)
     for pos in positionen:
         menge = safe_float(pos['Menge'], 1.0)
         preis = safe_float(pos['EinzelpreisNetto'], 0.0)
+        steuersatz = safe_float(pos['Steuersatz'], 19.0)
         
         einheit_raw = pos.get('Einheit', 'C62').strip()
         match = re.search(r'\((.*?)\)', einheit_raw)
@@ -394,31 +408,40 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         einheit_lesbar = EINHEITEN_MAPPING.get(code, code)
         menge_str = f"{f_num(menge)} {einheit_lesbar}"
         
-        bez_lines = split_text_to_lines(pos['Bezeichnung'], 230, c)
+        bez_lines = split_text_to_lines(pos['Bezeichnung'], bez_width, c, size=table_font_size)
         lz_pos_str = parse_lz_lesbar(pos.get('LeistungszeitraumPos', ''))
         
-        req_height = (len(bez_lines) * 12) + (15 if lz_pos_str else 5)
+        # Abstände leicht verringert (11 statt 12, 13 statt 15)
+        req_height = (len(bez_lines) * 11) + (13 if lz_pos_str else 5)
         y_tabelle = check_page_break(y_tabelle, req_height)
         
-        c.setFont("Helvetica", 10)
+        c.setFont("Helvetica", table_font_size)
         c.drawString(60, y_tabelle, str(pos['PosNr']))
-        c.drawRightString(350, y_tabelle, menge_str) 
-        c.drawRightString(440, y_tabelle, f_curr(preis))
-        c.drawRightString(530, y_tabelle, f_curr(menge * preis))
+        if show_tax:
+            c.drawRightString(320, y_tabelle, menge_str) 
+            c.drawRightString(390, y_tabelle, f_curr(preis))
+            c.drawRightString(450, y_tabelle, f"{f_num(steuersatz)} %")
+            c.drawRightString(530, y_tabelle, f_curr(menge * preis))
+        else:
+            c.drawRightString(350, y_tabelle, menge_str) 
+            c.drawRightString(440, y_tabelle, f_curr(preis))
+            c.drawRightString(530, y_tabelle, f_curr(menge * preis))
         
         for i, b_line in enumerate(bez_lines):
-            c.drawString(100, y_tabelle - (i * 12), b_line)
-        y_tabelle -= (len(bez_lines) * 12)
+            c.drawString(95, y_tabelle - (i * 11), b_line)
+        y_tabelle -= (len(bez_lines) * 11)
         
         if lz_pos_str:
-            zeichne_formatierten_text(c, 100, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", 9)
-            y_tabelle -= 15
-        else: y_tabelle -= 5
+            zeichne_formatierten_text(c, 95, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", table_font_size - 1)
+            y_tabelle -= 13
+        else: 
+            y_tabelle -= 5
             
     y_tabelle -= 10
     y_tabelle = check_page_break(y_tabelle, 80)
     
     c.line(380, y_tabelle + 10, 530, y_tabelle + 10)
+    c.setFont("Helvetica", 10)
     c.drawString(380, y_tabelle - 5, "Netto Gesamt:")
     c.drawRightString(530, y_tabelle - 5, f_curr(gesamt_netto))
     y_tabelle -= 15
@@ -1820,348 +1843,4 @@ class App(ctk.CTk):
             d_edit.grab_set()
             
             e_bez = self.create_input(d_edit, "Bezeichnung")
-            e_menge = self.create_input(d_edit, "Standard-Menge")
-            e_einheit = self.create_input(d_edit, "Einheit", is_combo=True, combo_values=EINHEITEN_LISTE)
-            e_preis = self.create_input(d_edit, "Einzelpreis (€)")
-            e_steuer = self.create_input(d_edit, "Steuer (%)")
-            
-            if index is not None:
-                p = self.produkte_liste[index]
-                e_bez.insert(0, p.get('Bezeichnung',''))
-                e_menge.insert(0, f"{safe_float(p.get('Menge',1)):g}")
-                e_preis.insert(0, p.get('EinzelpreisNetto',''))
-                e_steuer.insert(0, p.get('Steuersatz','19'))
-                code = p.get('Einheit', 'C62')
-                lesbar = EINHEITEN_MAPPING.get(code, code)
-                for val in EINHEITEN_LISTE:
-                    if code in val or lesbar in val: e_einheit.set(val); break
-            else:
-                e_menge.insert(0, "1")
-                e_einheit.set("Stück (C62)")
-                e_steuer.insert(0, "19")
-                
-            def save():
-                if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung darf nicht leer sein!", parent=d_edit)
-                try:
-                    float(e_menge.get().replace(',', '.') or "1")
-                    float(e_preis.get().replace(',', '.'))
-                    float(e_steuer.get().replace(',', '.') or "19")
-                except ValueError:
-                    return messagebox.showwarning("Eingabefehler", "Zahlenwerte fehlerhaft!", parent=d_edit)
-                
-                einheit_val = e_einheit.get()
-                match = re.search(r'\((.*?)\)', einheit_val)
-                einheit_code = match.group(1).strip() if match else einheit_val.strip()
-                    
-                neu = {
-                    'Bezeichnung': e_bez.get().strip(),
-                    'Menge': e_menge.get().replace(',','.'),
-                    'Einheit': einheit_code,
-                    'EinzelpreisNetto': e_preis.get().replace(',','.'),
-                    'Steuersatz': e_steuer.get().replace(',','.')
-                }
-                if index is not None: self.produkte_liste[index] = neu
-                else: self.produkte_liste.append(neu)
-                    
-                speichere_alle_produkte(self.config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
-                refresh()
-                d_edit.destroy()
-                
-            self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
-
-        self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10)
-        refresh()
-
-    # --- AUTO-UPDATER ---
-    def check_for_updates(self):
-        self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
-        
-        def _check():
-            try:
-                url = "https://api.github.com/repos/JSoko/SokoIur-eRechnung-Zugferd/releases/latest"
-                req = urllib.request.Request(url, headers={'User-Agent': 'SokoIur-Updater'})
-                with urllib.request.urlopen(req) as response:
-                    data = json.loads(response.read().decode())
-                
-                latest_version = data.get("tag_name", "").lstrip("vV")
-                assets = data.get("assets", [])
-                
-                if not latest_version or not assets:
-                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"), 
-                                           messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden.")])
-                    return
-                
-                download_url = assets[0].get("browser_download_url")
-                
-                if latest_version > self.current_version:
-                    self.after(0, lambda: self.prompt_update(latest_version, download_url))
-                else:
-                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
-                                           messagebox.showinfo("Update", "Sie nutzen bereits die aktuellste Version!")])
-            except Exception as e:
-                self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
-                                       messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")])
-
-        threading.Thread(target=_check, daemon=True).start()
-
-    def prompt_update(self, latest_version, download_url):
-        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
-        res = messagebox.askyesno("Update verfügbar!", f"Eine neue Version ({latest_version}) ist verfügbar.\n\nMöchten Sie diese jetzt herunterladen und installieren?\nDas Programm wird dabei neu gestartet.")
-        if res:
-            self.download_and_install_update(download_url)
-
-    def download_and_install_update(self, download_url):
-        dl_win = ctk.CTkToplevel(self)
-        dl_win.title("Update")
-        self.center_window(dl_win, 300, 150)
-        dl_win.transient(self)
-        dl_win.grab_set()
-        ctk.CTkLabel(dl_win, text="Lade Update herunter...\nBitte warten.", font=("Helvetica", 14)).pack(expand=True)
-        self.update()
-        
-        def _download():
-            try:
-                new_exe = "SokoIur_eRechnung_neu.exe"
-                urllib.request.urlretrieve(download_url, new_exe)
-                
-                if not getattr(sys, 'frozen', False):
-                    self.after(0, lambda: [dl_win.destroy(), messagebox.showinfo("Info", "Update im Skript-Modus geladen. Der automatische Dateiaustausch funktioniert nur bei kompilierten (.exe) Dateien.")])
-                    return
-                
-                current_exe = sys.executable
-                
-                bat_content = f'''@echo off
-timeout /t 3 /nobreak > NUL
-move /Y "{new_exe}" "{current_exe}"
-start "" "{current_exe}"
-del "%~f0"
-'''
-                with open("update.bat", "w") as f:
-                    f.write(bat_content)
-                
-                subprocess.Popen("update.bat", shell=True)
-                
-                self.after(0, self.do_update_exit) 
-            except Exception as e:
-                self.after(0, lambda: [dl_win.destroy(), messagebox.showerror("Fehler", f"Download fehlgeschlagen:\n{str(e)}")])
-
-        threading.Thread(target=_download, daemon=True).start()
-
-    def do_update_exit(self):
-        try: os.remove(LOCK_FILE)
-        except: pass
-        os._exit(0)
-
-    # --- Tab 4: Hilfe & Doku ---
-    def build_hilfe_tab(self):
-        doku_text = f"""SokoIur eRechnung
-Version: {self.current_version}
-
-===========================================
-1. HAFTUNGSAUSSCHLUSS
-===========================================
-Das Programm "SokoIur eRechnung" wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt. 
-Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische Umsetzung der komplexen ZUGFeRD/XRechnung-Spezifikationen, wird hiermit ausdrücklich ausgeschlossen. 
-Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erstellten Rechnungen durch die Adressaten oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.
-Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.
-
-===========================================
-2. PROGRAMMBESCHREIBUNG & AUFRUF (CLI / GUI)
-===========================================
-SokoIur eRechnung ist ein Rechnungstool zur Erstellung ZUGFeRD-konformer PDFs. 
-Es kann entweder komplett über die grafische Oberfläche (GUI) gesteuert werden, oder 
-es fungiert als "Druck-Engine" für externe Programme.
-
-Aufruf über Kommandozeile (CLI):
-erechnung_generator.exe --auto [Parameter]   -> Generiert direkt unsichtbar im Hintergrund
-erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen.
-
-Verfügbare CLI-Parameter (überschreiben temporär die config.json):
-  --firma          Pfad zur firma.csv
-  --rechnung       Pfad zur rechnung.csv
-  --briefbogen     Pfad zur briefbogen.pdf
-  --zusatz         Pfad zur zusatz.csv
-  --gruss          Pfad zur gruss.csv
-  --header         Pfad zur header.csv
-  --einleitung     Pfad zur einleitung.csv
-  --ausgabe        Ordner, in dem die fertigen PDFs landen sollen.
-
-===========================================
-3. KUNDENDATENbank & PRODUKTDATENbank
-===========================================
-Kundenbank:
-Unten links im Reiter "Manuelle Eingabe" finden Sie die Checkbox "Kunde speichern/updaten". 
-Ist diese angehakt, wird der eingegebene Kunde dauerhaft gespeichert. Über das Dropdown "Kunde Name" oder den Suchbutton (🔍) neben der Kundennummer können Sie diese Kunden jederzeit abrufen.
-
-Produktebank:
-In der Positionserfassung (Klick auf "+ Position hinzufügen") ist das Feld "Bezeichnung" ein Dropdown. 
-Wählen Sie ein Standardprodukt aus, werden Preis, Menge, Einheit und Steuer automatisch ausgefüllt.
-
-Manager:
-Im Reiter "Einstellungen" finden Sie unten die Buttons zur Verwaltung dieser Datenbanken.
-
-===========================================
-4. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
-===========================================
-Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
-WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen.
-
-Negative Preise (Rabatte/Gutschriften): 
-Dürfen Sie wie gewohnt mit z.B. "-100" erfassen. Die Norm (BR-27) verbietet eigentlich negative Preise. Das Programm rechnet das im Hintergrund automatisch konform um.
-
-===========================================
-5. DATUMSEINGABEN
-===========================================
-Zulässige Formate: TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ oder JJJJ-MM-TT.
-
-===========================================
-6. TEXTFORMATIERUNGEN & TEXTE MERKEN
-===========================================
-Zeilenumbruch in der CSV: ~cr
-Fett drucken:  ~f Ihr Text f~
-Kursiv drucken:~k Ihr Text k~
-
-Standard-Texte (Checkbox):
-In der Text-Maske (📝 Texte) können Sie festlegen, ob ein Text (Einleitung, Gruß) für die nächste NEUE Rechnung im System gemerkt werden soll (Häkchen gesetzt).
-
-===========================================
-7. JOURNAL & AUSWERTUNGEN
-===========================================
-Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
-Im Reiter "Auswertungen" können Sie daraus mit einem Klick eine saubere, aufsummierte PDF-Tabelle erzeugen.
-
-===========================================
-8. TASTATUR-STEUERUNG (SHORTCUTS)
-===========================================
-  + oder Numpad + : Neue Position hinzufügen
-  Alt + L         : Aktuelle CSV laden
-  Alt + T         : Texte bearbeiten
-  Alt + S         : Nur Speichern (CSV)
-  Alt + P         : Speichern, PDF erstellen und öffnen
-  Tab / Shift+Tab : Zwischen Feldern wechseln
-  Enter / Leer    : Fokussierten Button auslösen
-
-===========================================
-9. GITHUB & UPDATES
-===========================================
-Der Quellcode des Programms ist auf GitHub einsehbar:
-https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
-
-Neue Versionen können Sie hier herunterladen:
-https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
-
-Tipp: Nutzen Sie den Button "Auf Updates prüfen" unten in diesem Reiter, um das Programm automatisch zu aktualisieren.
-"""
-        hilfe_box = ctk.CTkTextbox(self.tab_hilfe, width=800, height=400, font=("Consolas", 13))
-        hilfe_box.pack(pady=(10, 5), padx=10, fill="both", expand=True)
-        hilfe_box.insert("0.0", doku_text)
-        hilfe_box.configure(state="disabled")
-        
-        f_bot = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
-        f_bot.pack(fill="x", padx=10, pady=5)
-        
-        f_links = ctk.CTkFrame(f_bot, fg_color="transparent")
-        f_links.pack(side="left")
-        ctk.CTkLabel(f_links, text="Open Source Lizenzen:", font=("Helvetica", 12, "bold")).pack(anchor="w")
-        
-        def open_psf(e): webbrowser.open("https://docs.python.org/3/license.html")
-        def open_mit(e): webbrowser.open("https://opensource.org/licenses/MIT")
-        def open_bsd(e): webbrowser.open("https://opensource.org/licenses/BSD-3-Clause")
-        
-        l1 = ctk.CTkLabel(f_links, text="Python (PSF License)", text_color="#1f538d", cursor="hand2")
-        l1.pack(anchor="w"); l1.bind("<Button-1>", open_psf)
-        
-        l2 = ctk.CTkLabel(f_links, text="CustomTkinter (MIT License)", text_color="#1f538d", cursor="hand2")
-        l2.pack(anchor="w"); l2.bind("<Button-1>", open_mit)
-        
-        l3 = ctk.CTkLabel(f_links, text="ReportLab & pypdf (BSD License)", text_color="#1f538d", cursor="hand2")
-        l3.pack(anchor="w"); l3.bind("<Button-1>", open_bsd)
-        
-        self.btn_update = self.create_button(f_bot, text="🔄 Auf Updates prüfen", command=self.check_for_updates)
-        self.btn_update.pack(side="right", padx=10)
-
-
-# ==========================================
-# PROGRAMM START (Weiche für CLI / GUI)
-# ==========================================
-
-def main():
-    if os.path.exists(LOCK_FILE):
-        root = tk.Tk()
-        root.withdraw()
-        while os.path.exists(LOCK_FILE):
-            res = messagebox.askyesnocancel("Programm läuft bereits", "Die Sperrdatei (erechnung.lock) wurde gefunden. Das Programm läuft eventuell bereits im Hintergrund.\n\nJa = Sperrung aufheben und trotzdem starten\nNein = Warten (prüft erneut)\nAbbrechen = Beenden", parent=root)
-            if res is True: 
-                try: os.remove(LOCK_FILE)
-                except: pass
-                break
-            elif res is None: 
-                root.destroy()
-                sys.exit(0)
-            else: 
-                time.sleep(1)
-        root.destroy()
-        
-    try:
-        with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
-    except: pass
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--auto", action="store_true", help="Ohne GUI generieren")
-    parser.add_argument("--edit", action="store_true", help="Mit GUI in manueller Eingabe starten")
-    parser.add_argument("--firma", type=str)
-    parser.add_argument("--rechnung", type=str)
-    parser.add_argument("--briefbogen", type=str)
-    parser.add_argument("--zusatz", type=str)
-    parser.add_argument("--gruss", type=str)
-    parser.add_argument("--header", type=str)
-    parser.add_argument("--einleitung", type=str)
-    parser.add_argument("--ausgabe", type=str)
-    args = parser.parse_args()
-
-    config = init_config()
-    
-    if not config.get("terms_accepted", False):
-        root = tk.Tk()
-        root.withdraw()
-        haftungs_text = (
-            "HAFTUNGSAUSSCHLUSS UND NUTZUNGSBEDINGUNGEN\n\n"
-            "Das Programm 'SokoIur eRechnung' wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt.\n\n"
-            "Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische "
-            "Umsetzung der komplexen ZUGFeRD/XRechnung-Spezifikationen, wird hiermit ausdrücklich ausgeschlossen.\n\n"
-            "Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erstellten Rechnungen durch die Adressaten "
-            "oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.\n\n"
-            "Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr "
-            "erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.\n\n"
-            "Akzeptieren Sie diese Nutzungsbedingungen, um das Programm zu starten?"
-        )
-        res = messagebox.askyesno("Nutzungsbedingungen akzeptieren", haftungs_text, parent=root)
-        if res:
-            config["terms_accepted"] = True
-            speichere_config(config)
-            root.destroy()
-        else:
-            root.destroy()
-            try: os.remove(LOCK_FILE)
-            except: pass
-            sys.exit(0)
-
-    if args.firma: config['firma_csv'] = args.firma
-    if args.rechnung: config['rechnung_csv'] = args.rechnung
-    if args.briefbogen: config['briefbogen_pdf'] = args.briefbogen
-    if args.zusatz: config['zusatz_csv'] = args.zusatz
-    if args.gruss: config['gruss_csv'] = args.gruss
-    if args.header: config['header_csv'] = args.header
-    if args.einleitung: config['einleitung_csv'] = args.einleitung
-    if args.ausgabe: config['ausgabe_ordner'] = args.ausgabe
-
-    if args.auto:
-        run_auto_generation(config)
-        try: os.remove(LOCK_FILE)
-        except: pass
-    else:
-        app = App(config, start_in_edit=args.edit)
-        app.mainloop()
-
-if __name__ == "__main__":
-    main()
+            e_menge = self.create_input(d_edit, "Standard-M
