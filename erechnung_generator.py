@@ -226,11 +226,17 @@ def parse_flexible_date_span(span_str):
 
 def formatiere_datum(d_str): return datetime.strptime(d_str, '%Y-%m-%d').strftime('%Y%m%d')
 def formatiere_datum_lesbar(d_str): return datetime.strptime(d_str, '%Y-%m-%d').strftime('%d.%m.%Y')
+
 def parse_lz_lesbar(lz_str):
     if not lz_str: return ""
     if "|" in lz_str:
         s, e = lz_str.split('|')
-        return f"{formatiere_datum_lesbar(s)} - {formatiere_datum_lesbar(e)}"
+        s_lesbar = formatiere_datum_lesbar(s)
+        e_lesbar = formatiere_datum_lesbar(e)
+        # Wenn Start- und Enddatum gleich sind, nur ein Datum ausgeben
+        if s_lesbar == e_lesbar:
+            return s_lesbar
+        return f"{s_lesbar} - {e_lesbar}"
     return formatiere_datum_lesbar(lz_str)
 
 def safe_float(wert, fallback=0.0):
@@ -785,7 +791,6 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
         print(f"XMP-Injection Warnung (übersprungen): {e}")
 
     ausgabe_datei = os.path.join(ausgabe_ordner, f"Rechnung_{r_nr}.pdf")
-    
     with open(ausgabe_datei, "wb") as out_pdf: writer.write(out_pdf)
     
     # NEU: Sichere Journal-Erstellung
@@ -929,10 +934,18 @@ class App(ctk.CTk):
         if start_in_edit:
             self.after(200, lambda: self.load_manual_invoice(is_button_click=False, silent=True))
             
+        # --- NEU: Footer mit Update Button ---
         def open_website(event): webbrowser.open("https://sokolowski.org")
-        lbl_footer = ctk.CTkLabel(self, text="(C) Joachim Sokolowski - https://sokolowski.org", text_color="#1f538d", cursor="hand2")
-        lbl_footer.pack(side="bottom", pady=5)
+        
+        f_footer = ctk.CTkFrame(self, fg_color="transparent")
+        f_footer.pack(side="bottom", fill="x", padx=20, pady=5)
+        
+        lbl_footer = ctk.CTkLabel(f_footer, text="(C) Joachim Sokolowski - https://sokolowski.org", text_color="#1f538d", cursor="hand2")
+        lbl_footer.pack(side="left")
         lbl_footer.bind("<Button-1>", open_website)
+        
+        self.btn_footer_update = ctk.CTkButton(f_footer, text="Update?", width=80, fg_color="#555", hover_color="#777", command=self.check_for_updates)
+        self.btn_footer_update.pack(side="right")
 
     def on_closing(self):
         self.config["window_geometry"] = self.geometry()
@@ -1921,10 +1934,11 @@ class App(ctk.CTk):
 
         self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10)
         refresh()
-
+        
     # --- AUTO-UPDATER ---
     def check_for_updates(self):
         self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
+        self.btn_footer_update.configure(text="⏳ Suche...", state="disabled")
         
         def _check():
             try:
@@ -1937,26 +1951,45 @@ class App(ctk.CTk):
                 assets = data.get("assets", [])
                 
                 if not latest_version or not assets:
-                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"), 
-                                           messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden.")])
+                    self.after(0, lambda: [
+                        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"), 
+                        self.btn_footer_update.configure(text="Update?", state="normal"),
+                        messagebox.showerror("Fehler", "Keine gültigen Release-Daten auf GitHub gefunden.")
+                    ])
                     return
                 
                 download_url = assets[0].get("browser_download_url")
                 
+                # Reiner String-Vergleich funktioniert sicher, da das Format fest "1.YYYYMMDD.HHMM" ist
                 if latest_version > self.current_version:
                     self.after(0, lambda: self.prompt_update(latest_version, download_url))
                 else:
-                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
-                                           messagebox.showinfo("Update", "Sie nutzen bereits die aktuellste Version!")])
+                    self.after(0, lambda: [
+                        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                        self.btn_footer_update.configure(text="Update?", state="normal"),
+                        messagebox.showinfo("Update-Prüfung", f"Sie nutzen bereits die aktuellste Version!\n\nIhre Version: {self.current_version}\nOnline Version: {latest_version}")
+                    ])
             except Exception as e:
-                self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
-                                       messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")])
+                self.after(0, lambda: [
+                    self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                    self.btn_footer_update.configure(text="Update?", state="normal"),
+                    messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")
+                ])
 
         threading.Thread(target=_check, daemon=True).start()
 
     def prompt_update(self, latest_version, download_url):
         self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
-        res = messagebox.askyesno("Update verfügbar!", f"Eine neue Version ({latest_version}) ist verfügbar.\n\nMöchten Sie diese jetzt herunterladen und installieren?\nDas Programm wird dabei neu gestartet.")
+        self.btn_footer_update.configure(text="Update?", state="normal")
+        
+        res = messagebox.askyesno(
+            "Update verfügbar!", 
+            f"Eine neuere Version ist verfügbar!\n\n"
+            f"Aktuelle Version: {self.current_version}\n"
+            f"Neue Version: {latest_version}\n\n"
+            f"Möchten Sie diese jetzt herunterladen und installieren?\n"
+            f"Das Programm wird dabei beendet und neu gestartet."
+        )
         if res:
             self.download_and_install_update(download_url)
 
@@ -2020,12 +2053,15 @@ Legen Sie in denselben Ordner eine Datei namens "briefbogen.pdf". Diese wird als
 Tipp: Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab, sodass nur die Fußzeile erhalten bleibt.
 
 ===========================================
-2. HAFTUNGSAUSSCHLUSS
+2. HAFTUNGSAUSSCHLUSS & DATENSCHUTZ
 ===========================================
 Das Programm "SokoIur eRechnung" wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt. 
 Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische Umsetzung der komplexen ZUGFeRD/XRechnung-Spezifikationen, wird hiermit ausdrücklich ausgeschlossen. 
 Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erstellten Rechnungen durch die Adressaten oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.
 Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.
+
+Datenschutz / Verbindungen:
+Das Programm arbeitet komplett lokal. Ausschließlich zur Updateprüfung, die nicht automatisch durchgeführt, sondern durch den entsprechenden Button vom Benutzer angestoßen wird, wird eine Datenverbindung zu GitHub benötigt und aufgebaut.
 
 ===========================================
 3. PROGRAMMBESCHREIBUNG & AUFRUF (CLI / GUI)
@@ -2184,6 +2220,9 @@ def main():
             "oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.\n\n"
             "Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr "
             "erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.\n\n"
+            "DATENSCHUTZ / VERBINDUNGEN:\n"
+            "Das Programm arbeitet komplett lokal. Ausschließlich zur Updateprüfung, die nicht automatisch durchgeführt sondern durch "
+            "den entsprechenden Button vom Benutzer angestoßen wird, wird eine Datenverbindung zu GitHub benötigt und aufgebaut.\n\n"
             "Akzeptieren Sie diese Nutzungsbedingungen, um das Programm zu starten?"
         )
         res = messagebox.askyesno("Nutzungsbedingungen akzeptieren", haftungs_text, parent=root)
