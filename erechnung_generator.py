@@ -33,6 +33,11 @@ EINHEITEN_LISTE = [
     "Monat(e) (MON)", "Tag(e) (DAY)", "km (KMT)", "Satz (SET)"
 ]
 
+EINHEITEN_MAPPING = {
+    "C62": "Stück", "LS": "Pauschale", "HUR": "Stunde(n)",
+    "MON": "Monat(e)", "DAY": "Tag(e)", "KMT": "km", "SET": "Satz"
+}
+
 # ==========================================
 # KERNDATEN & LOGIK
 # ==========================================
@@ -49,23 +54,24 @@ def create_csv_if_missing(filename, header_str):
         with open(filename, 'w', encoding='utf-8-sig') as f:
             if header_str: f.write(header_str + "\n")
 
-def get_default_profile(index):
-    suffix = f"_{index}" if index > 1 else ""
+def get_default_profile(suffix=""):
+    s = f"_{suffix}" if suffix else ""
     return {
-        "profil_name": f"Firma {index}",
-        "firma_csv": f"firma{suffix}.csv",
-        "rechnung_csv": f"rechnung{suffix}.csv",
-        "briefbogen_pdf": f"briefbogen{suffix}.pdf",
-        "zusatz_csv": f"zusatz{suffix}.csv",
-        "gruss_csv": f"gruss{suffix}.csv",
-        "header_csv": f"header{suffix}.csv",
-        "einleitung_csv": f"einleitung{suffix}.csv",
-        "ausgabe_ordner": f"Rechnungen_PDF{suffix}",
-        "kunden_csv": f"kunden{suffix}.csv",
-        "produkte_csv": f"produkte{suffix}.csv",
-        "auswertungen_ordner": f"Auswertungen{suffix}",
+        "profil_name": "Hauptfirma" if not suffix else f"Firma {suffix}",
+        "firma_csv": f"firma{s}.csv",
+        "rechnung_csv": f"rechnung{s}.csv",
+        "briefbogen_pdf": f"briefbogen{s}.pdf",
+        "zusatz_csv": f"zusatz{s}.csv",
+        "gruss_csv": f"gruss{s}.csv",
+        "header_csv": f"header{s}.csv",
+        "einleitung_csv": f"einleitung{s}.csv",
+        "ausgabe_ordner": f"Rechnungen_PDF{s}",
+        "kunden_csv": f"kunden{s}.csv",
+        "produkte_csv": f"produkte{s}.csv",
+        "auswertungen_ordner": f"Auswertungen{s}",
         "faelligkeit_tage": "29",
         "letzte_rechnungsnummer": "",
+        "aktuelles_rechnungsjahr": str(datetime.now().year),
         "letzte_einheit": "Stück (C62)",
         "keep_header": True,
         "keep_einleitung": True,
@@ -83,12 +89,11 @@ def init_config():
         except: pass
 
     if "profiles" not in config:
-        prof1 = get_default_profile(1)
+        prof1 = get_default_profile("")
         keys_to_migrate = list(prof1.keys())
         for k in keys_to_migrate:
             if k in config:
                 prof1[k] = config.pop(k)
-        prof1["profil_name"] = "Hauptfirma"
         config["profiles"] = [prof1]
         config["active_profile_index"] = 0
 
@@ -96,6 +101,8 @@ def init_config():
     if "terms_accepted" not in config: config["terms_accepted"] = False
 
     for p in config["profiles"]:
+        if "aktuelles_rechnungsjahr" not in p: p["aktuelles_rechnungsjahr"] = str(datetime.now().year)
+        
         if not os.path.exists(p.get("ausgabe_ordner", "Rechnungen_PDF")): os.makedirs(p.get("ausgabe_ordner", "Rechnungen_PDF"))
         if not os.path.exists(p.get("auswertungen_ordner", "Auswertungen")): os.makedirs(p.get("auswertungen_ordner", "Auswertungen"))
         
@@ -361,7 +368,36 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     breite, hoehe = A4
     page_num = 1
     
-    def check_page_break(y, req_height):
+    steuersaetze = set(safe_float(p.get('Steuersatz', 19.0)) for p in positionen)
+    show_vat = (0.0 in steuersaetze) or (len(steuersaetze) > 1)
+    
+    x_lines = [90, 290, 345, 415, 475] if show_vat else [90, 305, 365, 450]
+    
+    def draw_table_header(y_pos):
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(60, y_pos, "Pos.")
+        c.drawString(100, y_pos, "Bezeichnung")
+        if show_vat:
+            c.drawRightString(330, y_pos, "Menge")
+            c.drawRightString(400, y_pos, "EP Netto")
+            c.drawRightString(460, y_pos, "MwSt")
+            c.drawRightString(530, y_pos, "Gesamt")
+        else:
+            c.drawRightString(350, y_pos, "Menge")
+            c.drawRightString(440, y_pos, "Einzelpreis")
+            c.drawRightString(530, y_pos, "Gesamt")
+            
+        y_top = y_pos + 10
+        y_bot = y_pos - 5
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(60, y_bot, 530, y_bot)
+        for x in x_lines:
+            c.line(x, y_top, x, y_bot)
+        c.setStrokeColorRGB(0, 0, 0)
+        return y_bot - 13
+    
+    def check_page_break(y, req_height, draw_header=False):
         nonlocal page_num
         if y - req_height < 100:
             c.showPage()
@@ -371,7 +407,11 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             c.setFillColorRGB(0, 0, 0)
             c.setFont("Helvetica", 10)
             c.drawCentredString(breite / 2.0, hoehe - 50, f"- {page_num} -")
-            return hoehe - 100
+            
+            new_y = hoehe - 120
+            if draw_header:
+                return draw_table_header(new_y)
+            return new_y
         return y
     
     c.setFont("Helvetica", 7)
@@ -419,35 +459,19 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     
     if einleitung_text:
         for zeile in einleitung_text.split('\n'):
-            y_tabelle = check_page_break(y_tabelle, 15)
+            y_tabelle = check_page_break(y_tabelle, 15, False)
             zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10, align="left")
             y_tabelle -= 15
         y_tabelle -= 10
     else: y_tabelle -= 10
 
-    steuersaetze = set(safe_float(p.get('Steuersatz', 19.0)) for p in positionen)
-    show_vat = (0.0 in steuersaetze) or (len(steuersaetze) > 1)
+    y_tabelle = check_page_break(y_tabelle, 20, False)
+    y_tabelle = draw_table_header(y_tabelle)
     
-    y_tabelle = check_page_break(y_tabelle, 20)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(60, y_tabelle, "Pos.")
-    c.drawString(100, y_tabelle, "Bezeichnung")
+    text_w = 180 if show_vat else 200
+    line_height = 11 
     
-    if show_vat:
-        c.drawRightString(330, y_tabelle, "Menge")
-        c.drawRightString(400, y_tabelle, "EP Netto")
-        c.drawRightString(460, y_tabelle, "MwSt")
-        c.drawRightString(530, y_tabelle, "Gesamt")
-        text_w = 200
-    else:
-        c.drawRightString(350, y_tabelle, "Menge")
-        c.drawRightString(440, y_tabelle, "Einzelpreis")
-        c.drawRightString(530, y_tabelle, "Gesamt")
-        text_w = 230
-        
-    y_tabelle -= 18
-    
-    for pos in positionen:
+    for pos_index, pos in enumerate(positionen):
         menge = safe_float(pos['Menge'], 1.0)
         preis = safe_float(pos['EinzelpreisNetto'], 0.0)
         steuersatz_pos = safe_float(pos.get('Steuersatz', 19.0))
@@ -461,8 +485,10 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         bez_lines = split_text_to_lines(pos['Bezeichnung'], text_w, c, "Helvetica", 9)
         lz_pos_str = parse_lz_lesbar(pos.get('LeistungszeitraumPos', ''))
         
-        req_height = (len(bez_lines) * 14) + (15 if lz_pos_str else 5) + 5
-        y_tabelle = check_page_break(y_tabelle, req_height)
+        req_height = (len(bez_lines) * line_height) + (12 if lz_pos_str else 0) + 12
+        y_tabelle = check_page_break(y_tabelle, req_height, True)
+        
+        y_row_top = y_tabelle + 13
         
         c.setFont("Helvetica", 9)
         c.drawString(60, y_tabelle, str(pos['PosNr']))
@@ -478,22 +504,31 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             c.drawRightString(530, y_tabelle, f_curr(menge * preis))
         
         for i, b_line in enumerate(bez_lines):
-            c.drawString(100, y_tabelle - (i * 14), b_line)
-        y_tabelle -= (len(bez_lines) * 14)
+            c.drawString(100, y_tabelle - (i * line_height), b_line)
+            
+        y_bottom_of_text = y_tabelle - ((len(bez_lines) - 1) * line_height)
         
         if lz_pos_str:
-            zeichne_formatierten_text(c, 100, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", 8)
-            y_tabelle -= 15
-        else: y_tabelle -= 5
+            y_bottom_of_text -= 12
+            zeichne_formatierten_text(c, 100, y_bottom_of_text, f"~kLeistungszeitraum: {lz_pos_str}k~", 8)
             
+        y_row_bottom = y_bottom_of_text - 6
+        
         c.setStrokeColorRGB(0.8, 0.8, 0.8)
         c.setLineWidth(0.5)
-        c.line(60, y_tabelle + 3, 530, y_tabelle + 3)
-        c.setStrokeColorRGB(0, 0, 0)
-        y_tabelle -= 5
+        for x in x_lines:
+            c.line(x, y_row_top, x, y_row_bottom)
+        
+        if pos_index < len(positionen) - 1:
+            c.line(60, y_row_bottom, 530, y_row_bottom)
+            c.setStrokeColorRGB(0, 0, 0)
+            y_tabelle = y_row_bottom - 13
+        else:
+            c.setStrokeColorRGB(0, 0, 0)
+            y_tabelle = y_row_bottom - 5
             
-    y_tabelle -= 10
-    y_tabelle = check_page_break(y_tabelle, 80)
+    y_tabelle -= 6
+    y_tabelle = check_page_break(y_tabelle, 80, False)
     
     c.setFont("Helvetica", 10)
     c.line(380, y_tabelle + 10, 530, y_tabelle + 10)
@@ -523,7 +558,7 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         for z in zusatztexte:
             lines = z['text'].split('\n')
             req_h = len(lines) * 15 + (15 if z['pos'] != '0' else 0)
-            y_tabelle = check_page_break(y_tabelle, req_h)
+            y_tabelle = check_page_break(y_tabelle, req_h, False)
             if z['pos'] != '0': 
                 c.setFont("Helvetica-Bold", 10)
                 c.drawString(60, y_tabelle, f"Zu Position(en) {z['pos']}:")
@@ -536,14 +571,14 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     z_csv = kopf.get('Zusatztext', '').strip()
     if z_csv:
         lines = z_csv.split('\\n')
-        y_tabelle = check_page_break(y_tabelle, len(lines) * 15)
+        y_tabelle = check_page_break(y_tabelle, len(lines) * 15, False)
         for zeile in lines:
             zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
             y_tabelle -= 15
         y_tabelle -= 10 
 
     y_tabelle -= 10
-    y_tabelle = check_page_break(y_tabelle, 80)
+    y_tabelle = check_page_break(y_tabelle, 80, False)
     
     c.setFont("Helvetica", 10)
     if gesamt_brutto < 0:
@@ -575,7 +610,7 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     
     if gruss_text:
         lines = gruss_text.split('\n')
-        y_tabelle = check_page_break(y_tabelle, len(lines) * 15)
+        y_tabelle = check_page_break(y_tabelle, len(lines) * 15, False)
         for zeile in lines:
             zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
             y_tabelle -= 15
@@ -584,7 +619,7 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     packet.seek(0)
     return packet
 
-def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner):
+def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     
@@ -810,18 +845,20 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     except Exception as e:
         print(f"XMP-Injection Warnung (übersprungen): {e}")
 
-    ausgabe_datei = os.path.join(ausgabe_ordner, f"Rechnung_{r_nr}.pdf")
+    jahr_ausgabe = os.path.join(ausgabe_ordner, str(rechnungsjahr))
+    os.makedirs(jahr_ausgabe, exist_ok=True)
+    ausgabe_datei = os.path.join(jahr_ausgabe, f"Rechnung_{r_nr}.pdf")
+    
     with open(ausgabe_datei, "wb") as out_pdf: writer.write(out_pdf)
     
-    # Sichere Journal-Erstellung
     try:
         if r_datum and r_nr:
             date_obj = datetime.strptime(r_datum, "%Y%m%d")
             journal_filename = f"re{date_obj.strftime('%Y%m')}.csv"
-            journal_path = os.path.join(auswertungen_ordner, journal_filename)
             
-            j_dir = os.path.dirname(journal_path)
-            if not os.path.exists(j_dir): os.makedirs(j_dir)
+            jahr_auswertungen = os.path.join(auswertungen_ordner, str(rechnungsjahr))
+            os.makedirs(jahr_auswertungen, exist_ok=True)
+            journal_path = os.path.join(jahr_auswertungen, journal_filename)
             
             st_19 = steuer_gruppen.get(19.0, {}).get('steuer', 0.0)
             st_7 = steuer_gruppen.get(7.0, {}).get('steuer', 0.0)
@@ -851,12 +888,14 @@ def run_auto_generation(config):
         header = lade_textdatei(act_prof['header_csv'])
         einleitung = lade_textdatei(act_prof['einleitung_csv'])
         
+        akt_jahr = act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+        
         for r_nr, daten in rechnungen.items():
             valid, msg = check_lz_logic(daten['kopf'], daten['positionen'])
             if not valid:
                 print(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
                 continue
-            erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'])
+            erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr)
             print(f"✅ Erstellt: RE {r_nr}")
     except Exception as e:
         print(f"❌ Schwerer Fehler bei PDF-Erstellung: {e}")
@@ -881,7 +920,12 @@ class App(ctk.CTk):
         else:
             kompilierungs_datum = datetime.now()
             
-        self.current_version = f"1.{kompilierungs_datum.strftime('%Y%m%d.%H%M')}"
+        yy = kompilierungs_datum.strftime('%y')
+        tag_des_jahres = kompilierungs_datum.timetuple().tm_yday
+        minute_des_tages = kompilierungs_datum.hour * 60 + kompilierungs_datum.minute
+        
+        # Feste Stellenanzahl durch Nullen auffüllen, damit der Nummernvergleich sicher funktioniert!
+        self.current_version = f"1.{yy}{tag_des_jahres:03d}{minute_des_tages:04d}"
         
         icon_path = get_resource_path("SokoIur.ico")
         if os.path.exists(icon_path):
@@ -901,6 +945,9 @@ class App(ctk.CTk):
         self.bind('<Alt-S>', lambda e: self.save_manual_invoice())
         self.bind('<Alt-p>', lambda e: self.save_generate_open_exit())
         self.bind('<Alt-P>', lambda e: self.save_generate_open_exit())
+        
+        self.header_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.header_container.pack(fill="x", padx=20, pady=(10, 0))
         
         self.build_profile_header()
         
@@ -938,21 +985,20 @@ class App(ctk.CTk):
         return self.config["profiles"][self.config["active_profile_index"]]
 
     def build_profile_header(self):
-        f_top = ctk.CTkFrame(self, fg_color="transparent")
-        f_top.pack(fill="x", padx=20, pady=(10, 0))
+        for w in self.header_container.winfo_children(): w.destroy()
         
-        ctk.CTkLabel(f_top, text="Aktive Firma / Profil:", font=("Helvetica", 14, "bold")).pack(side="left")
+        ctk.CTkLabel(self.header_container, text="Aktive Firma / Profil:", font=("Helvetica", 14, "bold")).pack(side="left")
         
         profil_namen = [p["profil_name"] for p in self.config["profiles"]]
-        self.combo_profile = ctk.CTkComboBox(f_top, values=profil_namen, command=self.on_profile_switch)
+        self.combo_profile = ctk.CTkComboBox(self.header_container, values=profil_namen, command=self.on_profile_switch)
         self.combo_profile.set(self.p_config["profil_name"])
         self.combo_profile.pack(side="left", padx=10)
         
-        self.create_button(f_top, text="+ Neu", width=60, command=self.add_profile).pack(side="left", padx=5)
-        self.create_button(f_top, text="✎ Umbenennen", width=100, command=self.rename_profile).pack(side="left", padx=5)
+        self.create_button(self.header_container, text="+ Neu", width=60, command=self.add_profile).pack(side="left", padx=5)
+        self.create_button(self.header_container, text="✎ Umbenennen", width=100, command=self.rename_profile).pack(side="left", padx=5)
         
         if len(self.config["profiles"]) > 1:
-            self.create_button(f_top, text="🗑 Löschen", width=80, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
+            self.create_button(self.header_container, text="🗑 Löschen", width=80, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
 
     def on_profile_switch(self, wahl):
         for i, p in enumerate(self.config["profiles"]):
@@ -965,11 +1011,11 @@ class App(ctk.CTk):
     def add_profile(self):
         if len(self.config["profiles"]) >= 5:
             return messagebox.showwarning("Limit erreicht", "Es können maximal 5 Firmen-Profile angelegt werden.")
-        d_name = ctk.CTKInputDialog(text="Name der neuen Firma:", title="Neues Profil")
+        d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         name = d_name.get_input()
         if name:
-            new_idx = len(self.config["profiles"]) + 1
-            new_p = get_default_profile(new_idx)
+            timestamp_suffix = str(int(time.time()))[-5:]
+            new_p = get_default_profile(timestamp_suffix)
             new_p["profil_name"] = name
             
             if not os.path.exists(new_p["ausgabe_ordner"]): os.makedirs(new_p["ausgabe_ordner"])
@@ -987,30 +1033,33 @@ class App(ctk.CTk):
             self.config["active_profile_index"] = len(self.config["profiles"]) - 1
             speichere_config(self.config)
             
-            for w in self.winfo_children():
-                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
             self.build_profile_header()
             self.refresh_all_ui()
 
     def rename_profile(self):
-        d_name = ctk.CTKInputDialog(text="Neuer Name für das Profil:", title="Profil umbenennen")
+        d_name = ctk.CTkInputDialog(text="Neuer Name für das Profil:", title="Profil umbenennen")
         name = d_name.get_input()
         if name:
             self.p_config["profil_name"] = name
             speichere_config(self.config)
-            for w in self.winfo_children():
-                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
             self.build_profile_header()
 
     def delete_profile(self):
-        if messagebox.askyesno("Löschen", "Möchten Sie dieses Profil wirklich entfernen?\n(Die Dateien bleiben auf der Festplatte erhalten)"):
+        if len(self.config["profiles"]) <= 1:
+            return messagebox.showwarning("Fehler", "Das letzte verbleibende Profil kann nicht gelöscht werden.")
+            
+        dialog = ctk.CTkInputDialog(text="Bitte geben Sie das Sicherheitspasswort ein, um die Firma zu löschen:", title="Sicherheitsabfrage")
+        pwd = dialog.get_input()
+        
+        if pwd == "63263":
             del self.config["profiles"][self.config["active_profile_index"]]
             self.config["active_profile_index"] = 0
             speichere_config(self.config)
-            for w in self.winfo_children():
-                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
             self.build_profile_header()
             self.refresh_all_ui()
+            messagebox.showinfo("Gelöscht", "Die Firma wurde erfolgreich aus der Profil-Liste entfernt.\n(Dateien bleiben auf der Festplatte erhalten).")
+        elif pwd is not None:
+            messagebox.showerror("Fehler", "Falsches Passwort! Löschen abgebrochen.")
 
     def refresh_all_ui(self):
         self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
@@ -1030,6 +1079,13 @@ class App(ctk.CTk):
         self.build_auswertungen_tab()
         self.build_settings_tab()
         self.build_hilfe_tab()
+        
+        heute = datetime.now()
+        try: tage = int(self.p_config.get("faelligkeit_tage", "29"))
+        except ValueError: tage = 29
+        self.entry_r_datum.delete(0, 'end'); self.entry_r_datum.insert(0, heute.strftime('%Y-%m-%d'))
+        self.entry_f_datum.delete(0, 'end'); self.entry_f_datum.insert(0, (heute + timedelta(days=tage)).strftime('%Y-%m-%d'))
+        self.entry_r_nr.delete(0, 'end'); self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
 
     def on_closing(self):
         self.config["window_geometry"] = self.geometry()
@@ -1250,14 +1306,6 @@ class App(ctk.CTk):
         self.lbl_totals = ctk.CTkLabel(left_frame, text="Netto Gesamt: 0,00 €\nBrutto Gesamt: 0,00 €", justify="left", font=("Helvetica", 14, "bold"))
         self.lbl_totals.pack(pady=5, padx=15, anchor="w")
         
-        heute = datetime.now()
-        try: tage = int(self.p_config.get("faelligkeit_tage", "29"))
-        except ValueError: tage = 29
-            
-        self.entry_r_datum.insert(0, heute.strftime('%Y-%m-%d'))
-        self.entry_f_datum.insert(0, (heute + timedelta(days=tage)).strftime('%Y-%m-%d'))
-        self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
-        
         ctk.CTkLabel(right_frame, text="Positionen", font=("Helvetica", 14, "bold")).pack(pady=10)
         
         self.pos_scroll = ctk.CTkScrollableFrame(right_frame)
@@ -1448,7 +1496,8 @@ class App(ctk.CTk):
         e_bez.focus_set()
         
         def save_it(event=None):
-            if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung fehlt!", parent=dialog)
+            if not e_bez.get().strip(): 
+                return messagebox.showwarning("Fehler", "Bezeichnung fehlt!", parent=dialog)
             
             try:
                 float(e_menge.get().replace(',', '.') or "1")
@@ -1667,7 +1716,8 @@ class App(ctk.CTk):
             return 
         
         r_nr = self.entry_r_nr.get()
-        pdf_pfad = os.path.join(self.p_config['ausgabe_ordner'], f"Rechnung_{r_nr}.pdf")
+        akt_jahr = self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+        pdf_pfad = os.path.join(self.p_config['ausgabe_ordner'], akt_jahr, f"Rechnung_{r_nr}.pdf")
         
         if os.path.exists(pdf_pfad):
             try: os.startfile(pdf_pfad)
@@ -1683,50 +1733,83 @@ class App(ctk.CTk):
         
         ctk.CTkLabel(f, text="Auswertungen generieren (Journal)", font=("Helvetica", 16, "bold")).pack(pady=10)
         
-        f_input = ctk.CTkFrame(f, fg_color="transparent")
-        f_input.pack(pady=10)
-        
-        ctk.CTkLabel(f_input, text="Monat (z.B. 11.2026) oder Jahr (2026):", width=250).pack(side="left")
-        self.entry_ausw_zeit = ctk.CTkEntry(f_input, width=150)
-        self.entry_ausw_zeit.pack(side="left", padx=10)
-        self.entry_ausw_zeit.insert(0, datetime.now().strftime("%m.%Y"))
-        
         f_input_ordner = ctk.CTkFrame(f, fg_color="transparent")
-        f_input_ordner.pack(pady=5, fill="x", padx=10)
+        f_input_ordner.pack(pady=(10, 5), fill="x", padx=10)
         ctk.CTkLabel(f_input_ordner, text="Journal-Ordner:", width=150).pack(side="left")
         self.entry_ausw_ordner = ctk.CTkEntry(f_input_ordner, width=300)
         self.entry_ausw_ordner.pack(side="left", padx=10, expand=True, fill="x")
         self.entry_ausw_ordner.insert(0, self.p_config.get("auswertungen_ordner", "Auswertungen"))
-        self.create_button(f_input_ordner, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_ausw_ordner, is_dir=True)).pack(side="left")
+        self.create_button(f_input_ordner, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_ausw_ordner, is_dir=True, on_change=self.update_ausw_jahre)).pack(side="left")
+        
+        self.entry_ausw_ordner.bind('<FocusOut>', lambda e: self.update_ausw_jahre())
+        
+        f_input_zeit = ctk.CTkFrame(f, fg_color="transparent")
+        f_input_zeit.pack(pady=5, fill="x", padx=10)
+        ctk.CTkLabel(f_input_zeit, text="Zeitraum (Monat / Jahr):", width=150).pack(side="left")
+        
+        self.combo_ausw_monat = ctk.CTkComboBox(f_input_zeit, values=["Alle Monate", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"], width=120)
+        self.combo_ausw_monat.pack(side="left", padx=(10, 5))
+        self.combo_ausw_monat.set(datetime.now().strftime("%m"))
+        
+        self.combo_ausw_jahr = ctk.CTkComboBox(f_input_zeit, values=[], width=120)
+        self.combo_ausw_jahr.pack(side="left", padx=5)
         
         self.create_button(f, text="Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700").pack(pady=20)
+        
+        self.update_ausw_jahre()
 
-    def browse_path_for_entry(self, entry_widget, is_dir=False):
+    def update_ausw_jahre(self):
+        if not hasattr(self, 'entry_ausw_ordner'): return
+        ordner = self.entry_ausw_ordner.get().strip()
+        jahre = set()
+        if os.path.exists(ordner):
+            for d in os.listdir(ordner):
+                if os.path.isdir(os.path.join(ordner, d)) and re.match(r'^\d{4}$', d):
+                    jahre.add(d)
+            for f in os.listdir(ordner):
+                m = re.match(r'^re(\d{4})\d{2}\.csv$', f.lower())
+                if m: jahre.add(m.group(1))
+                
+        jahre_liste = sorted(list(jahre), reverse=True)
+        if not jahre_liste:
+            jahre_liste = [datetime.now().strftime("%Y")]
+        
+        self.combo_ausw_jahr.configure(values=jahre_liste)
+        current = self.combo_ausw_jahr.get()
+        if current not in jahre_liste:
+            self.combo_ausw_jahr.set(jahre_liste[0])
+
+    def browse_path_for_entry(self, entry_widget, is_dir=False, on_change=None):
         if is_dir: path = filedialog.askdirectory()
         else: path = filedialog.askopenfilename()
         if path:
             entry_widget.delete(0, "end")
             entry_widget.insert(0, path)
+            if on_change: on_change()
 
     def generate_auswertung(self):
-        zeit_str = self.entry_ausw_zeit.get().strip()
         ordner = self.entry_ausw_ordner.get().strip()
+        jahr = self.combo_ausw_jahr.get()
+        monat = self.combo_ausw_monat.get()
+        
         if not os.path.exists(ordner):
             return messagebox.showwarning("Fehler", "Der angegebene Auswertungs-Ordner existiert nicht.")
             
         such_muster = []
-        if re.match(r'^\d{4}$', zeit_str):
+        if monat == "Alle Monate":
             for m in range(1, 13):
-                such_muster.append(f"re{zeit_str}{m:02d}.csv")
-        elif re.match(r'^\d{2}\.\d{4}$', zeit_str):
-            m, y = zeit_str.split('.')
-            such_muster.append(f"re{y}{m}.csv")
+                such_muster.append(f"re{jahr}{m:02d}.csv")
+            zeit_str = f"{jahr}"
         else:
-            return messagebox.showwarning("Fehler", "Bitte Format MM.YYYY (z.B. 11.2026) oder YYYY eingeben.")
+            such_muster.append(f"re{jahr}{monat}.csv")
+            zeit_str = f"{monat}.{jahr}"
             
         gefundene_rechnungen = []
         for datei in such_muster:
-            pfad = os.path.join(ordner, datei)
+            pfad_neu = os.path.join(ordner, jahr, datei)
+            pfad_alt = os.path.join(ordner, datei)
+            pfad = pfad_neu if os.path.exists(pfad_neu) else pfad_alt
+            
             if os.path.exists(pfad):
                 with open(pfad, 'r', encoding='utf-8-sig') as f:
                     reader = csv.DictReader(f, delimiter=';')
@@ -1739,8 +1822,9 @@ class App(ctk.CTk):
         aktuelle_firma = lade_firma(self.p_config.get('firma_csv', 'firma.csv'))
         firma_name = aktuelle_firma.get('FirmaName', 'Unbekannte Firma')
         
-        pdf_name = f"Journal_{zeit_str.replace('.','_')}.pdf"
-        pdf_pfad = os.path.join(ordner, pdf_name)
+        jahr_ordner = os.path.join(ordner, jahr)
+        os.makedirs(jahr_ordner, exist_ok=True)
+        pdf_pfad = os.path.join(jahr_ordner, f"Journal_{zeit_str.replace('.','_')}.pdf")
         
         c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4))
         breite, hoehe = landscape(A4)
@@ -1836,8 +1920,28 @@ class App(ctk.CTk):
         self.create_button(f_btns, text="🏢 Firmendaten bearbeiten", command=self.open_firma_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         self.create_button(f_btns, text="👥 Kundendaten verwalten", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         self.create_button(f_btns, text="📦 Produktdaten verwalten", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        
+        f_num_jahr = ctk.CTkFrame(self.tab_settings)
+        f_num_jahr.pack(fill="x", pady=10, padx=20)
+        ctk.CTkLabel(f_num_jahr, text="Nummernkreise & Rechnungsjahr", font=("Helvetica", 14, "bold")).pack(pady=5)
+        
+        f_jahr = ctk.CTkFrame(f_num_jahr, fg_color="transparent")
+        f_jahr.pack(fill="x", pady=5, padx=10)
+        ctk.CTkLabel(f_jahr, text="Aktuelles Rechnungsjahr:", width=200, anchor="w").pack(side="left")
+        
+        jahre = self.get_available_years()
+        self.combo_jahr = ctk.CTkComboBox(f_jahr, values=jahre, command=self.on_settings_jahr_change)
+        self.combo_jahr.set(self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year)))
+        self.combo_jahr.pack(side="left", padx=10)
+        
+        f_nr = ctk.CTkFrame(f_num_jahr, fg_color="transparent")
+        f_nr.pack(fill="x", pady=5, padx=10)
+        ctk.CTkLabel(f_nr, text="Letzte Rechnungs-Nr.:", width=200, anchor="w").pack(side="left")
+        self.lbl_letzte_nr = ctk.CTkLabel(f_nr, text=self.p_config.get("letzte_rechnungsnummer", "Noch keine"), width=150, anchor="w")
+        self.lbl_letzte_nr.pack(side="left", padx=10)
+        self.create_button(f_nr, text="✏️ Korrigieren", width=80, command=self.edit_letzte_nr).pack(side="left")
 
-        ctk.CTkLabel(self.tab_settings, text="Dateipfade der aktiven Firma:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(0, 10))
+        ctk.CTkLabel(self.tab_settings, text="Dateipfade der aktiven Firma:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(10, 5))
         
         self.path_vars = {}
         for key in ["firma_csv", "rechnung_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv", "ausgabe_ordner", "auswertungen_ordner", "kunden_csv", "produkte_csv"]:
@@ -1854,7 +1958,7 @@ class App(ctk.CTk):
             if "csv" in key or "pdf" in key or "ordner" in key:
                 self.create_button(f, text="📂", width=40, command=lambda k=key, e=entry: self.browse_path(k, e)).pack(side="left")
             
-        self.create_button(self.tab_settings, text="Pfade Speichern", command=self.save_settings).pack(pady=15)
+        self.create_button(self.tab_settings, text="Pfade Speichern", command=self.save_settings).pack(pady=10)
         
     def browse_path(self, key, entry_widget):
         path = filedialog.askdirectory() if "ordner" in key else filedialog.askopenfilename(filetypes=[("Datei", "*.pdf" if "pdf" in key else "*.csv")])
@@ -1907,11 +2011,21 @@ class App(ctk.CTk):
         e_tel.insert(0, f_daten.get('Telefon', ''))
         
         def save():
+            name = e_name.get().strip()
+            plz = e_plz.get().strip()
+            ort = e_ort.get().strip()
+            iban = e_iban.get().strip()
+            ustid = e_ustid.get().strip()
+            stnr = e_stnr.get().strip()
+            
+            if not name or not plz or not ort or not iban or (not ustid and not stnr):
+                return messagebox.showwarning("Fehler", "Für eine gültige eRechnung (ZUGFeRD) sind folgende Angaben ZWINGEND:\n\n- Firma Name\n- PLZ\n- Ort\n- IBAN\n- USt-Id ODER Steuernummer", parent=d_edit)
+
             neu = {
-                'FirmaName': e_name.get().strip(), 'Strasse': e_str.get().strip(),
-                'PLZ': e_plz.get().strip(), 'Ort': e_ort.get().strip(), 'Land': e_land.get().strip(),
-                'UStId': e_ustid.get().strip(), 'Steuernummer': e_stnr.get().strip(),
-                'BankName': e_bank.get().strip(), 'IBAN': e_iban.get().strip(), 'BIC': e_bic.get().strip(),
+                'FirmaName': name, 'Strasse': e_str.get().strip(),
+                'PLZ': plz, 'Ort': ort, 'Land': e_land.get().strip(),
+                'UStId': ustid, 'Steuernummer': stnr,
+                'BankName': e_bank.get().strip(), 'IBAN': iban, 'BIC': e_bic.get().strip(),
                 'Email': e_mail.get().strip(), 'Telefon': e_tel.get().strip()
             }
             speichere_firma(pfad_firma, neu)
@@ -2109,7 +2223,15 @@ class App(ctk.CTk):
                 
                 download_url = assets[0].get("browser_download_url")
                 
-                if latest_version > self.current_version:
+                is_newer = False
+                try:
+                    l_v = list(map(int, latest_version.split('.')))
+                    c_v = list(map(int, self.current_version.split('.')))
+                    is_newer = l_v > c_v
+                except:
+                    is_newer = latest_version > self.current_version
+                
+                if is_newer:
                     self.after(0, lambda: self.prompt_update(latest_version, download_url))
                 else:
                     self.after(0, lambda: [
@@ -2185,10 +2307,18 @@ del "%~f0"
 
     # --- Tab 4: Hilfe & Doku ---
     def build_hilfe_tab(self):
+        f_split = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
+        f_split.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        f_toc = ctk.CTkScrollableFrame(f_split, width=220)
+        f_toc.pack(side="left", fill="y", padx=(0, 10))
+        
+        hilfe_box = ctk.CTkTextbox(f_split, font=("Consolas", 13))
+        hilfe_box.pack(side="left", fill="both", expand=True)
+
         doku_text = f"""SokoIur eRechnung
 Version: {self.current_version}
 
-===========================================
 1. INSTALLATION & ERSTEINRICHTUNG
 ===========================================
 Die Anwendung (.exe) ist vollständig portabel und kann in einem beliebigen Ordner auf Ihrem PC oder auf einem freigegebenen Netzwerklaufwerk abgelegt werden.
@@ -2200,7 +2330,6 @@ Briefbogen:
 Legen Sie in denselben Ordner eine Datei namens "briefbogen.pdf". Diese wird als Hintergrund für die Rechnung verwendet. 
 Tipp: Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab, sodass nur die Fußzeile erhalten bleibt.
 
-===========================================
 2. HAFTUNGSAUSSCHLUSS & DATENSCHUTZ
 ===========================================
 Das Programm "SokoIur eRechnung" wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt. 
@@ -2211,7 +2340,6 @@ Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschr�
 Datenschutz / Verbindungen:
 Das Programm arbeitet komplett lokal. Ausschließlich zur Updateprüfung, die NICHT automatisch durchgeführt sondern durch den entsprechenden Button vom Benutzer angestoßen wird, wird eine Datenverbindung zu GitHub benötigt und aufgebaut.
 
-===========================================
 3. PROGRAMMBESCHREIBUNG & AUFRUF (CLI / GUI)
 ===========================================
 SokoIur eRechnung ist ein Rechnungstool zur Erstellung ZUGFeRD-konformer PDFs. 
@@ -2223,20 +2351,21 @@ erechnung_generator.exe --auto [Parameter]   -> Generiert direkt unsichtbar im H
 erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen.
 
 Beispiel für einen CLI-Aufruf:
-erechnung_generator.exe --edit --rechnung "C:\\Temp\\meine_rechnung.csv" --auswertungen "C:\\Temp\\Auswertungen"
+erechnung_generator.exe --edit --profil "Firma 1" --rechnung "C:\\Temp\\meine_rechnung.csv" --header "C:\\Temp\\mein_header.csv"
 
 Verfügbare CLI-Parameter (überschreiben temporär das aktive Profil):
-  --firma          Pfad zur firma.csv
-  --rechnung       Pfad zur rechnung.csv
-  --briefbogen     Pfad zur briefbogen.pdf
-  --zusatz         Pfad zur zusatz.csv
-  --gruss          Pfad zur gruss.csv
-  --header         Pfad zur header.csv
-  --einleitung     Pfad zur einleitung.csv
-  --ausgabe        Ordner für PDFs.
+  --profil         Name des Firmenprofils, für das die Rechnung verarbeitet werden soll (z.B. "Firma 1").
+  --firma          Pfad zur firma.csv (überschreibt die Mandantendaten temporär).
+  --rechnung       Pfad zur rechnung.csv (die einzulesenden Rechnungsdaten).
+  --briefbogen     Pfad zur briefbogen.pdf.
+  --zusatz         Pfad zur zusatz.csv.
+  --gruss          Pfad zur gruss.csv.
+  --header         Pfad zur header.csv.
+  --einleitung     Pfad zur einleitung.csv.
+  --ausgabe        Ordner für fertiggestellte PDFs.
   --auswertungen   Ordner für das Rechnungs-Journal.
+  --jahr           Zwingt das Programm in ein spezielles Rechnungsjahr.
 
-===========================================
 4. AUFBAU UND ZWECK DER CSV-DATEIEN
 ===========================================
 - firma.csv: Eigene Firmendaten (IBAN, USt-ID, Name etc.). Enthält genau 1 Zeile unter der Kopfzeile.
@@ -2245,26 +2374,28 @@ Verfügbare CLI-Parameter (überschreiben temporär das aktive Profil):
 - zusatz.csv: Positionsspezifische Anmerkungen (Format: "1,3;Hier ist ein Zusatztext").
 - header.csv / einleitung.csv / gruss.csv: Einfache Textdateien, in denen das Programm sich Ihre Standard-Textbausteine merkt.
 
-===========================================
 5. JAHRESWECHSEL
 ===========================================
 Zum Jahreswechsel (z.B. von 2026 auf 2027) haben Sie zwei Möglichkeiten:
 A) Neues Profil anlegen:
 Klicken Sie oben auf "+ Neu" und nennen Sie es z.B. "Firma 2027". Das Programm legt automatisch neue, komplett leere Ausgabe- und Auswertungs-Ordner für Sie an.
 B) Vorhandenes Profil anpassen:
-Gehen Sie in die "Einstellungen", ändern Sie den "Ausgabe Ordner" auf z.B. "Rechnungen_2027" und passen Sie in der "Manuellen Eingabe" die erste Rechnungsnummer auf "RE-2027-001" an.
-Um Journale der Vorjahre auszudrucken, wechseln Sie in den Reiter "Auswertungen" und ändern unten einfach den "Journal-Ordner" auf das alte Jahr (z.B. "Auswertungen_2026").
+Gehen Sie in die "Einstellungen", ändern Sie das "Aktuelle Rechnungsjahr" im Dropdown z.B. auf 2027. Die Ordner werden bei Bestätigung generiert.
+Um Journale der Vorjahre auszudrucken, wechseln Sie in den Reiter "Auswertungen" und ändern das Jahres-Dropdown einfach auf das alte Jahr (z.B. "2026").
 
-===========================================
 6. MANDANTEN & DATENBANKEN
 ===========================================
 Mandantenfähigkeit (Firmen):
 Sie können oben links über das Dropdown-Menü bis zu 5 verschiedene Firmenprofile anlegen. Jede Firma verwaltet ihre eigenen Dateipfade, Rechnungsnummern, Kunden und Produkte. In den Einstellungen können Sie unter "Firmendaten bearbeiten" die Adresse und Bankverbindung anpassen.
+WICHTIG: Wenn Sie eine Firma anlegen oder bearbeiten, müssen für eine gültige ZUGFeRD eRechnung mindestens Name, PLZ, Ort, IBAN und USt-Id (bzw. Steuernummer) eingegeben werden!
+
+Firma löschen:
+Um ein Profil zu löschen, klicken Sie auf "Löschen". Als Sicherheitsmaßnahme wird ein Passwort abgefragt, damit Sie nicht versehentlich Ihre Firmendaten abhängen. 
+Das Sicherheitspasswort lautet: 63263 (die Haupt-Postleitzahl von Neu-Isenburg).
 
 Kundenbank & Produktebank:
 Ihre erfassten Kunden und Produkte werden gespeichert. Über die Buttons im Reiter "Einstellungen" können Sie diese Bestände aufräumen, bearbeiten oder neue hinzufügen. In der Rechnungserfassung dient die "Bezeichnung" und das Suchen-Feld als Auto-Fill für diese Bestände.
 
-===========================================
 7. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
 ===========================================
 Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
@@ -2273,25 +2404,21 @@ WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positi
 Negative Preise (Rabatte/Gutschriften): 
 Dürfen Sie wie gewohnt erfassen (z.B. "-100"). Das Programm rechnet das im Hintergrund automatisch normgerecht in eine negative Menge um.
 
-===========================================
 8. DATUMSEINGABEN
 ===========================================
 Zulässige Formate: TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ oder JJJJ-MM-TT.
 
-===========================================
 9. TEXTFORMATIERUNGEN
 ===========================================
 Zeilenumbruch in der CSV: ~cr
 Fett drucken:  ~f Ihr Text f~
 Kursiv drucken:~k Ihr Text k~
 
-===========================================
 10. JOURNAL & AUSWERTUNGEN
 ===========================================
 Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
 Im Reiter "Auswertungen" können Sie daraus mit einem Klick ein sauberes PDF-Journal mit korrekter Steueraufschlüsselung erzeugen.
 
-===========================================
 11. GITHUB & UPDATES
 ===========================================
 Der Quellcode des Programms ist auf GitHub einsehbar:
@@ -2300,10 +2427,33 @@ https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
 Neue Versionen können Sie hier herunterladen:
 https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
 """
-        hilfe_box = ctk.CTkTextbox(self.tab_hilfe, width=800, height=400, font=("Consolas", 13))
-        hilfe_box.pack(pady=(10, 5), padx=10, fill="both", expand=True)
         hilfe_box.insert("0.0", doku_text)
         hilfe_box.configure(state="disabled")
+        
+        def jump_to(search_text):
+            hilfe_box.configure(state="normal")
+            idx = hilfe_box._textbox.search(search_text, "1.0", stopindex="end")
+            if idx: hilfe_box.see(idx)
+            hilfe_box.configure(state="disabled")
+
+        chapters = [
+            ("1. Installation", "1. INSTALLATION"),
+            ("2. Haftung", "2. HAFTUNGSAUSSCHLUSS"),
+            ("3. CLI & GUI", "3. PROGRAMMBESCHREIBUNG"),
+            ("4. CSV Dateien", "4. AUFBAU UND ZWECK"),
+            ("5. Jahreswechsel", "5. JAHRESWECHSEL"),
+            ("6. Mandanten", "6. MANDANTEN"),
+            ("7. Positionen", "7. RECHNUNGSPOSITIONEN"),
+            ("8. Datumseingaben", "8. DATUMSEINGABEN"),
+            ("9. Formatierungen", "9. TEXTFORMATIERUNGEN"),
+            ("10. Journal", "10. JOURNAL"),
+            ("11. Updates", "11. GITHUB")
+        ]
+        
+        ctk.CTkLabel(f_toc, text="Inhaltsverzeichnis", font=("Helvetica", 12, "bold")).pack(pady=(0, 10))
+        for label, search_str in chapters:
+            btn = self.create_button(f_toc, text=label, anchor="w", fg_color="#444", hover_color="#666", command=lambda s=search_str: jump_to(s))
+            btn.pack(pady=2, fill="x")
         
         f_bot = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
         f_bot.pack(fill="x", padx=10, pady=5)
@@ -2357,6 +2507,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--auto", action="store_true", help="Ohne GUI generieren")
     parser.add_argument("--edit", action="store_true", help="Mit GUI in manueller Eingabe starten")
+    parser.add_argument("--profil", type=str, help="Name des aktiven Firmenprofils (z.B. 'Firma 1')")
     parser.add_argument("--firma", type=str)
     parser.add_argument("--rechnung", type=str)
     parser.add_argument("--briefbogen", type=str)
@@ -2366,6 +2517,7 @@ def main():
     parser.add_argument("--einleitung", type=str)
     parser.add_argument("--ausgabe", type=str)
     parser.add_argument("--auswertungen", type=str)
+    parser.add_argument("--jahr", type=str)
     args = parser.parse_args()
 
     config = init_config()
@@ -2398,6 +2550,12 @@ def main():
             except: pass
             sys.exit(0)
 
+    if args.profil:
+        for i, p in enumerate(config["profiles"]):
+            if p["profil_name"].lower() == args.profil.lower():
+                config["active_profile_index"] = i
+                break
+
     if args.firma: config["profiles"][config["active_profile_index"]]['firma_csv'] = args.firma
     if args.rechnung: config["profiles"][config["active_profile_index"]]['rechnung_csv'] = args.rechnung
     if args.briefbogen: config["profiles"][config["active_profile_index"]]['briefbogen_pdf'] = args.briefbogen
@@ -2407,6 +2565,7 @@ def main():
     if args.einleitung: config["profiles"][config["active_profile_index"]]['einleitung_csv'] = args.einleitung
     if args.ausgabe: config["profiles"][config["active_profile_index"]]['ausgabe_ordner'] = args.ausgabe
     if args.auswertungen: config["profiles"][config["active_profile_index"]]['auswertungen_ordner'] = args.auswertungen
+    if args.jahr: config["profiles"][config["active_profile_index"]]['aktuelles_rechnungsjahr'] = args.jahr
 
     if args.auto:
         run_auto_generation(config)
