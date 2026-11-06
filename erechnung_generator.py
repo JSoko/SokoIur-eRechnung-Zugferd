@@ -6,6 +6,10 @@ import argparse
 import re
 import webbrowser
 import time
+import threading
+import subprocess
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta
 from io import BytesIO
 import tkinter as tk
@@ -74,8 +78,24 @@ def init_config():
     }
     for k, v in defaults.items():
         if k not in config: config[k] = v
+        
     if not os.path.exists(config["ausgabe_ordner"]): os.makedirs(config["ausgabe_ordner"])
     if not os.path.exists(config["auswertungen_ordner"]): os.makedirs(config["auswertungen_ordner"])
+    
+    def create_csv_if_missing(filename, header_str):
+        if not os.path.exists(filename):
+            with open(filename, 'w', encoding='utf-8-sig') as f:
+                if header_str: f.write(header_str + "\n")
+                
+    create_csv_if_missing(config.get("firma_csv", "firma.csv"), "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
+    create_csv_if_missing(config.get("rechnung_csv", "rechnung.csv"), "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
+    create_csv_if_missing(config.get("kunden_csv", "kunden.csv"), "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
+    create_csv_if_missing(config.get("produkte_csv", "produkte.csv"), "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+    create_csv_if_missing(config.get("zusatz_csv", "zusatz.csv"), "")
+    create_csv_if_missing(config.get("gruss_csv", "gruss.csv"), "")
+    create_csv_if_missing(config.get("header_csv", "header.csv"), "")
+    create_csv_if_missing(config.get("einleitung_csv", "einleitung.csv"), "")
+    
     return config
 
 def berechne_naechste_rechnungsnummer(letzte_nr):
@@ -88,39 +108,51 @@ def berechne_naechste_rechnungsnummer(letzte_nr):
     return letzte_nr + "-1"
 
 def lade_firma(pfad):
-    with open(pfad, mode='r', encoding='utf-8-sig') as f:
-        return next(csv.DictReader(f, delimiter=';'))
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            reader = list(csv.DictReader(f, delimiter=';'))
+            if reader: return reader[0]
+    except: pass
+    return {'FirmaName': 'Bitte Firma in firma.csv eintragen', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': ''}
 
 def lade_rechnungen(pfad):
     rechnungen = {}
-    with open(pfad, mode='r', encoding='utf-8-sig') as f:
-        for row in csv.DictReader(f, delimiter=';'):
-            r_nr = row['Rechnungsnummer']
-            if r_nr not in rechnungen: rechnungen[r_nr] = {'kopf': row, 'positionen': []}
-            rechnungen[r_nr]['positionen'].append(row)
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f, delimiter=';'):
+                r_nr = row['Rechnungsnummer']
+                if r_nr not in rechnungen: rechnungen[r_nr] = {'kopf': row, 'positionen': []}
+                rechnungen[r_nr]['positionen'].append(row)
+    except: pass
     return rechnungen
 
 def lade_zusatz_csv(pfad):
     texte = []
     if not os.path.exists(pfad): return texte
-    with open(pfad, mode='r', encoding='utf-8-sig') as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            parts = line.split(';', 1)
-            if len(parts) == 2:
-                texte.append({'pos': parts[0].strip(), 'text': parts[1].strip().replace('~cr', '\n')})
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                parts = line.split(';', 1)
+                if len(parts) == 2:
+                    texte.append({'pos': parts[0].strip(), 'text': parts[1].strip().replace('~cr', '\n')})
+    except: pass
     return texte
 
 def lade_textdatei(pfad):
     if not os.path.exists(pfad): return ""
-    with open(pfad, mode='r', encoding='utf-8-sig') as f:
-        return f.read().strip().replace('~cr', '\n')
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            return f.read().strip().replace('~cr', '\n')
+    except: return ""
 
 def speichere_textdatei(pfad, text):
     if not pfad: return
-    with open(pfad, 'w', encoding='utf-8-sig') as f:
-        f.write(text.replace('\n', '~cr').strip())
+    try:
+        with open(pfad, 'w', encoding='utf-8-sig') as f:
+            f.write(text.replace('\n', '~cr').strip())
+    except: pass
 
 def lade_kunden(pfad):
     kunden = []
@@ -320,13 +352,13 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         return y
     
     c.setFont("Helvetica", 7)
-    c.drawString(60, hoehe - 130, f"{firma['FirmaName']}, {firma['Strasse']}, {firma['PLZ']} {firma['Ort']}")
+    c.drawString(60, hoehe - 130, f"{firma.get('FirmaName','')}, {firma.get('Strasse','')}, {firma.get('PLZ','')} {firma.get('Ort','')}")
     
     c.setFont("Helvetica", 11)
-    c.drawString(60, hoehe - 160, kopf['KundeName'])
-    c.drawString(60, hoehe - 175, kopf['KundeStrasse'])
-    c.drawString(60, hoehe - 190, f"{kopf['KundePLZ']} {kopf['KundeOrt']}")
-    if kopf['KundeLand'] != 'DE': c.drawString(60, hoehe - 205, kopf['KundeLand'])
+    c.drawString(60, hoehe - 160, kopf.get('KundeName',''))
+    c.drawString(60, hoehe - 175, kopf.get('KundeStrasse',''))
+    c.drawString(60, hoehe - 190, f"{kopf.get('KundePLZ','')} {kopf.get('KundeOrt','')}")
+    if kopf.get('KundeLand','') != 'DE': c.drawString(60, hoehe - 205, kopf.get('KundeLand',''))
         
     y_tabelle = hoehe - 240
     
@@ -336,9 +368,9 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             y_tabelle -= 18
         y_tabelle -= 10
     
-    r_nr = kopf['Rechnungsnummer']
-    r_dat = formatiere_datum_lesbar(kopf['Rechnungsdatum'])
-    f_dat = formatiere_datum_lesbar(kopf['Faelligkeitsdatum'])
+    r_nr = kopf.get('Rechnungsnummer','')
+    r_dat = formatiere_datum_lesbar(kopf.get('Rechnungsdatum',''))
+    f_dat = formatiere_datum_lesbar(kopf.get('Faelligkeitsdatum',''))
     
     rech_zeile = f"Rechnung Nr.: {r_nr}  |  Datum: {r_dat}  |  Fällig bis: {f_dat}"
     zeichne_formatierten_text(c, 60, y_tabelle, f"~f{rech_zeile}f~", 11, align="left")
@@ -370,37 +402,33 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         y_tabelle -= 10
     else: y_tabelle -= 10
 
-    y_tabelle = check_page_break(y_tabelle, 20)
-    
-    # --- NEU: Dynamische Steuer-Spalte und kompaktere Schrift ---
-    table_font_size = 9
-    c.setFont("Helvetica-Bold", table_font_size)
-    
-    # Prüfen, ob von 19% abweichende Steuersätze vorliegen (z.B. 0%, 7%) oder ein Mix existiert
     steuersaetze = set(safe_float(p.get('Steuersatz', 19.0)) for p in positionen)
-    show_tax = steuersaetze != {19.0}
+    show_vat = (0.0 in steuersaetze) or (len(steuersaetze) > 1)
     
+    y_tabelle = check_page_break(y_tabelle, 20)
+    c.setFont("Helvetica-Bold", 9)
     c.drawString(60, y_tabelle, "Pos.")
-    c.drawString(95, y_tabelle, "Bezeichnung")
-    if show_tax:
-        c.drawRightString(320, y_tabelle, "Menge")
-        c.drawRightString(390, y_tabelle, "Einzelpreis")
-        c.drawRightString(450, y_tabelle, "MwSt")
+    c.drawString(100, y_tabelle, "Bezeichnung")
+    
+    if show_vat:
+        c.drawRightString(330, y_tabelle, "Menge")
+        c.drawRightString(400, y_tabelle, "EP Netto")
+        c.drawRightString(460, y_tabelle, "MwSt")
         c.drawRightString(530, y_tabelle, "Gesamt")
-        bez_width = 200
+        text_w = 200
     else:
         c.drawRightString(350, y_tabelle, "Menge")
         c.drawRightString(440, y_tabelle, "Einzelpreis")
         c.drawRightString(530, y_tabelle, "Gesamt")
-        bez_width = 230
+        text_w = 230
         
     y_tabelle -= 18
     
-    c.setFont("Helvetica", table_font_size)
+    c.setFont("Helvetica", 9)
     for pos in positionen:
         menge = safe_float(pos['Menge'], 1.0)
         preis = safe_float(pos['EinzelpreisNetto'], 0.0)
-        steuersatz = safe_float(pos['Steuersatz'], 19.0)
+        steuersatz_pos = safe_float(pos.get('Steuersatz', 19.0))
         
         einheit_raw = pos.get('Einheit', 'C62').strip()
         match = re.search(r'\((.*?)\)', einheit_raw)
@@ -408,19 +436,19 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         einheit_lesbar = EINHEITEN_MAPPING.get(code, code)
         menge_str = f"{f_num(menge)} {einheit_lesbar}"
         
-        bez_lines = split_text_to_lines(pos['Bezeichnung'], bez_width, c, size=table_font_size)
+        bez_lines = split_text_to_lines(pos['Bezeichnung'], text_w, c, "Helvetica", 9)
         lz_pos_str = parse_lz_lesbar(pos.get('LeistungszeitraumPos', ''))
         
-        # Abstände leicht verringert (11 statt 12, 13 statt 15)
-        req_height = (len(bez_lines) * 11) + (13 if lz_pos_str else 5)
+        req_height = (len(bez_lines) * 11) + (15 if lz_pos_str else 5)
         y_tabelle = check_page_break(y_tabelle, req_height)
         
-        c.setFont("Helvetica", table_font_size)
+        c.setFont("Helvetica", 9)
         c.drawString(60, y_tabelle, str(pos['PosNr']))
-        if show_tax:
-            c.drawRightString(320, y_tabelle, menge_str) 
-            c.drawRightString(390, y_tabelle, f_curr(preis))
-            c.drawRightString(450, y_tabelle, f"{f_num(steuersatz)} %")
+        
+        if show_vat:
+            c.drawRightString(330, y_tabelle, menge_str) 
+            c.drawRightString(400, y_tabelle, f_curr(preis))
+            c.drawRightString(460, y_tabelle, f"{f_num(steuersatz_pos)}%")
             c.drawRightString(530, y_tabelle, f_curr(menge * preis))
         else:
             c.drawRightString(350, y_tabelle, menge_str) 
@@ -428,20 +456,19 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             c.drawRightString(530, y_tabelle, f_curr(menge * preis))
         
         for i, b_line in enumerate(bez_lines):
-            c.drawString(95, y_tabelle - (i * 11), b_line)
+            c.drawString(100, y_tabelle - (i * 11), b_line)
         y_tabelle -= (len(bez_lines) * 11)
         
         if lz_pos_str:
-            zeichne_formatierten_text(c, 95, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", table_font_size - 1)
-            y_tabelle -= 13
-        else: 
-            y_tabelle -= 5
+            zeichne_formatierten_text(c, 100, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", 8)
+            y_tabelle -= 14
+        else: y_tabelle -= 5
             
     y_tabelle -= 10
     y_tabelle = check_page_break(y_tabelle, 80)
     
-    c.line(380, y_tabelle + 10, 530, y_tabelle + 10)
     c.setFont("Helvetica", 10)
+    c.line(380, y_tabelle + 10, 530, y_tabelle + 10)
     c.drawString(380, y_tabelle - 5, "Netto Gesamt:")
     c.drawRightString(530, y_tabelle - 5, f_curr(gesamt_netto))
     y_tabelle -= 15
@@ -529,14 +556,14 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     packet.seek(0)
     return packet
 
-def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner):
+def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
-    r_nr = kopf['Rechnungsnummer']
+    r_nr = kopf.get('Rechnungsnummer', '')
     
     kunde_name_xml = esc_xml(kopf.get('KundeName', '').strip())
     if not kunde_name_xml: kunde_name_xml = "Nicht angegeben"
     
-    r_datum, f_datum = formatiere_datum(kopf['Rechnungsdatum']), formatiere_datum(kopf['Faelligkeitsdatum'])
+    r_datum, f_datum = formatiere_datum(kopf.get('Rechnungsdatum', '')), formatiere_datum(kopf.get('Faelligkeitsdatum', ''))
     
     iban_clean = re.sub(r'\s+', '', firma.get('IBAN', ''))
     bic_clean = re.sub(r'\s+', '', firma.get('BIC', ''))
@@ -660,9 +687,9 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
         <ram:ApplicableHeaderTradeAgreement>
             {xml_buyer_ref}
             <ram:SellerTradeParty>
-                <ram:Name>{esc_xml(firma['FirmaName'])}</ram:Name>
-                <ram:PostalTradeAddress><ram:PostcodeCode>{esc_xml(firma['PLZ'])}</ram:PostcodeCode><ram:LineOne>{esc_xml(firma['Strasse'])}</ram:LineOne><ram:CityName>{esc_xml(firma['Ort'])}</ram:CityName><ram:CountryID>{esc_xml(firma['Land'])}</ram:CountryID></ram:PostalTradeAddress>
-                <ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">{esc_xml(firma['UStId'])}</ram:ID></ram:SpecifiedTaxRegistration>
+                <ram:Name>{esc_xml(firma.get('FirmaName', ''))}</ram:Name>
+                <ram:PostalTradeAddress><ram:PostcodeCode>{esc_xml(firma.get('PLZ', ''))}</ram:PostcodeCode><ram:LineOne>{esc_xml(firma.get('Strasse', ''))}</ram:LineOne><ram:CityName>{esc_xml(firma.get('Ort', ''))}</ram:CityName><ram:CountryID>{esc_xml(firma.get('Land', 'DE'))}</ram:CountryID></ram:PostalTradeAddress>
+                <ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">{esc_xml(firma.get('UStId', ''))}</ram:ID></ram:SpecifiedTaxRegistration>
             </ram:SellerTradeParty>
             <ram:BuyerTradeParty>
                 {xml_buyer_id}
@@ -761,11 +788,12 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     
     with open(ausgabe_datei, "wb") as out_pdf: writer.write(out_pdf)
     
+    # NEU: Sichere Journal-Erstellung
     try:
         if r_datum and r_nr:
             date_obj = datetime.strptime(r_datum, "%Y%m%d")
             journal_filename = f"re{date_obj.strftime('%Y%m')}.csv"
-            journal_path = os.path.join(ausgabe_ordner.replace('Rechnungen_PDF', config.get('auswertungen_ordner', 'Auswertungen')), journal_filename)
+            journal_path = os.path.join(auswertungen_ordner, journal_filename)
             
             j_dir = os.path.dirname(journal_path)
             if not os.path.exists(j_dir): os.makedirs(j_dir)
@@ -779,7 +807,7 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
                 writer_j = csv.writer(f, delimiter=';')
                 if not file_exists:
                     writer_j.writerow(["Rechnungsnummer", "Datum", "Empfaenger", "Netto", "MwSt_19", "MwSt_7", "MwSt_0", "Brutto"])
-                writer_j.writerow([r_nr, date_obj.strftime("%d.%m.%Y"), kopf.get('KundeName', ''), f"{gesamt_netto:.2f}", f"{st_19:.2f}", f"{st_7:.2f}", f"{st_0:.2f}", f"{gesamt_brutto:.2f}"])
+                writer_j.writerow([r_nr, date_obj.strftime("%d.%m.%Y"), kopf.get('KundeName', ''), f"{gesamt_netto:.2f}".replace('.', ','), f"{st_19:.2f}".replace('.', ','), f"{st_7:.2f}".replace('.', ','), f"{st_0:.2f}".replace('.', ','), f"{gesamt_brutto:.2f}".replace('.', ',')])
     except Exception as e:
         print(f"Fehler beim Schreiben des Journals: {e}")
         
@@ -809,7 +837,7 @@ def run_auto_generation(config, logger_callback=None):
                 log(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
                 continue
                 
-            pfad = erstelle_zugferd_pdf(firma, daten, config['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, config['ausgabe_ordner'])
+            pfad = erstelle_zugferd_pdf(firma, daten, config['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, config['ausgabe_ordner'], config['auswertungen_ordner'])
             log(f"✅ Erstellt: {os.path.basename(pfad)}")
         log("Fertig! Generierung abgeschlossen.")
     except PermissionError:
@@ -831,7 +859,6 @@ class App(ctk.CTk):
         self.config = config
         self.title("SokoIur eRechnung")
         
-        # Bestimme aktuelle Version
         if getattr(sys, 'frozen', False):
             exe_zeit = os.path.getmtime(sys.executable)
             kompilierungs_datum = datetime.fromtimestamp(exe_zeit)
@@ -1843,4 +1870,349 @@ class App(ctk.CTk):
             d_edit.grab_set()
             
             e_bez = self.create_input(d_edit, "Bezeichnung")
-            e_menge = self.create_input(d_edit, "Standard-M
+            e_menge = self.create_input(d_edit, "Standard-Menge")
+            e_einheit = self.create_input(d_edit, "Einheit", is_combo=True, combo_values=EINHEITEN_LISTE)
+            e_preis = self.create_input(d_edit, "Einzelpreis (€)")
+            e_steuer = self.create_input(d_edit, "Steuer (%)")
+            
+            if index is not None:
+                p = self.produkte_liste[index]
+                e_bez.insert(0, p.get('Bezeichnung',''))
+                e_menge.insert(0, f"{safe_float(p.get('Menge',1)):g}")
+                e_preis.insert(0, p.get('EinzelpreisNetto',''))
+                e_steuer.insert(0, p.get('Steuersatz','19'))
+                code = p.get('Einheit', 'C62')
+                lesbar = EINHEITEN_MAPPING.get(code, code)
+                for val in EINHEITEN_LISTE:
+                    if code in val or lesbar in val: e_einheit.set(val); break
+            else:
+                e_menge.insert(0, "1")
+                e_einheit.set("Stück (C62)")
+                e_steuer.insert(0, "19")
+                
+            def save():
+                if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung darf nicht leer sein!", parent=d_edit)
+                try:
+                    float(e_menge.get().replace(',', '.') or "1")
+                    float(e_preis.get().replace(',', '.'))
+                    float(e_steuer.get().replace(',', '.') or "19")
+                except ValueError:
+                    return messagebox.showwarning("Eingabefehler", "Zahlenwerte fehlerhaft!", parent=d_edit)
+                
+                einheit_val = e_einheit.get()
+                match = re.search(r'\((.*?)\)', einheit_val)
+                einheit_code = match.group(1).strip() if match else einheit_val.strip()
+                    
+                neu = {
+                    'Bezeichnung': e_bez.get().strip(),
+                    'Menge': e_menge.get().replace(',','.'),
+                    'Einheit': einheit_code,
+                    'EinzelpreisNetto': e_preis.get().replace(',','.'),
+                    'Steuersatz': e_steuer.get().replace(',','.')
+                }
+                if index is not None: self.produkte_liste[index] = neu
+                else: self.produkte_liste.append(neu)
+                    
+                speichere_alle_produkte(self.config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
+                refresh()
+                d_edit.destroy()
+                
+            self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
+
+        self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10)
+        refresh()
+
+    # --- AUTO-UPDATER ---
+    def check_for_updates(self):
+        self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
+        
+        def _check():
+            try:
+                url = "https://api.github.com/repos/JSoko/SokoIur-eRechnung-Zugferd/releases/latest"
+                req = urllib.request.Request(url, headers={'User-Agent': 'SokoIur-Updater'})
+                with urllib.request.urlopen(req) as response:
+                    data = json.loads(response.read().decode())
+                
+                latest_version = data.get("tag_name", "").lstrip("vV")
+                assets = data.get("assets", [])
+                
+                if not latest_version or not assets:
+                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"), 
+                                           messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden.")])
+                    return
+                
+                download_url = assets[0].get("browser_download_url")
+                
+                if latest_version > self.current_version:
+                    self.after(0, lambda: self.prompt_update(latest_version, download_url))
+                else:
+                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                                           messagebox.showinfo("Update", "Sie nutzen bereits die aktuellste Version!")])
+            except Exception as e:
+                self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                                       messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")])
+
+        threading.Thread(target=_check, daemon=True).start()
+
+    def prompt_update(self, latest_version, download_url):
+        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
+        res = messagebox.askyesno("Update verfügbar!", f"Eine neue Version ({latest_version}) ist verfügbar.\n\nMöchten Sie diese jetzt herunterladen und installieren?\nDas Programm wird dabei neu gestartet.")
+        if res:
+            self.download_and_install_update(download_url)
+
+    def download_and_install_update(self, download_url):
+        dl_win = ctk.CTkToplevel(self)
+        dl_win.title("Update")
+        self.center_window(dl_win, 300, 150)
+        dl_win.transient(self)
+        dl_win.grab_set()
+        ctk.CTkLabel(dl_win, text="Lade Update herunter...\nBitte warten.", font=("Helvetica", 14)).pack(expand=True)
+        self.update()
+        
+        def _download():
+            try:
+                new_exe = "SokoIur_eRechnung_neu.exe"
+                urllib.request.urlretrieve(download_url, new_exe)
+                
+                if not getattr(sys, 'frozen', False):
+                    self.after(0, lambda: [dl_win.destroy(), messagebox.showinfo("Info", "Update im Skript-Modus geladen. Der automatische Dateiaustausch funktioniert nur bei kompilierten (.exe) Dateien.")])
+                    return
+                
+                current_exe = sys.executable
+                
+                bat_content = f'''@echo off
+timeout /t 3 /nobreak > NUL
+move /Y "{new_exe}" "{current_exe}"
+start "" "{current_exe}"
+del "%~f0"
+'''
+                with open("update.bat", "w") as f:
+                    f.write(bat_content)
+                
+                subprocess.Popen("update.bat", shell=True)
+                
+                self.after(0, self.do_update_exit) 
+            except Exception as e:
+                self.after(0, lambda: [dl_win.destroy(), messagebox.showerror("Fehler", f"Download fehlgeschlagen:\n{str(e)}")])
+
+        threading.Thread(target=_download, daemon=True).start()
+
+    def do_update_exit(self):
+        try: os.remove(LOCK_FILE)
+        except: pass
+        os._exit(0)
+
+    # --- Tab 4: Hilfe & Doku ---
+    def build_hilfe_tab(self):
+        doku_text = f"""SokoIur eRechnung
+Version: {self.current_version}
+
+===========================================
+1. INSTALLATION & ERSTEINRICHTUNG
+===========================================
+Die Anwendung (.exe) ist vollständig portabel und kann in einem beliebigen Ordner auf Ihrem PC oder auf einem freigegebenen Netzwerklaufwerk abgelegt werden.
+
+Automatische Einrichtung:
+Beim ersten Start legt das Programm alle benötigten Ordner (z.B. für PDFs und Auswertungen) sowie leere Konfigurations-Dateien (.csv) automatisch an. Sie müssen nichts manuell konfigurieren. 
+
+Briefbogen:
+Legen Sie in denselben Ordner eine Datei namens "briefbogen.pdf". Diese wird als Hintergrund für die Rechnung verwendet. 
+Tipp: Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab, sodass nur die Fußzeile erhalten bleibt.
+
+===========================================
+2. HAFTUNGSAUSSCHLUSS
+===========================================
+Das Programm "SokoIur eRechnung" wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt. 
+Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische Umsetzung der komplexen ZUGFeRD/XRechnung-Spezifikationen, wird hiermit ausdrücklich ausgeschlossen. 
+Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erstellten Rechnungen durch die Adressaten oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.
+Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.
+
+===========================================
+3. PROGRAMMBESCHREIBUNG & AUFRUF (CLI / GUI)
+===========================================
+SokoIur eRechnung ist ein Rechnungstool zur Erstellung ZUGFeRD-konformer PDFs. 
+Es kann entweder komplett über die grafische Oberfläche (GUI) gesteuert werden, oder 
+es fungiert als "Druck-Engine" für externe Programme.
+
+Aufruf über Kommandozeile (CLI):
+erechnung_generator.exe --auto [Parameter]   -> Generiert direkt unsichtbar im Hintergrund
+erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen.
+
+Beispiel für einen CLI-Aufruf:
+erechnung_generator.exe --edit --rechnung "C:\\Temp\\meine_rechnung.csv"
+
+Verfügbare CLI-Parameter (überschreiben temporär die config.json):
+  --firma          Pfad zur firma.csv
+  --rechnung       Pfad zur rechnung.csv
+  --briefbogen     Pfad zur briefbogen.pdf
+  --zusatz         Pfad zur zusatz.csv
+  --gruss          Pfad zur gruss.csv
+  --header         Pfad zur header.csv
+  --einleitung     Pfad zur einleitung.csv
+  --ausgabe        Ordner, in dem die fertigen PDFs landen sollen.
+
+===========================================
+4. KUNDENDATENbank & PRODUKTDATENbank
+===========================================
+Kundenbank:
+Unten links im Reiter "Manuelle Eingabe" finden Sie die Checkbox "Kunde speichern/updaten". 
+Ist diese angehakt, wird der eingegebene Kunde dauerhaft gespeichert. Über das Dropdown "Kunde Name" oder den Suchbutton (🔍) neben der Kundennummer können Sie diese Kunden jederzeit abrufen.
+
+Produktebank:
+In der Positionserfassung ist das Feld "Bezeichnung" ein Dropdown. 
+Wählen Sie ein Standardprodukt aus, werden Preis, Menge, Einheit und Steuer automatisch ausgefüllt.
+
+Manager:
+Im Reiter "Einstellungen" finden Sie unten die Buttons zur Verwaltung dieser Datenbanken.
+
+===========================================
+5. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
+===========================================
+Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
+WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen.
+
+Negative Preise (Rabatte/Gutschriften): 
+Dürfen Sie wie gewohnt erfassen (z.B. "-100"). Das Programm rechnet das im Hintergrund automatisch normgerecht um.
+
+===========================================
+6. DATUMSEINGABEN
+===========================================
+Zulässige Formate: TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ oder JJJJ-MM-TT.
+
+===========================================
+7. TEXTFORMATIERUNGEN & TEXTE MERKEN
+===========================================
+Zeilenumbruch in der CSV: ~cr
+Fett drucken:  ~f Ihr Text f~
+Kursiv drucken:~k Ihr Text k~
+
+===========================================
+8. JOURNAL & AUSWERTUNGEN
+===========================================
+Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
+Im Reiter "Auswertungen" können Sie daraus mit einem Klick eine saubere, aufsummierte PDF-Tabelle erzeugen.
+
+===========================================
+9. GITHUB & UPDATES
+===========================================
+Der Quellcode des Programms ist auf GitHub einsehbar:
+https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
+
+Neue Versionen können Sie hier herunterladen:
+https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
+
+Tipp: Nutzen Sie den Button "Auf Updates prüfen" unten in diesem Reiter, um das Programm automatisch zu aktualisieren.
+"""
+        hilfe_box = ctk.CTkTextbox(self.tab_hilfe, width=800, height=400, font=("Consolas", 13))
+        hilfe_box.pack(pady=(10, 5), padx=10, fill="both", expand=True)
+        hilfe_box.insert("0.0", doku_text)
+        hilfe_box.configure(state="disabled")
+        
+        f_bot = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
+        f_bot.pack(fill="x", padx=10, pady=5)
+        
+        f_links = ctk.CTkFrame(f_bot, fg_color="transparent")
+        f_links.pack(side="left")
+        ctk.CTkLabel(f_links, text="Open Source Lizenzen:", font=("Helvetica", 12, "bold")).pack(anchor="w")
+        
+        def open_psf(e): webbrowser.open("https://docs.python.org/3/license.html")
+        def open_mit(e): webbrowser.open("https://opensource.org/licenses/MIT")
+        def open_bsd(e): webbrowser.open("https://opensource.org/licenses/BSD-3-Clause")
+        
+        l1 = ctk.CTkLabel(f_links, text="Python (PSF License)", text_color="#1f538d", cursor="hand2")
+        l1.pack(anchor="w"); l1.bind("<Button-1>", open_psf)
+        
+        l2 = ctk.CTkLabel(f_links, text="CustomTkinter (MIT License)", text_color="#1f538d", cursor="hand2")
+        l2.pack(anchor="w"); l2.bind("<Button-1>", open_mit)
+        
+        l3 = ctk.CTkLabel(f_links, text="ReportLab & pypdf (BSD License)", text_color="#1f538d", cursor="hand2")
+        l3.pack(anchor="w"); l3.bind("<Button-1>", open_bsd)
+        
+        self.btn_update = self.create_button(f_bot, text="🔄 Auf Updates prüfen", command=self.check_for_updates)
+        self.btn_update.pack(side="right", padx=10)
+
+
+# ==========================================
+# PROGRAMM START (Weiche für CLI / GUI)
+# ==========================================
+
+def main():
+    if os.path.exists(LOCK_FILE):
+        root = tk.Tk()
+        root.withdraw()
+        while os.path.exists(LOCK_FILE):
+            res = messagebox.askyesnocancel("Programm läuft bereits", "Die Sperrdatei (erechnung.lock) wurde gefunden. Das Programm läuft eventuell bereits im Hintergrund.\n\nJa = Sperrung aufheben und trotzdem starten\nNein = Warten (prüft erneut)\nAbbrechen = Beenden", parent=root)
+            if res is True: 
+                try: os.remove(LOCK_FILE)
+                except: pass
+                break
+            elif res is None: 
+                root.destroy()
+                sys.exit(0)
+            else: 
+                time.sleep(1)
+        root.destroy()
+        
+    try:
+        with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
+    except: pass
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--auto", action="store_true", help="Ohne GUI generieren")
+    parser.add_argument("--edit", action="store_true", help="Mit GUI in manueller Eingabe starten")
+    parser.add_argument("--firma", type=str)
+    parser.add_argument("--rechnung", type=str)
+    parser.add_argument("--briefbogen", type=str)
+    parser.add_argument("--zusatz", type=str)
+    parser.add_argument("--gruss", type=str)
+    parser.add_argument("--header", type=str)
+    parser.add_argument("--einleitung", type=str)
+    parser.add_argument("--ausgabe", type=str)
+    args = parser.parse_args()
+
+    config = init_config()
+    
+    if not config.get("terms_accepted", False):
+        root = tk.Tk()
+        root.withdraw()
+        haftungs_text = (
+            "HAFTUNGSAUSSCHLUSS UND NUTZUNGSBEDINGUNGEN\n\n"
+            "Das Programm 'SokoIur eRechnung' wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt.\n\n"
+            "Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische "
+            "Umsetzung der komplexen ZUGFeRD/XRechnung-Spezifikationen, wird hiermit ausdrücklich ausgeschlossen.\n\n"
+            "Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erstellten Rechnungen durch die Adressaten "
+            "oder die Finanzämter keinerlei Gewähr oder Haftung übernommen wird.\n\n"
+            "Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr "
+            "erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.\n\n"
+            "Akzeptieren Sie diese Nutzungsbedingungen, um das Programm zu starten?"
+        )
+        res = messagebox.askyesno("Nutzungsbedingungen akzeptieren", haftungs_text, parent=root)
+        if res:
+            config["terms_accepted"] = True
+            speichere_config(config)
+            root.destroy()
+        else:
+            root.destroy()
+            try: os.remove(LOCK_FILE)
+            except: pass
+            sys.exit(0)
+
+    if args.firma: config['firma_csv'] = args.firma
+    if args.rechnung: config['rechnung_csv'] = args.rechnung
+    if args.briefbogen: config['briefbogen_pdf'] = args.briefbogen
+    if args.zusatz: config['zusatz_csv'] = args.zusatz
+    if args.gruss: config['gruss_csv'] = args.gruss
+    if args.header: config['header_csv'] = args.header
+    if args.einleitung: config['einleitung_csv'] = args.einleitung
+    if args.ausgabe: config['ausgabe_ordner'] = args.ausgabe
+
+    if args.auto:
+        run_auto_generation(config)
+        try: os.remove(LOCK_FILE)
+        except: pass
+    else:
+        app = App(config, start_in_edit=args.edit)
+        app.mainloop()
+
+if __name__ == "__main__":
+    main()
