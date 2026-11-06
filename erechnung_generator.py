@@ -82,7 +82,6 @@ def init_config():
                 config = json.load(f)
         except: pass
 
-    # Migration von alten Versionen (flache Hierarchie) zu Profilen
     if "profiles" not in config:
         prof1 = get_default_profile(1)
         keys_to_migrate = list(prof1.keys())
@@ -96,7 +95,6 @@ def init_config():
     if "window_geometry" not in config: config["window_geometry"] = "950x850"
     if "terms_accepted" not in config: config["terms_accepted"] = False
 
-    # Verzeichnisse und Dateien für alle Profile sicherstellen
     for p in config["profiles"]:
         if not os.path.exists(p.get("ausgabe_ordner", "Rechnungen_PDF")): os.makedirs(p.get("ausgabe_ordner", "Rechnungen_PDF"))
         if not os.path.exists(p.get("auswertungen_ordner", "Auswertungen")): os.makedirs(p.get("auswertungen_ordner", "Auswertungen"))
@@ -463,7 +461,6 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         bez_lines = split_text_to_lines(pos['Bezeichnung'], text_w, c, "Helvetica", 9)
         lz_pos_str = parse_lz_lesbar(pos.get('LeistungszeitraumPos', ''))
         
-        # Zeilenabstand auf einfach ("14") gestellt für bessere Lesbarkeit
         req_height = (len(bez_lines) * 14) + (15 if lz_pos_str else 5) + 5
         y_tabelle = check_page_break(y_tabelle, req_height)
         
@@ -489,7 +486,6 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             y_tabelle -= 15
         else: y_tabelle -= 5
             
-        # Graue Trennlinie unter der Position
         c.setStrokeColorRGB(0.8, 0.8, 0.8)
         c.setLineWidth(0.5)
         c.line(60, y_tabelle + 3, 530, y_tabelle + 3)
@@ -843,7 +839,6 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     return ausgabe_datei
 
 def run_auto_generation(config):
-    # Wird nun nur noch vom CLI-Modus aufgerufen
     act_prof = config["profiles"][config["active_profile_index"]]
     if not os.path.exists(act_prof['firma_csv']): return print(f"❌ Fehler: '{act_prof['firma_csv']}' fehlt.")
     if not os.path.exists(act_prof['rechnung_csv']): return print(f"❌ Fehler: '{act_prof['rechnung_csv']}' fehlt.")
@@ -983,12 +978,15 @@ class App(ctk.CTk):
             create_csv_if_missing(new_p["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
             create_csv_if_missing(new_p["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
             create_csv_if_missing(new_p["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+            create_csv_if_missing(new_p["zusatz_csv"], "")
+            create_csv_if_missing(new_p["gruss_csv"], "")
+            create_csv_if_missing(new_p["header_csv"], "")
+            create_csv_if_missing(new_p["einleitung_csv"], "")
             
             self.config["profiles"].append(new_p)
             self.config["active_profile_index"] = len(self.config["profiles"]) - 1
             speichere_config(self.config)
             
-            # Restart Header
             for w in self.winfo_children():
                 if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
             self.build_profile_header()
@@ -1297,6 +1295,7 @@ class App(ctk.CTk):
                         ziel_nr = berechne_naechste_rechnungsnummer(geladene_nr)
                         
                 self.entry_r_nr.delete(0, 'end'); self.entry_r_nr.insert(0, ziel_nr)
+                
                 self.entry_r_datum.delete(0, 'end'); self.entry_r_datum.insert(0, kopf.get('Rechnungsdatum', ''))
                 self.entry_f_datum.delete(0, 'end'); self.entry_f_datum.insert(0, kopf.get('Faelligkeitsdatum', ''))
                 
@@ -1449,14 +1448,14 @@ class App(ctk.CTk):
         e_bez.focus_set()
         
         def save_it(event=None):
-            if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung fehlt!")
+            if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung fehlt!", parent=dialog)
             
             try:
                 float(e_menge.get().replace(',', '.') or "1")
-                float(e_preis.get().replace(',', '.'))
+                float(e_preis.get().replace(',', '.') or "0.0")
                 float(e_steuer.get().replace(',', '.') or "19")
             except ValueError:
-                return messagebox.showwarning("Eingabefehler", "Menge, Einzelpreis und Steuer müssen gültige Zahlen sein!")
+                return messagebox.showwarning("Eingabefehler", "Menge, Einzelpreis und Steuer müssen gültige Zahlen sein!", parent=dialog)
                 
             lz_pos_val = parse_flexible_date_span(e_lz_pos.get())
             if lz_pos_val:
@@ -1464,7 +1463,7 @@ class App(ctk.CTk):
                     for part in lz_pos_val.split('|'):
                         if part: datetime.strptime(part, "%Y-%m-%d")
                 except ValueError:
-                    return messagebox.showwarning("Datums-Fehler", "Der Leistungszeitraum hat ein ungültiges Format!")
+                    return messagebox.showwarning("Datums-Fehler", "Der Leistungszeitraum hat ein ungültiges Format!", parent=dialog)
             
             einheit_val = e_einheit.get()
             match = re.search(r'\((.*?)\)', einheit_val)
@@ -1657,7 +1656,7 @@ class App(ctk.CTk):
             if "❌" in msg: generierungs_fehler.append(msg)
             print(msg)
             
-        run_auto_generation(self.config, logger_callback=catch_log)
+        run_auto_generation(self.config)
         
         if generierungs_fehler:
             fehlertext = "\n".join(generierungs_fehler)
@@ -1692,13 +1691,28 @@ class App(ctk.CTk):
         self.entry_ausw_zeit.pack(side="left", padx=10)
         self.entry_ausw_zeit.insert(0, datetime.now().strftime("%m.%Y"))
         
+        f_input_ordner = ctk.CTkFrame(f, fg_color="transparent")
+        f_input_ordner.pack(pady=5, fill="x", padx=10)
+        ctk.CTkLabel(f_input_ordner, text="Journal-Ordner:", width=150).pack(side="left")
+        self.entry_ausw_ordner = ctk.CTkEntry(f_input_ordner, width=300)
+        self.entry_ausw_ordner.pack(side="left", padx=10, expand=True, fill="x")
+        self.entry_ausw_ordner.insert(0, self.p_config.get("auswertungen_ordner", "Auswertungen"))
+        self.create_button(f_input_ordner, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_ausw_ordner, is_dir=True)).pack(side="left")
+        
         self.create_button(f, text="Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700").pack(pady=20)
+
+    def browse_path_for_entry(self, entry_widget, is_dir=False):
+        if is_dir: path = filedialog.askdirectory()
+        else: path = filedialog.askopenfilename()
+        if path:
+            entry_widget.delete(0, "end")
+            entry_widget.insert(0, path)
 
     def generate_auswertung(self):
         zeit_str = self.entry_ausw_zeit.get().strip()
-        ordner = self.p_config.get("auswertungen_ordner", "Auswertungen")
+        ordner = self.entry_ausw_ordner.get().strip()
         if not os.path.exists(ordner):
-            return messagebox.showwarning("Fehler", "Der Auswertungs-Ordner existiert noch nicht.")
+            return messagebox.showwarning("Fehler", "Der angegebene Auswertungs-Ordner existiert nicht.")
             
         such_muster = []
         if re.match(r'^\d{4}$', zeit_str):
@@ -1720,7 +1734,7 @@ class App(ctk.CTk):
                         gefundene_rechnungen.append(row)
                         
         if not gefundene_rechnungen:
-            return messagebox.showinfo("Info", f"Für {zeit_str} wurden in der aktuellen Firma keine Rechnungsdaten gefunden.")
+            return messagebox.showinfo("Info", f"Für {zeit_str} wurden im gewählten Ordner keine Rechnungsdaten gefunden.")
             
         aktuelle_firma = lade_firma(self.p_config.get('firma_csv', 'firma.csv'))
         firma_name = aktuelle_firma.get('FirmaName', 'Unbekannte Firma')
@@ -2039,7 +2053,7 @@ class App(ctk.CTk):
                 if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung darf nicht leer sein!", parent=d_edit)
                 try:
                     float(e_menge.get().replace(',', '.') or "1")
-                    float(e_preis.get().replace(',', '.'))
+                    float(e_preis.get().replace(',', '.') or "0.0")
                     float(e_steuer.get().replace(',', '.') or "19")
                 except ValueError:
                     return messagebox.showwarning("Eingabefehler", "Zahlenwerte fehlerhaft!", parent=d_edit)
@@ -2209,9 +2223,9 @@ erechnung_generator.exe --auto [Parameter]   -> Generiert direkt unsichtbar im H
 erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen.
 
 Beispiel für einen CLI-Aufruf:
-erechnung_generator.exe --edit --rechnung "C:\\Temp\\meine_rechnung.csv"
+erechnung_generator.exe --edit --rechnung "C:\\Temp\\meine_rechnung.csv" --auswertungen "C:\\Temp\\Auswertungen"
 
-Verfügbare CLI-Parameter (überschreiben temporär die config.json):
+Verfügbare CLI-Parameter (überschreiben temporär das aktive Profil):
   --firma          Pfad zur firma.csv
   --rechnung       Pfad zur rechnung.csv
   --briefbogen     Pfad zur briefbogen.pdf
@@ -2219,10 +2233,30 @@ Verfügbare CLI-Parameter (überschreiben temporär die config.json):
   --gruss          Pfad zur gruss.csv
   --header         Pfad zur header.csv
   --einleitung     Pfad zur einleitung.csv
-  --ausgabe        Ordner, in dem die fertigen PDFs landen sollen.
+  --ausgabe        Ordner für PDFs.
+  --auswertungen   Ordner für das Rechnungs-Journal.
 
 ===========================================
-4. MANDANTEN & DATENBANKEN
+4. AUFBAU UND ZWECK DER CSV-DATEIEN
+===========================================
+- firma.csv: Eigene Firmendaten (IBAN, USt-ID, Name etc.). Enthält genau 1 Zeile unter der Kopfzeile.
+- rechnung.csv: Enthält die eigentlichen Rechnungsdaten (Kopf + Positionen). Bei einem Kommandozeilenaufruf (--auto) kann diese Datei theoretisch unbegrenzt viele Rechnungen (Seriendruck) enthalten. In der GUI wird hier immer nur die *aktuell bearbeitete* Rechnung temporär zwischengespeichert.
+- kunden.csv / produkte.csv: Stamm-Datenbanken für Auto-Fill in der Oberfläche.
+- zusatz.csv: Positionsspezifische Anmerkungen (Format: "1,3;Hier ist ein Zusatztext").
+- header.csv / einleitung.csv / gruss.csv: Einfache Textdateien, in denen das Programm sich Ihre Standard-Textbausteine merkt.
+
+===========================================
+5. JAHRESWECHSEL
+===========================================
+Zum Jahreswechsel (z.B. von 2026 auf 2027) haben Sie zwei Möglichkeiten:
+A) Neues Profil anlegen:
+Klicken Sie oben auf "+ Neu" und nennen Sie es z.B. "Firma 2027". Das Programm legt automatisch neue, komplett leere Ausgabe- und Auswertungs-Ordner für Sie an.
+B) Vorhandenes Profil anpassen:
+Gehen Sie in die "Einstellungen", ändern Sie den "Ausgabe Ordner" auf z.B. "Rechnungen_2027" und passen Sie in der "Manuellen Eingabe" die erste Rechnungsnummer auf "RE-2027-001" an.
+Um Journale der Vorjahre auszudrucken, wechseln Sie in den Reiter "Auswertungen" und ändern unten einfach den "Journal-Ordner" auf das alte Jahr (z.B. "Auswertungen_2026").
+
+===========================================
+6. MANDANTEN & DATENBANKEN
 ===========================================
 Mandantenfähigkeit (Firmen):
 Sie können oben links über das Dropdown-Menü bis zu 5 verschiedene Firmenprofile anlegen. Jede Firma verwaltet ihre eigenen Dateipfade, Rechnungsnummern, Kunden und Produkte. In den Einstellungen können Sie unter "Firmendaten bearbeiten" die Adresse und Bankverbindung anpassen.
@@ -2231,7 +2265,7 @@ Kundenbank & Produktebank:
 Ihre erfassten Kunden und Produkte werden gespeichert. Über die Buttons im Reiter "Einstellungen" können Sie diese Bestände aufräumen, bearbeiten oder neue hinzufügen. In der Rechnungserfassung dient die "Bezeichnung" und das Suchen-Feld als Auto-Fill für diese Bestände.
 
 ===========================================
-5. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
+7. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
 ===========================================
 Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
 WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen. (Tipp: Ist Start- und Enddatum identisch, wird auf dem PDF automatisch nur ein einzelnes Datum gedruckt).
@@ -2240,20 +2274,25 @@ Negative Preise (Rabatte/Gutschriften):
 Dürfen Sie wie gewohnt erfassen (z.B. "-100"). Das Programm rechnet das im Hintergrund automatisch normgerecht in eine negative Menge um.
 
 ===========================================
-6. TEXTFORMATIERUNGEN
+8. DATUMSEINGABEN
+===========================================
+Zulässige Formate: TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ oder JJJJ-MM-TT.
+
+===========================================
+9. TEXTFORMATIERUNGEN
 ===========================================
 Zeilenumbruch in der CSV: ~cr
 Fett drucken:  ~f Ihr Text f~
 Kursiv drucken:~k Ihr Text k~
 
 ===========================================
-7. JOURNAL & AUSWERTUNGEN
+10. JOURNAL & AUSWERTUNGEN
 ===========================================
 Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
 Im Reiter "Auswertungen" können Sie daraus mit einem Klick ein sauberes PDF-Journal mit korrekter Steueraufschlüsselung erzeugen.
 
 ===========================================
-8. GITHUB & UPDATES
+11. GITHUB & UPDATES
 ===========================================
 Der Quellcode des Programms ist auf GitHub einsehbar:
 https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
@@ -2326,6 +2365,7 @@ def main():
     parser.add_argument("--header", type=str)
     parser.add_argument("--einleitung", type=str)
     parser.add_argument("--ausgabe", type=str)
+    parser.add_argument("--auswertungen", type=str)
     args = parser.parse_args()
 
     config = init_config()
@@ -2358,7 +2398,6 @@ def main():
             except: pass
             sys.exit(0)
 
-    # Wenn CLI-Argumente übergeben wurden, werden diese in das AKTUELLE Profil temporär überschrieben
     if args.firma: config["profiles"][config["active_profile_index"]]['firma_csv'] = args.firma
     if args.rechnung: config["profiles"][config["active_profile_index"]]['rechnung_csv'] = args.rechnung
     if args.briefbogen: config["profiles"][config["active_profile_index"]]['briefbogen_pdf'] = args.briefbogen
@@ -2367,6 +2406,7 @@ def main():
     if args.header: config["profiles"][config["active_profile_index"]]['header_csv'] = args.header
     if args.einleitung: config["profiles"][config["active_profile_index"]]['einleitung_csv'] = args.einleitung
     if args.ausgabe: config["profiles"][config["active_profile_index"]]['ausgabe_ordner'] = args.ausgabe
+    if args.auswertungen: config["profiles"][config["active_profile_index"]]['auswertungen_ordner'] = args.auswertungen
 
     if args.auto:
         run_auto_generation(config)
