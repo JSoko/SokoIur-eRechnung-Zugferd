@@ -6,6 +6,10 @@ import argparse
 import re
 import webbrowser
 import time
+import threading
+import subprocess
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta
 from io import BytesIO
 import tkinter as tk
@@ -511,7 +515,6 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     
     r_datum, f_datum = formatiere_datum(kopf['Rechnungsdatum']), formatiere_datum(kopf['Faelligkeitsdatum'])
     
-    # NEU: Entferne alle Leerzeichen aus IBAN und BIC für ZUGFeRD-Validierung (BR-DE-19)
     iban_clean = re.sub(r'\s+', '', firma.get('IBAN', ''))
     bic_clean = re.sub(r'\s+', '', firma.get('BIC', ''))
     
@@ -804,6 +807,15 @@ class App(ctk.CTk):
         super().__init__()
         self.config = config
         self.title("SokoIur eRechnung")
+        
+        # Bestimme aktuelle Version
+        if getattr(sys, 'frozen', False):
+            exe_zeit = os.path.getmtime(sys.executable)
+            kompilierungs_datum = datetime.fromtimestamp(exe_zeit)
+        else:
+            kompilierungs_datum = datetime.now()
+            
+        self.current_version = f"1.{kompilierungs_datum.strftime('%Y%m%d.%H%M')}"
         
         icon_path = get_resource_path("SokoIur.ico")
         if os.path.exists(icon_path):
@@ -1489,7 +1501,6 @@ class App(ctk.CTk):
                     self.entry_k_name.configure(values=[k['Name'] for k in self.kunden_liste])
                 
             self.config['letzte_rechnungsnummer'] = r_nr
-            # Config Zustand merken
             self.config['keep_raten'] = bool(self.chk_raten.get())
             self.config['keep_kunde_speichern'] = bool(self.chk_kunde_speichern.get())
             speichere_config(self.config)
@@ -1861,18 +1872,90 @@ class App(ctk.CTk):
         self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10)
         refresh()
 
+    # --- AUTO-UPDATER ---
+    def check_for_updates(self):
+        self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
+        
+        def _check():
+            try:
+                url = "https://api.github.com/repos/JSoko/SokoIur-eRechnung-Zugferd/releases/latest"
+                req = urllib.request.Request(url, headers={'User-Agent': 'SokoIur-Updater'})
+                with urllib.request.urlopen(req) as response:
+                    data = json.loads(response.read().decode())
+                
+                latest_version = data.get("tag_name", "").lstrip("vV")
+                assets = data.get("assets", [])
+                
+                if not latest_version or not assets:
+                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"), 
+                                           messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden.")])
+                    return
+                
+                download_url = assets[0].get("browser_download_url")
+                
+                if latest_version > self.current_version:
+                    self.after(0, lambda: self.prompt_update(latest_version, download_url))
+                else:
+                    self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                                           messagebox.showinfo("Update", "Sie nutzen bereits die aktuellste Version!")])
+            except Exception as e:
+                self.after(0, lambda: [self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                                       messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")])
+
+        threading.Thread(target=_check, daemon=True).start()
+
+    def prompt_update(self, latest_version, download_url):
+        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
+        res = messagebox.askyesno("Update verfügbar!", f"Eine neue Version ({latest_version}) ist verfügbar.\n\nMöchten Sie diese jetzt herunterladen und installieren?\nDas Programm wird dabei neu gestartet.")
+        if res:
+            self.download_and_install_update(download_url)
+
+    def download_and_install_update(self, download_url):
+        dl_win = ctk.CTkToplevel(self)
+        dl_win.title("Update")
+        self.center_window(dl_win, 300, 150)
+        dl_win.transient(self)
+        dl_win.grab_set()
+        ctk.CTkLabel(dl_win, text="Lade Update herunter...\nBitte warten.", font=("Helvetica", 14)).pack(expand=True)
+        self.update()
+        
+        def _download():
+            try:
+                new_exe = "SokoIur_eRechnung_neu.exe"
+                urllib.request.urlretrieve(download_url, new_exe)
+                
+                if not getattr(sys, 'frozen', False):
+                    self.after(0, lambda: [dl_win.destroy(), messagebox.showinfo("Info", "Update im Skript-Modus geladen. Der automatische Dateiaustausch funktioniert nur bei kompilierten (.exe) Dateien.")])
+                    return
+                
+                current_exe = sys.executable
+                
+                bat_content = f'''@echo off
+timeout /t 3 /nobreak > NUL
+move /Y "{new_exe}" "{current_exe}"
+start "" "{current_exe}"
+del "%~f0"
+'''
+                with open("update.bat", "w") as f:
+                    f.write(bat_content)
+                
+                subprocess.Popen("update.bat", shell=True)
+                
+                self.after(0, self.do_update_exit) 
+            except Exception as e:
+                self.after(0, lambda: [dl_win.destroy(), messagebox.showerror("Fehler", f"Download fehlgeschlagen:\n{str(e)}")])
+
+        threading.Thread(target=_download, daemon=True).start()
+
+    def do_update_exit(self):
+        try: os.remove(LOCK_FILE)
+        except: pass
+        os._exit(0)
+
     # --- Tab 4: Hilfe & Doku ---
     def build_hilfe_tab(self):
-        if getattr(sys, 'frozen', False):
-            exe_zeit = os.path.getmtime(sys.executable)
-            kompilierungs_datum = datetime.fromtimestamp(exe_zeit)
-        else:
-            kompilierungs_datum = datetime.now()
-            
-        build_nr = f"1.{kompilierungs_datum.strftime('%Y%m%d.%H%M')}"
-
         doku_text = f"""SokoIur eRechnung
-Version: {build_nr}
+Version: {self.current_version}
 
 ===========================================
 1. HAFTUNGSAUSSCHLUSS
@@ -1891,7 +1974,7 @@ es fungiert als "Druck-Engine" für externe Programme.
 
 Aufruf über Kommandozeile (CLI):
 erechnung_generator.exe --auto [Parameter]   -> Generiert direkt unsichtbar im Hintergrund
-erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen. Ideal, um eine von außen übergebene Rechnung vor dem Druck nochmal zu sichten.
+erechnung_generator.exe --edit [Parameter]   -> Öffnet die GUI (Manuelle Eingabe) mit den übergebenen Daten, ohne die Rechnungsnummer automatisch hochzuzählen.
 
 Verfügbare CLI-Parameter (überschreiben temporär die config.json):
   --firma          Pfad zur firma.csv
@@ -1908,24 +1991,23 @@ Verfügbare CLI-Parameter (überschreiben temporär die config.json):
 ===========================================
 Kundenbank:
 Unten links im Reiter "Manuelle Eingabe" finden Sie die Checkbox "Kunde speichern/updaten". 
-Ist diese angehakt, wird der eingegebene Kunde (inkl. Kunden-Nr. und Aktenzeichen) dauerhaft gespeichert. Über das Dropdown "Kunde Name" oder den Suchbutton (🔍) neben der Kundennummer können Sie diese Kunden jederzeit wieder abrufen; alle zugehörigen Felder füllen sich automatisch.
+Ist diese angehakt, wird der eingegebene Kunde dauerhaft gespeichert. Über das Dropdown "Kunde Name" oder den Suchbutton (🔍) neben der Kundennummer können Sie diese Kunden jederzeit abrufen.
 
 Produktebank:
 In der Positionserfassung (Klick auf "+ Position hinzufügen") ist das Feld "Bezeichnung" ein Dropdown. 
 Wählen Sie ein Standardprodukt aus, werden Preis, Menge, Einheit und Steuer automatisch ausgefüllt.
 
 Manager:
-Im Reiter "Einstellungen" finden Sie unten die Buttons zur Verwaltung dieser Datenbanken. 
-Dort können Sie Kunden und Produkte komfortabel in einer übersichtlichen Liste bearbeiten, neu anlegen oder löschen.
+Im Reiter "Einstellungen" finden Sie unten die Buttons zur Verwaltung dieser Datenbanken.
 
 ===========================================
 4. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
 ===========================================
 Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
-WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen. Das System überprüft dies vollautomatisch.
+WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen.
 
 Negative Preise (Rabatte/Gutschriften): 
-Dürfen Sie wie gewohnt mit z.B. "-100" erfassen. Die Norm (BR-27) verbietet eigentlich negative Preise. Das Programm rechnet das im Hintergrund automatisch konform um (Positiver Preis, Negative Menge).
+Dürfen Sie wie gewohnt mit z.B. "-100" erfassen. Die Norm (BR-27) verbietet eigentlich negative Preise. Das Programm rechnet das im Hintergrund automatisch konform um.
 
 ===========================================
 5. DATUMSEINGABEN
@@ -1940,13 +2022,13 @@ Fett drucken:  ~f Ihr Text f~
 Kursiv drucken:~k Ihr Text k~
 
 Standard-Texte (Checkbox):
-In der Text-Maske (📝 Texte) können Sie festlegen, ob ein Text (Einleitung, Gruß) für die nächste NEUE Rechnung im System gemerkt werden soll (Häkchen gesetzt). Fehlt das Häkchen, leert das Programm das Feld bei der nächsten neuen Rechnung.
+In der Text-Maske (📝 Texte) können Sie festlegen, ob ein Text (Einleitung, Gruß) für die nächste NEUE Rechnung im System gemerkt werden soll (Häkchen gesetzt).
 
 ===========================================
 7. JOURNAL & AUSWERTUNGEN
 ===========================================
 Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
-Im Reiter "Auswertungen" können Sie für einen Monat oder ein ganzes Jahr mit einem Klick eine saubere, aufsummierte PDF-Tabelle mit der korrekten Trennung aller Steuerbeträge erzeugen.
+Im Reiter "Auswertungen" können Sie daraus mit einem Klick eine saubere, aufsummierte PDF-Tabelle erzeugen.
 
 ===========================================
 8. TASTATUR-STEUERUNG (SHORTCUTS)
@@ -1958,14 +2040,28 @@ Im Reiter "Auswertungen" können Sie für einen Monat oder ein ganzes Jahr mit e
   Alt + P         : Speichern, PDF erstellen und öffnen
   Tab / Shift+Tab : Zwischen Feldern wechseln
   Enter / Leer    : Fokussierten Button auslösen
+
+===========================================
+9. GITHUB & UPDATES
+===========================================
+Der Quellcode des Programms ist auf GitHub einsehbar:
+https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
+
+Neue Versionen können Sie hier herunterladen:
+https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
+
+Tipp: Nutzen Sie den Button "Auf Updates prüfen" unten in diesem Reiter, um das Programm automatisch zu aktualisieren.
 """
         hilfe_box = ctk.CTkTextbox(self.tab_hilfe, width=800, height=400, font=("Consolas", 13))
         hilfe_box.pack(pady=(10, 5), padx=10, fill="both", expand=True)
         hilfe_box.insert("0.0", doku_text)
         hilfe_box.configure(state="disabled")
         
-        f_links = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
-        f_links.pack(fill="x", padx=10, pady=5)
+        f_bot = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
+        f_bot.pack(fill="x", padx=10, pady=5)
+        
+        f_links = ctk.CTkFrame(f_bot, fg_color="transparent")
+        f_links.pack(side="left")
         ctk.CTkLabel(f_links, text="Open Source Lizenzen:", font=("Helvetica", 12, "bold")).pack(anchor="w")
         
         def open_psf(e): webbrowser.open("https://docs.python.org/3/license.html")
@@ -1980,6 +2076,9 @@ Im Reiter "Auswertungen" können Sie für einen Monat oder ein ganzes Jahr mit e
         
         l3 = ctk.CTkLabel(f_links, text="ReportLab & pypdf (BSD License)", text_color="#1f538d", cursor="hand2")
         l3.pack(anchor="w"); l3.bind("<Button-1>", open_bsd)
+        
+        self.btn_update = self.create_button(f_bot, text="🔄 Auf Updates prüfen", command=self.check_for_updates)
+        self.btn_update.pack(side="right", padx=10)
 
 
 # ==========================================
