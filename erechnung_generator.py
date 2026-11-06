@@ -34,7 +34,7 @@ EINHEITEN_LISTE = [
 ]
 
 # ==========================================
-# KERNDATEN & LOGIK (Unverändert im Hintergrund)
+# KERNDATEN & LOGIK
 # ==========================================
 
 def get_resource_path(relative_path):
@@ -44,59 +44,77 @@ def get_resource_path(relative_path):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
-def lade_config():
-    if os.path.exists(CONFIG_DATEI):
-        try:
-            with open(CONFIG_DATEI, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except: pass
-    return {}
+def create_csv_if_missing(filename, header_str):
+    if not os.path.exists(filename):
+        with open(filename, 'w', encoding='utf-8-sig') as f:
+            if header_str: f.write(header_str + "\n")
 
-def speichere_config(config):
-    with open(CONFIG_DATEI, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=4)
-
-def init_config():
-    config = lade_config()
-    defaults = {
-        "firma_csv": "firma.csv", "rechnung_csv": "rechnung.csv",
-        "briefbogen_pdf": "briefbogen.pdf", "zusatz_csv": "zusatz.csv",
-        "gruss_csv": "gruss.csv", "header_csv": "header.csv",
-        "einleitung_csv": "einleitung.csv", "ausgabe_ordner": "Rechnungen_PDF",
-        "kunden_csv": "kunden.csv", "produkte_csv": "produkte.csv",
-        "auswertungen_ordner": "Auswertungen",
+def get_default_profile(index):
+    suffix = f"_{index}" if index > 1 else ""
+    return {
+        "profil_name": f"Firma {index}",
+        "firma_csv": f"firma{suffix}.csv",
+        "rechnung_csv": f"rechnung{suffix}.csv",
+        "briefbogen_pdf": f"briefbogen{suffix}.pdf",
+        "zusatz_csv": f"zusatz{suffix}.csv",
+        "gruss_csv": f"gruss{suffix}.csv",
+        "header_csv": f"header{suffix}.csv",
+        "einleitung_csv": f"einleitung{suffix}.csv",
+        "ausgabe_ordner": f"Rechnungen_PDF{suffix}",
+        "kunden_csv": f"kunden{suffix}.csv",
+        "produkte_csv": f"produkte{suffix}.csv",
+        "auswertungen_ordner": f"Auswertungen{suffix}",
         "faelligkeit_tage": "29",
         "letzte_rechnungsnummer": "",
-        "window_geometry": "950x850",
         "letzte_einheit": "Stück (C62)",
         "keep_header": True,
         "keep_einleitung": True,
         "keep_gruss": True,
-        "terms_accepted": False,
         "keep_raten": False,
         "keep_kunde_speichern": False
     }
-    for k, v in defaults.items():
-        if k not in config: config[k] = v
+
+def init_config():
+    config = {}
+    if os.path.exists(CONFIG_DATEI):
+        try:
+            with open(CONFIG_DATEI, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except: pass
+
+    # Migration von alten Versionen (flache Hierarchie) zu Profilen
+    if "profiles" not in config:
+        prof1 = get_default_profile(1)
+        keys_to_migrate = list(prof1.keys())
+        for k in keys_to_migrate:
+            if k in config:
+                prof1[k] = config.pop(k)
+        prof1["profil_name"] = "Hauptfirma"
+        config["profiles"] = [prof1]
+        config["active_profile_index"] = 0
+
+    if "window_geometry" not in config: config["window_geometry"] = "950x850"
+    if "terms_accepted" not in config: config["terms_accepted"] = False
+
+    # Verzeichnisse und Dateien für alle Profile sicherstellen
+    for p in config["profiles"]:
+        if not os.path.exists(p.get("ausgabe_ordner", "Rechnungen_PDF")): os.makedirs(p.get("ausgabe_ordner", "Rechnungen_PDF"))
+        if not os.path.exists(p.get("auswertungen_ordner", "Auswertungen")): os.makedirs(p.get("auswertungen_ordner", "Auswertungen"))
         
-    if not os.path.exists(config["ausgabe_ordner"]): os.makedirs(config["ausgabe_ordner"])
-    if not os.path.exists(config["auswertungen_ordner"]): os.makedirs(config["auswertungen_ordner"])
-    
-    def create_csv_if_missing(filename, header_str):
-        if not os.path.exists(filename):
-            with open(filename, 'w', encoding='utf-8-sig') as f:
-                if header_str: f.write(header_str + "\n")
-                
-    create_csv_if_missing(config.get("firma_csv", "firma.csv"), "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
-    create_csv_if_missing(config.get("rechnung_csv", "rechnung.csv"), "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
-    create_csv_if_missing(config.get("kunden_csv", "kunden.csv"), "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
-    create_csv_if_missing(config.get("produkte_csv", "produkte.csv"), "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
-    create_csv_if_missing(config.get("zusatz_csv", "zusatz.csv"), "")
-    create_csv_if_missing(config.get("gruss_csv", "gruss.csv"), "")
-    create_csv_if_missing(config.get("header_csv", "header.csv"), "")
-    create_csv_if_missing(config.get("einleitung_csv", "einleitung.csv"), "")
-    
+        create_csv_if_missing(p.get("firma_csv", "firma.csv"), "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
+        create_csv_if_missing(p.get("rechnung_csv", "rechnung.csv"), "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
+        create_csv_if_missing(p.get("kunden_csv", "kunden.csv"), "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
+        create_csv_if_missing(p.get("produkte_csv", "produkte.csv"), "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+        create_csv_if_missing(p.get("zusatz_csv", "zusatz.csv"), "")
+        create_csv_if_missing(p.get("gruss_csv", "gruss.csv"), "")
+        create_csv_if_missing(p.get("header_csv", "header.csv"), "")
+        create_csv_if_missing(p.get("einleitung_csv", "einleitung.csv"), "")
+
     return config
+
+def speichere_config(config):
+    with open(CONFIG_DATEI, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=4)
 
 def berechne_naechste_rechnungsnummer(letzte_nr):
     if not letzte_nr: return f"RE-{datetime.now().year}-001"
@@ -113,7 +131,14 @@ def lade_firma(pfad):
             reader = list(csv.DictReader(f, delimiter=';'))
             if reader: return reader[0]
     except: pass
-    return {'FirmaName': 'Bitte Firma in firma.csv eintragen', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': ''}
+    return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': ''}
+
+def speichere_firma(pfad, daten):
+    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Email', 'Telefon']
+    with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
+        writer.writeheader()
+        writer.writerow(daten)
 
 def lade_rechnungen(pfad):
     rechnungen = {}
@@ -233,7 +258,6 @@ def parse_lz_lesbar(lz_str):
         s, e = lz_str.split('|')
         s_lesbar = formatiere_datum_lesbar(s)
         e_lesbar = formatiere_datum_lesbar(e)
-        # Wenn Start- und Enddatum gleich sind, nur ein Datum ausgeben
         if s_lesbar == e_lesbar:
             return s_lesbar
         return f"{s_lesbar} - {e_lesbar}"
@@ -248,11 +272,6 @@ def f_curr(val):
 
 def f_num(val):
     return f"{val:g}".replace('.', ',')
-
-EINHEITEN_MAPPING = {
-    "C62": "Stück", "LS": "Pauschale", "HUR": "Stunde(n)",
-    "MON": "Monat(e)", "DAY": "Tag(e)", "KMT": "km", "SET": "Satz"
-}
 
 def esc_xml(text):
     if text is None: return ""
@@ -430,7 +449,6 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         
     y_tabelle -= 18
     
-    c.setFont("Helvetica", 9)
     for pos in positionen:
         menge = safe_float(pos['Menge'], 1.0)
         preis = safe_float(pos['EinzelpreisNetto'], 0.0)
@@ -445,7 +463,8 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         bez_lines = split_text_to_lines(pos['Bezeichnung'], text_w, c, "Helvetica", 9)
         lz_pos_str = parse_lz_lesbar(pos.get('LeistungszeitraumPos', ''))
         
-        req_height = (len(bez_lines) * 11) + (15 if lz_pos_str else 5)
+        # Zeilenabstand auf einfach ("14") gestellt für bessere Lesbarkeit
+        req_height = (len(bez_lines) * 14) + (15 if lz_pos_str else 5) + 5
         y_tabelle = check_page_break(y_tabelle, req_height)
         
         c.setFont("Helvetica", 9)
@@ -462,13 +481,20 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             c.drawRightString(530, y_tabelle, f_curr(menge * preis))
         
         for i, b_line in enumerate(bez_lines):
-            c.drawString(100, y_tabelle - (i * 11), b_line)
-        y_tabelle -= (len(bez_lines) * 11)
+            c.drawString(100, y_tabelle - (i * 14), b_line)
+        y_tabelle -= (len(bez_lines) * 14)
         
         if lz_pos_str:
             zeichne_formatierten_text(c, 100, y_tabelle, f"~kLeistungszeitraum: {lz_pos_str}k~", 8)
-            y_tabelle -= 14
+            y_tabelle -= 15
         else: y_tabelle -= 5
+            
+        # Graue Trennlinie unter der Position
+        c.setStrokeColorRGB(0.8, 0.8, 0.8)
+        c.setLineWidth(0.5)
+        c.line(60, y_tabelle + 3, 530, y_tabelle + 3)
+        c.setStrokeColorRGB(0, 0, 0)
+        y_tabelle -= 5
             
     y_tabelle -= 10
     y_tabelle = check_page_break(y_tabelle, 80)
@@ -732,13 +758,11 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     
     try:
         briefbogen_pfad = brief_pfad if os.path.exists(brief_pfad) else None
-        
         if briefbogen_pfad:
             brief_reader = PdfReader(briefbogen_pfad)
             seite_1 = brief_reader.pages[0]
             seite_1.merge_page(text_pdf.pages[0])
             writer.add_page(seite_1)
-            
             for i in range(1, len(text_pdf.pages)):
                 brief_reader_neu = PdfReader(briefbogen_pfad) 
                 weitere_seite = brief_reader_neu.pages[1] if len(brief_reader_neu.pages) > 1 else brief_reader_neu.pages[0]
@@ -793,7 +817,7 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     ausgabe_datei = os.path.join(ausgabe_ordner, f"Rechnung_{r_nr}.pdf")
     with open(ausgabe_datei, "wb") as out_pdf: writer.write(out_pdf)
     
-    # NEU: Sichere Journal-Erstellung
+    # Sichere Journal-Erstellung
     try:
         if r_datum and r_nr:
             date_obj = datetime.strptime(r_datum, "%Y%m%d")
@@ -818,37 +842,29 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
         
     return ausgabe_datei
 
-def run_auto_generation(config, logger_callback=None):
-    def log(msg):
-        if logger_callback: logger_callback(msg)
-        else: print(msg)
-        
-    if not os.path.exists(config['firma_csv']): return log(f"❌ Fehler: '{config['firma_csv']}' fehlt.")
-    if not os.path.exists(config['rechnung_csv']): return log(f"❌ Fehler: '{config['rechnung_csv']}' fehlt.")
-    if not os.path.exists(config['ausgabe_ordner']): os.makedirs(config['ausgabe_ordner'])
-
-    log("Lese Daten und erstelle ZUGFeRD PDFs...")
+def run_auto_generation(config):
+    # Wird nun nur noch vom CLI-Modus aufgerufen
+    act_prof = config["profiles"][config["active_profile_index"]]
+    if not os.path.exists(act_prof['firma_csv']): return print(f"❌ Fehler: '{act_prof['firma_csv']}' fehlt.")
+    if not os.path.exists(act_prof['rechnung_csv']): return print(f"❌ Fehler: '{act_prof['rechnung_csv']}' fehlt.")
+    
     try:
-        firma = lade_firma(config['firma_csv'])
-        rechnungen = lade_rechnungen(config['rechnung_csv'])
-        zusatztexte = lade_zusatz_csv(config['zusatz_csv'])
-        gruss = lade_textdatei(config['gruss_csv'])
-        header = lade_textdatei(config['header_csv'])
-        einleitung = lade_textdatei(config['einleitung_csv'])
+        firma = lade_firma(act_prof['firma_csv'])
+        rechnungen = lade_rechnungen(act_prof['rechnung_csv'])
+        zusatztexte = lade_zusatz_csv(act_prof['zusatz_csv'])
+        gruss = lade_textdatei(act_prof['gruss_csv'])
+        header = lade_textdatei(act_prof['header_csv'])
+        einleitung = lade_textdatei(act_prof['einleitung_csv'])
         
         for r_nr, daten in rechnungen.items():
             valid, msg = check_lz_logic(daten['kopf'], daten['positionen'])
             if not valid:
-                log(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
+                print(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
                 continue
-                
-            pfad = erstelle_zugferd_pdf(firma, daten, config['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, config['ausgabe_ordner'], config['auswertungen_ordner'])
-            log(f"✅ Erstellt: {os.path.basename(pfad)}")
-        log("Fertig! Generierung abgeschlossen.")
-    except PermissionError:
-        log("❌ Zugriff verweigert: Die PDF-Datei ist wahrscheinlich in einem anderen Programm geöffnet. Bitte schließen Sie diese!")
+            erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'])
+            print(f"✅ Erstellt: RE {r_nr}")
     except Exception as e:
-        log(f"❌ Schwerer Fehler bei PDF-Erstellung: {e}")
+        print(f"❌ Schwerer Fehler bei PDF-Erstellung: {e}")
 
 
 # ==========================================
@@ -891,61 +907,131 @@ class App(ctk.CTk):
         self.bind('<Alt-p>', lambda e: self.save_generate_open_exit())
         self.bind('<Alt-P>', lambda e: self.save_generate_open_exit())
         
-        self.positionen_liste = []
-        self.zusatz_dict = {}
+        self.build_profile_header()
         
-        self.kunden_liste = lade_kunden(self.config.get("kunden_csv", "kunden.csv"))
-        self.produkte_liste = lade_produkte(self.config.get("produkte_csv", "produkte.csv"))
-        
-        self.header_text = ""
-        self.einleitung_text = ""
-        self.gruss_text = ""
-
-        if not start_in_edit:
-            if self.config.get("keep_header", True):
-                self.header_text = lade_textdatei(self.config.get('header_csv', ''))
-            else: speichere_textdatei(self.config.get('header_csv', ''), "")
-                
-            if self.config.get("keep_einleitung", True):
-                self.einleitung_text = lade_textdatei(self.config.get('einleitung_csv', ''))
-            else: speichere_textdatei(self.config.get('einleitung_csv', ''), "")
-                
-            if self.config.get("keep_gruss", True):
-                self.gruss_text = lade_textdatei(self.config.get('gruss_csv', ''))
-            else: speichere_textdatei(self.config.get('gruss_csv', ''), "")
-
         self.tabview = ctk.CTkTabview(self)
-        self.tabview.pack(padx=20, pady=(20, 5), fill="both", expand=True)
+        self.tabview.pack(padx=20, pady=(10, 5), fill="both", expand=True)
         
-        self.tab_gen = self.tabview.add("Generieren")
         self.tab_manuell = self.tabview.add("Manuelle Eingabe")
         self.tab_ausw = self.tabview.add("Auswertungen")
         self.tab_settings = self.tabview.add("Einstellungen")
         self.tab_hilfe = self.tabview.add("Hilfe & Doku")
         
-        self.build_generieren_tab()
-        self.build_manuell_tab()
-        self.build_auswertungen_tab()
-        self.build_settings_tab()
-        self.build_hilfe_tab()
-
+        self.refresh_all_ui()
         self.tabview.set("Manuelle Eingabe")
 
         if start_in_edit:
             self.after(200, lambda: self.load_manual_invoice(is_button_click=False, silent=True))
             
-        # --- NEU: Footer mit Update Button ---
         def open_website(event): webbrowser.open("https://sokolowski.org")
         
         f_footer = ctk.CTkFrame(self, fg_color="transparent")
         f_footer.pack(side="bottom", fill="x", padx=20, pady=5)
         
-        lbl_footer = ctk.CTkLabel(f_footer, text="(C) Joachim Sokolowski - https://sokolowski.org", text_color="#1f538d", cursor="hand2")
-        lbl_footer.pack(side="left")
-        lbl_footer.bind("<Button-1>", open_website)
+        lbl_footer_l = ctk.CTkLabel(f_footer, text="(C) Joachim Sokolowski", text_color="#1f538d", cursor="hand2")
+        lbl_footer_l.pack(side="left")
+        lbl_footer_l.bind("<Button-1>", open_website)
+        
+        lbl_footer_c = ctk.CTkLabel(f_footer, text=f"| Version: {self.current_version}")
+        lbl_footer_c.pack(side="left", padx=10)
         
         self.btn_footer_update = ctk.CTkButton(f_footer, text="Update?", width=80, fg_color="#555", hover_color="#777", command=self.check_for_updates)
         self.btn_footer_update.pack(side="right")
+
+    @property
+    def p_config(self):
+        return self.config["profiles"][self.config["active_profile_index"]]
+
+    def build_profile_header(self):
+        f_top = ctk.CTkFrame(self, fg_color="transparent")
+        f_top.pack(fill="x", padx=20, pady=(10, 0))
+        
+        ctk.CTkLabel(f_top, text="Aktive Firma / Profil:", font=("Helvetica", 14, "bold")).pack(side="left")
+        
+        profil_namen = [p["profil_name"] for p in self.config["profiles"]]
+        self.combo_profile = ctk.CTkComboBox(f_top, values=profil_namen, command=self.on_profile_switch)
+        self.combo_profile.set(self.p_config["profil_name"])
+        self.combo_profile.pack(side="left", padx=10)
+        
+        self.create_button(f_top, text="+ Neu", width=60, command=self.add_profile).pack(side="left", padx=5)
+        self.create_button(f_top, text="✎ Umbenennen", width=100, command=self.rename_profile).pack(side="left", padx=5)
+        
+        if len(self.config["profiles"]) > 1:
+            self.create_button(f_top, text="🗑 Löschen", width=80, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
+
+    def on_profile_switch(self, wahl):
+        for i, p in enumerate(self.config["profiles"]):
+            if p["profil_name"] == wahl:
+                self.config["active_profile_index"] = i
+                speichere_config(self.config)
+                self.refresh_all_ui()
+                break
+
+    def add_profile(self):
+        if len(self.config["profiles"]) >= 5:
+            return messagebox.showwarning("Limit erreicht", "Es können maximal 5 Firmen-Profile angelegt werden.")
+        d_name = ctk.CTKInputDialog(text="Name der neuen Firma:", title="Neues Profil")
+        name = d_name.get_input()
+        if name:
+            new_idx = len(self.config["profiles"]) + 1
+            new_p = get_default_profile(new_idx)
+            new_p["profil_name"] = name
+            
+            if not os.path.exists(new_p["ausgabe_ordner"]): os.makedirs(new_p["ausgabe_ordner"])
+            if not os.path.exists(new_p["auswertungen_ordner"]): os.makedirs(new_p["auswertungen_ordner"])
+            create_csv_if_missing(new_p["firma_csv"], "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
+            create_csv_if_missing(new_p["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
+            create_csv_if_missing(new_p["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
+            create_csv_if_missing(new_p["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+            
+            self.config["profiles"].append(new_p)
+            self.config["active_profile_index"] = len(self.config["profiles"]) - 1
+            speichere_config(self.config)
+            
+            # Restart Header
+            for w in self.winfo_children():
+                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
+            self.build_profile_header()
+            self.refresh_all_ui()
+
+    def rename_profile(self):
+        d_name = ctk.CTKInputDialog(text="Neuer Name für das Profil:", title="Profil umbenennen")
+        name = d_name.get_input()
+        if name:
+            self.p_config["profil_name"] = name
+            speichere_config(self.config)
+            for w in self.winfo_children():
+                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
+            self.build_profile_header()
+
+    def delete_profile(self):
+        if messagebox.askyesno("Löschen", "Möchten Sie dieses Profil wirklich entfernen?\n(Die Dateien bleiben auf der Festplatte erhalten)"):
+            del self.config["profiles"][self.config["active_profile_index"]]
+            self.config["active_profile_index"] = 0
+            speichere_config(self.config)
+            for w in self.winfo_children():
+                if isinstance(w, ctk.CTkFrame) and w.winfo_y() < 50: w.destroy()
+            self.build_profile_header()
+            self.refresh_all_ui()
+
+    def refresh_all_ui(self):
+        self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
+        self.produkte_liste = lade_produkte(self.p_config.get("produkte_csv", "produkte.csv"))
+        self.header_text = lade_textdatei(self.p_config.get('header_csv', ''))
+        self.einleitung_text = lade_textdatei(self.p_config.get('einleitung_csv', ''))
+        self.gruss_text = lade_textdatei(self.p_config.get('gruss_csv', ''))
+        self.positionen_liste = []
+        self.zusatz_dict = {}
+
+        for w in self.tab_manuell.winfo_children(): w.destroy()
+        for w in self.tab_ausw.winfo_children(): w.destroy()
+        for w in self.tab_settings.winfo_children(): w.destroy()
+        for w in self.tab_hilfe.winfo_children(): w.destroy()
+
+        self.build_manuell_tab()
+        self.build_auswertungen_tab()
+        self.build_settings_tab()
+        self.build_hilfe_tab()
 
     def on_closing(self):
         self.config["window_geometry"] = self.geometry()
@@ -976,12 +1062,8 @@ class App(ctk.CTk):
         frame = ctk.CTkFrame(parent, fg_color="transparent")
         frame.pack(fill="x", padx=10, pady=3)
         ctk.CTkLabel(frame, text=label_text, width=120, anchor="w").pack(side="left")
-        
-        if is_combo: 
-            entry = ctk.CTkComboBox(frame, values=combo_values or [], command=command)
-        else: 
-            entry = ctk.CTkEntry(frame)
-            
+        if is_combo: entry = ctk.CTkComboBox(frame, values=combo_values or [], command=command)
+        else: entry = ctk.CTkEntry(frame)
         entry.pack(side="left", fill="x", expand=True, padx=(10, 0))
         return entry
         
@@ -994,27 +1076,6 @@ class App(ctk.CTk):
         btn = self.create_button(frame, text=btn_text, width=40, command=lambda: btn_cmd(entry))
         btn.pack(side="right")
         return entry
-
-    # --- Tab 1: Generieren ---
-    def build_generieren_tab(self):
-        btn = self.create_button(self.tab_gen, text="PDFs aus CSV generieren", font=("Helvetica", 16, "bold"), height=50, command=self.btn_generieren_click)
-        btn.pack(pady=30)
-        
-        self.log_box = ctk.CTkTextbox(self.tab_gen, width=600, height=300)
-        self.log_box.pack(pady=10, padx=20, fill="both", expand=True)
-        self.log_box.insert("0.0", "Bereit.\nLaufwerk-Pfade in den Einstellungen prüfen.\n")
-        self.log_box.configure(state="disabled")
-
-    def log_to_gui(self, msg):
-        self.log_box.configure(state="normal")
-        self.log_box.insert("end", msg + "\n")
-        self.log_box.see("end")
-        self.log_box.configure(state="disabled")
-        self.update()
-
-    def btn_generieren_click(self):
-        self.log_to_gui("\n--- Starte Generierung ---")
-        run_auto_generation(self.config, self.log_to_gui)
 
     def open_date_picker(self, entry_widget):
         dialog = ctk.CTkToplevel(self)
@@ -1158,7 +1219,7 @@ class App(ctk.CTk):
         
         self.chk_raten = ctk.CTkCheckBox(left_frame, text="Ratenzahlung zulassen")
         self.chk_raten.pack(pady=3, padx=10, anchor="w")
-        if self.config.get("keep_raten", False): self.chk_raten.select()
+        if self.p_config.get("keep_raten", False): self.chk_raten.select()
         
         self.entry_k_nr = self.create_input_with_button(left_frame, "Kunden-Nr. (opt.)", "🔍", self.open_kdnr_search)
         self.entry_az = self.create_input(left_frame, "Aktenzeichen (opt.)")
@@ -1182,7 +1243,7 @@ class App(ctk.CTk):
         
         self.chk_kunde_speichern = ctk.CTkCheckBox(left_frame, text="Kunde speichern/updaten")
         self.chk_kunde_speichern.pack(pady=3, padx=10, anchor="w")
-        if self.config.get("keep_kunde_speichern", False): self.chk_kunde_speichern.select()
+        if self.p_config.get("keep_kunde_speichern", False): self.chk_kunde_speichern.select()
         
         btn_texte = self.create_button(left_frame, text="📝 Texte bearbeiten (Alt+T)", command=self.open_texte_popup)
         btn_texte.pack(pady=15, padx=10, fill="x")
@@ -1192,12 +1253,12 @@ class App(ctk.CTk):
         self.lbl_totals.pack(pady=5, padx=15, anchor="w")
         
         heute = datetime.now()
-        try: tage = int(self.config.get("faelligkeit_tage", "29"))
+        try: tage = int(self.p_config.get("faelligkeit_tage", "29"))
         except ValueError: tage = 29
             
         self.entry_r_datum.insert(0, heute.strftime('%Y-%m-%d'))
         self.entry_f_datum.insert(0, (heute + timedelta(days=tage)).strftime('%Y-%m-%d'))
-        self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.config.get("letzte_rechnungsnummer", "")))
+        self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
         
         ctk.CTkLabel(right_frame, text="Positionen", font=("Helvetica", 14, "bold")).pack(pady=10)
         
@@ -1214,7 +1275,7 @@ class App(ctk.CTk):
         btn_gen.pack(pady=5, fill="x", padx=20)
 
     def load_manual_invoice(self, is_button_click=False, silent=False, custom_path=None):
-        rech_pfad = custom_path if custom_path else self.config.get('rechnung_csv', '')
+        rech_pfad = custom_path if custom_path else self.p_config.get('rechnung_csv', '')
         if not os.path.exists(rech_pfad): 
             if not silent: messagebox.showwarning("Fehler", f"Datei {rech_pfad} nicht gefunden.")
             return
@@ -1236,7 +1297,6 @@ class App(ctk.CTk):
                         ziel_nr = berechne_naechste_rechnungsnummer(geladene_nr)
                         
                 self.entry_r_nr.delete(0, 'end'); self.entry_r_nr.insert(0, ziel_nr)
-                
                 self.entry_r_datum.delete(0, 'end'); self.entry_r_datum.insert(0, kopf.get('Rechnungsdatum', ''))
                 self.entry_f_datum.delete(0, 'end'); self.entry_f_datum.insert(0, kopf.get('Faelligkeitsdatum', ''))
                 
@@ -1256,7 +1316,7 @@ class App(ctk.CTk):
                 self.positionen_liste = []
                 for row in reader: self.positionen_liste.append(row)
             
-            zusatz_pfad = self.config.get('zusatz_csv', '')
+            zusatz_pfad = self.p_config.get('zusatz_csv', '')
             self.zusatz_dict = {}
             if os.path.exists(zusatz_pfad):
                 with open(zusatz_pfad, mode='r', encoding='utf-8-sig') as f:
@@ -1269,9 +1329,9 @@ class App(ctk.CTk):
                             text_val = parts[1].strip()
                             for pk in pos_keys: self.zusatz_dict[pk.strip()] = text_val
             
-            self.header_text = lade_textdatei(self.config.get('header_csv', ''))
-            self.einleitung_text = lade_textdatei(self.config.get('einleitung_csv', ''))
-            self.gruss_text = lade_textdatei(self.config.get('gruss_csv', ''))
+            self.header_text = lade_textdatei(self.p_config.get('header_csv', ''))
+            self.einleitung_text = lade_textdatei(self.p_config.get('einleitung_csv', ''))
+            self.gruss_text = lade_textdatei(self.p_config.get('gruss_csv', ''))
             
             self.refresh_pos_list()
         except Exception as e:
@@ -1290,7 +1350,7 @@ class App(ctk.CTk):
         t_head.insert("0.0", self.header_text)
         chk_head = ctk.CTkCheckBox(dialog, text="Text für nächste neue Rechnung merken")
         chk_head.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.config.get("keep_header", True): chk_head.select()
+        if self.p_config.get("keep_header", True): chk_head.select()
         else: chk_head.deselect()
         
         ctk.CTkLabel(dialog, text="Einleitung (vor den Positionen):").pack(anchor="w", padx=20, pady=(5, 0))
@@ -1299,7 +1359,7 @@ class App(ctk.CTk):
         t_einl.insert("0.0", self.einleitung_text)
         chk_einl = ctk.CTkCheckBox(dialog, text="Text für nächste neue Rechnung merken")
         chk_einl.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.config.get("keep_einleitung", True): chk_einl.select()
+        if self.p_config.get("keep_einleitung", True): chk_einl.select()
         else: chk_einl.deselect()
         
         ctk.CTkLabel(dialog, text="Gruß (ganz unten):").pack(anchor="w", padx=20, pady=(5, 0))
@@ -1308,7 +1368,7 @@ class App(ctk.CTk):
         t_gruss.insert("0.0", self.gruss_text)
         chk_gruss = ctk.CTkCheckBox(dialog, text="Text für nächste neue Rechnung merken")
         chk_gruss.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.config.get("keep_gruss", True): chk_gruss.select()
+        if self.p_config.get("keep_gruss", True): chk_gruss.select()
         else: chk_gruss.deselect()
         
         def save_texte():
@@ -1316,9 +1376,9 @@ class App(ctk.CTk):
             self.einleitung_text = t_einl.get("0.0", "end").strip()
             self.gruss_text = t_gruss.get("0.0", "end").strip()
             
-            self.config["keep_header"] = bool(chk_head.get())
-            self.config["keep_einleitung"] = bool(chk_einl.get())
-            self.config["keep_gruss"] = bool(chk_gruss.get())
+            self.p_config["keep_header"] = bool(chk_head.get())
+            self.p_config["keep_einleitung"] = bool(chk_einl.get())
+            self.p_config["keep_gruss"] = bool(chk_gruss.get())
             speichere_config(self.config)
             dialog.destroy()
             
@@ -1362,7 +1422,7 @@ class App(ctk.CTk):
         
         if edit_index is None:
             e_menge.insert(0, "1")
-            e_einheit.set(self.config.get("letzte_einheit", "Stück (C62)"))
+            e_einheit.set(self.p_config.get("letzte_einheit", "Stück (C62)"))
             e_steuer.insert(0, "19")
             e_anmerkung.set("")
             e_bez.set("")
@@ -1389,7 +1449,7 @@ class App(ctk.CTk):
         e_bez.focus_set()
         
         def save_it(event=None):
-            if not e_bez.get(): return messagebox.showwarning("Fehler", "Bezeichnung fehlt!")
+            if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung fehlt!")
             
             try:
                 float(e_menge.get().replace(',', '.') or "1")
@@ -1410,7 +1470,7 @@ class App(ctk.CTk):
             match = re.search(r'\((.*?)\)', einheit_val)
             einheit_code = match.group(1).strip() if match else einheit_val.strip()
             
-            self.config["letzte_einheit"] = einheit_val
+            self.p_config["letzte_einheit"] = einheit_val
             speichere_config(self.config)
             
             pos_nr = str(edit_index + 1) if edit_index is not None else str(len(self.positionen_liste) + 1)
@@ -1525,12 +1585,12 @@ class App(ctk.CTk):
                       'LeistungszeitraumKopf', 'Ratenzahlung', 'PosNr', 'Menge', 'Einheit', 'Bezeichnung', 
                       'EinzelpreisNetto', 'Steuersatz', 'Zusatztext', 'LeistungszeitraumPos']
         try:
-            with open(self.config['rechnung_csv'], 'w', newline='', encoding='utf-8-sig') as f:
+            with open(self.p_config['rechnung_csv'], 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 for p in full_positions: writer.writerow(p)
                 
-            with open(self.config['zusatz_csv'], 'w', encoding='utf-8-sig') as f:
+            with open(self.p_config['zusatz_csv'], 'w', encoding='utf-8-sig') as f:
                 text_to_pos = {}
                 for k, v in self.zusatz_dict.items():
                     if k == '0': continue
@@ -1544,9 +1604,9 @@ class App(ctk.CTk):
                     pos_str = ",".join(map(str, pos_list))
                     f.write(f"{pos_str};{text}\n")
                     
-            speichere_textdatei(self.config.get('header_csv'), self.header_text)
-            speichere_textdatei(self.config.get('einleitung_csv'), self.einleitung_text)
-            speichere_textdatei(self.config.get('gruss_csv'), self.gruss_text)
+            speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
+            speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
+            speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
             
             if self.chk_kunde_speichern.get():
                 k_daten = {
@@ -1558,14 +1618,14 @@ class App(ctk.CTk):
                     'Aktenzeichen': self.entry_az.get().strip()
                 }
                 if k_daten['Name']:
-                    pfad_k = self.config.get("kunden_csv", "kunden.csv")
+                    pfad_k = self.p_config.get("kunden_csv", "kunden.csv")
                     speichere_kunde(pfad_k, k_daten)
                     self.kunden_liste = lade_kunden(pfad_k)
                     self.entry_k_name.configure(values=[k['Name'] for k in self.kunden_liste])
                 
-            self.config['letzte_rechnungsnummer'] = r_nr
-            self.config['keep_raten'] = bool(self.chk_raten.get())
-            self.config['keep_kunde_speichern'] = bool(self.chk_kunde_speichern.get())
+            self.p_config['letzte_rechnungsnummer'] = r_nr
+            self.p_config['keep_raten'] = bool(self.chk_raten.get())
+            self.p_config['keep_kunde_speichern'] = bool(self.chk_kunde_speichern.get())
             speichere_config(self.config)
             
             if not silent: messagebox.showinfo("Erfolg", "Ihre Daten wurden erfolgreich gespeichert!")
@@ -1608,7 +1668,7 @@ class App(ctk.CTk):
             return 
         
         r_nr = self.entry_r_nr.get()
-        pdf_pfad = os.path.join(self.config['ausgabe_ordner'], f"Rechnung_{r_nr}.pdf")
+        pdf_pfad = os.path.join(self.p_config['ausgabe_ordner'], f"Rechnung_{r_nr}.pdf")
         
         if os.path.exists(pdf_pfad):
             try: os.startfile(pdf_pfad)
@@ -1636,7 +1696,7 @@ class App(ctk.CTk):
 
     def generate_auswertung(self):
         zeit_str = self.entry_ausw_zeit.get().strip()
-        ordner = self.config.get("auswertungen_ordner", "Auswertungen")
+        ordner = self.p_config.get("auswertungen_ordner", "Auswertungen")
         if not os.path.exists(ordner):
             return messagebox.showwarning("Fehler", "Der Auswertungs-Ordner existiert noch nicht.")
             
@@ -1660,72 +1720,92 @@ class App(ctk.CTk):
                         gefundene_rechnungen.append(row)
                         
         if not gefundene_rechnungen:
-            return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Rechnungsdaten gefunden.")
+            return messagebox.showinfo("Info", f"Für {zeit_str} wurden in der aktuellen Firma keine Rechnungsdaten gefunden.")
             
+        aktuelle_firma = lade_firma(self.p_config.get('firma_csv', 'firma.csv'))
+        firma_name = aktuelle_firma.get('FirmaName', 'Unbekannte Firma')
+        
         pdf_name = f"Journal_{zeit_str.replace('.','_')}.pdf"
         pdf_pfad = os.path.join(ordner, pdf_name)
         
-        c = canvas.Canvas(pdf_pfad, pagesize=landscape(A4))
+        c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4))
         breite, hoehe = landscape(A4)
         
-        def neuer_kopf(c_obj):
-            c_obj.setFont("Helvetica-Bold", 16)
-            c_obj.drawString(40, hoehe - 50, f"Rechnungsjournal - {zeit_str}")
-            c_obj.setFont("Helvetica-Bold", 10)
-            c_obj.drawString(40, hoehe - 80, "Datum")
-            c_obj.drawString(100, hoehe - 80, "Rechnungs-Nr.")
-            c_obj.drawString(220, hoehe - 80, "Empfänger")
-            c_obj.drawRightString(500, hoehe - 80, "Netto")
-            c_obj.drawRightString(580, hoehe - 80, "MwSt 19%")
-            c_obj.drawRightString(660, hoehe - 80, "MwSt 7%")
-            c_obj.drawRightString(740, hoehe - 80, "MwSt 0%")
-            c_obj.drawRightString(820, hoehe - 80, "Brutto")
-            c_obj.line(40, hoehe - 85, 820, hoehe - 85)
-            return hoehe - 105
+        def render_journal(c_obj, is_final=False, total_pages=1):
+            page_num = 1
+            def draw_header():
+                c_obj.setFont("Helvetica-Bold", 16)
+                c_obj.drawString(40, hoehe - 50, f"Rechnungsjournal - {zeit_str} - {firma_name}")
+                c_obj.setFont("Helvetica-Bold", 10)
+                c_obj.drawString(40, hoehe - 80, "Datum")
+                c_obj.drawString(100, hoehe - 80, "Rechnungs-Nr.")
+                c_obj.drawString(220, hoehe - 80, "Empfänger")
+                c_obj.drawRightString(500, hoehe - 80, "Netto")
+                c_obj.drawRightString(580, hoehe - 80, "MwSt 19%")
+                c_obj.drawRightString(660, hoehe - 80, "MwSt 7%")
+                c_obj.drawRightString(740, hoehe - 80, "MwSt 0%")
+                c_obj.drawRightString(820, hoehe - 80, "Brutto")
+                c_obj.line(40, hoehe - 85, 820, hoehe - 85)
+                return hoehe - 105
             
-        y = neuer_kopf(c)
-        c.setFont("Helvetica", 10)
-        
-        sum_netto = sum_19 = sum_7 = sum_0 = sum_brutto = 0.0
-        
-        for r in gefundene_rechnungen:
-            if y < 50:
-                c.showPage()
-                y = neuer_kopf(c)
-                c.setFont("Helvetica", 10)
+            def draw_footer():
+                c_obj.setFont("Helvetica", 9)
+                now_str = datetime.now().strftime("%d.%m.%Y %H:%M")
+                c_obj.drawString(40, 20, f"Erstellt am {now_str} Uhr")
+                if total_pages > 1:
+                    c_obj.drawRightString(820, 20, f"Seite {page_num} / {total_pages}")
+            
+            y = draw_header()
+            if is_final: draw_footer()
+            c_obj.setFont("Helvetica", 10)
+            
+            sum_netto = sum_19 = sum_7 = sum_0 = sum_brutto = 0.0
+            
+            for r in gefundene_rechnungen:
+                if y < 60:
+                    c_obj.showPage()
+                    page_num += 1
+                    y = draw_header()
+                    if is_final: draw_footer()
+                    c_obj.setFont("Helvetica", 10)
+                    
+                n = safe_float(r.get('Netto', 0))
+                m19 = safe_float(r.get('MwSt_19', 0))
+                m7 = safe_float(r.get('MwSt_7', 0))
+                m0 = safe_float(r.get('MwSt_0', 0))
+                b = safe_float(r.get('Brutto', 0))
                 
-            n = safe_float(r.get('Netto', 0))
-            m19 = safe_float(r.get('MwSt_19', 0))
-            m7 = safe_float(r.get('MwSt_7', 0))
-            m0 = safe_float(r.get('MwSt_0', 0))
-            b = safe_float(r.get('Brutto', 0))
-            
-            sum_netto += n; sum_19 += m19; sum_7 += m7; sum_0 += m0; sum_brutto += b
-            
-            c.drawString(40, y, r.get('Datum', ''))
-            c.drawString(100, y, r.get('Rechnungsnummer', ''))
-            
-            empf = r.get('Empfaenger', '')
-            if len(empf) > 25: empf = empf[:22] + "..."
-            c.drawString(220, y, empf)
-            
-            c.drawRightString(500, y, f_curr(n))
-            c.drawRightString(580, y, f_curr(m19))
-            c.drawRightString(660, y, f_curr(m7))
-            c.drawRightString(740, y, f_curr(m0))
-            c.drawRightString(820, y, f_curr(b))
-            y -= 15
-            
-        c.line(40, y + 10, 820, y + 10)
-        y -= 10
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(40, y, "GESAMTSUMMEN:")
-        c.drawRightString(500, y, f_curr(sum_netto))
-        c.drawRightString(580, y, f_curr(sum_19))
-        c.drawRightString(660, y, f_curr(sum_7))
-        c.drawRightString(740, y, f_curr(sum_0))
-        c.drawRightString(820, y, f_curr(sum_brutto))
+                sum_netto += n; sum_19 += m19; sum_7 += m7; sum_0 += m0; sum_brutto += b
+                
+                c_obj.drawString(40, y, r.get('Datum', ''))
+                c_obj.drawString(100, y, r.get('Rechnungsnummer', ''))
+                
+                empf = r.get('Empfaenger', '')
+                if len(empf) > 25: empf = empf[:22] + "..."
+                c_obj.drawString(220, y, empf)
+                
+                c_obj.drawRightString(500, y, f_curr(n))
+                c_obj.drawRightString(580, y, f_curr(m19))
+                c_obj.drawRightString(660, y, f_curr(m7))
+                c_obj.drawRightString(740, y, f_curr(m0))
+                c_obj.drawRightString(820, y, f_curr(b))
+                y -= 15
+                
+            c_obj.line(40, y + 10, 820, y + 10)
+            y -= 10
+            c_obj.setFont("Helvetica-Bold", 10)
+            c_obj.drawString(40, y, "GESAMTSUMMEN:")
+            c_obj.drawRightString(500, y, f_curr(sum_netto))
+            c_obj.drawRightString(580, y, f_curr(sum_19))
+            c_obj.drawRightString(660, y, f_curr(sum_7))
+            c_obj.drawRightString(740, y, f_curr(sum_0))
+            c_obj.drawRightString(820, y, f_curr(sum_brutto))
+            return page_num
         
+        t_pages = render_journal(c_dummy)
+        
+        c = canvas.Canvas(pdf_pfad, pagesize=landscape(A4))
+        render_journal(c, is_final=True, total_pages=t_pages)
         c.save()
         
         try: os.startfile(pdf_pfad)
@@ -1733,9 +1813,21 @@ class App(ctk.CTk):
 
     # --- Tab 3: Einstellungen ---
     def build_settings_tab(self):
+        f_stammdaten = ctk.CTkFrame(self.tab_settings)
+        f_stammdaten.pack(fill="x", pady=(10, 20), padx=20)
+        ctk.CTkLabel(f_stammdaten, text="Stammdaten der aktiven Firma verwalten", font=("Helvetica", 14, "bold")).pack(pady=5)
+        
+        f_btns = ctk.CTkFrame(f_stammdaten, fg_color="transparent")
+        f_btns.pack(pady=10)
+        self.create_button(f_btns, text="🏢 Firmendaten bearbeiten", command=self.open_firma_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        self.create_button(f_btns, text="👥 Kundendaten verwalten", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        self.create_button(f_btns, text="📦 Produktdaten verwalten", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+
+        ctk.CTkLabel(self.tab_settings, text="Dateipfade der aktiven Firma:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(0, 10))
+        
         self.path_vars = {}
-        for key, val in self.config.items():
-            if key in ["letzte_rechnungsnummer", "window_geometry", "letzte_einheit", "keep_header", "keep_einleitung", "keep_gruss", "terms_accepted", "keep_raten", "keep_kunde_speichern"]: continue
+        for key in ["firma_csv", "rechnung_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv", "ausgabe_ordner", "auswertungen_ordner", "kunden_csv", "produkte_csv"]:
+            val = self.p_config.get(key, "")
             f = ctk.CTkFrame(self.tab_settings, fg_color="transparent")
             f.pack(fill="x", pady=2, padx=20)
             ctk.CTkLabel(f, text=key, width=150, anchor="w").pack(side="left")
@@ -1748,17 +1840,8 @@ class App(ctk.CTk):
             if "csv" in key or "pdf" in key or "ordner" in key:
                 self.create_button(f, text="📂", width=40, command=lambda k=key, e=entry: self.browse_path(k, e)).pack(side="left")
             
-        self.create_button(self.tab_settings, text="Einstellungen Speichern", command=self.save_settings).pack(pady=10)
+        self.create_button(self.tab_settings, text="Pfade Speichern", command=self.save_settings).pack(pady=15)
         
-        f_stammdaten = ctk.CTkFrame(self.tab_settings)
-        f_stammdaten.pack(fill="x", pady=15, padx=20)
-        ctk.CTkLabel(f_stammdaten, text="Stammdaten verwalten", font=("Helvetica", 14, "bold")).pack(pady=5)
-        
-        f_btns = ctk.CTkFrame(f_stammdaten, fg_color="transparent")
-        f_btns.pack(pady=10)
-        self.create_button(f_btns, text="👥 Kundendaten verwalten", command=self.open_kunden_manager).pack(side="left", padx=10)
-        self.create_button(f_btns, text="📦 Produktdaten verwalten", command=self.open_produkte_manager).pack(side="left", padx=10)
-
     def browse_path(self, key, entry_widget):
         path = filedialog.askdirectory() if "ordner" in key else filedialog.askopenfilename(filetypes=[("Datei", "*.pdf" if "pdf" in key else "*.csv")])
         if path:
@@ -1767,13 +1850,62 @@ class App(ctk.CTk):
 
     def save_settings(self):
         for key, entry in self.path_vars.items():
-            if key == "faelligkeit_tage":
-                try: int(entry.get())
-                except ValueError: return messagebox.showerror("Fehler", "Die Fälligkeit (Tage) muss eine gültige Zahl sein!")
-            self.config[key] = entry.get()
+            self.p_config[key] = entry.get()
             
         speichere_config(self.config)
-        messagebox.showinfo("Gespeichert", "Ihre Einstellungen wurden erfolgreich gespeichert!")
+        messagebox.showinfo("Gespeichert", "Die Dateipfade wurden erfolgreich gespeichert!")
+
+    # --- DATENBANK-MANAGER (FIRMA) ---
+    def open_firma_manager(self):
+        d_edit = ctk.CTkToplevel(self)
+        d_edit.title("Firmendaten bearbeiten")
+        self.center_window(d_edit, 500, 500)
+        d_edit.transient(self)
+        d_edit.grab_set()
+        
+        pfad_firma = self.p_config.get("firma_csv", "firma.csv")
+        f_daten = lade_firma(pfad_firma)
+        
+        e_name = self.create_input(d_edit, "Firma Name")
+        e_str = self.create_input(d_edit, "Straße")
+        e_plz = self.create_input(d_edit, "PLZ")
+        e_ort = self.create_input(d_edit, "Ort")
+        e_land = self.create_input(d_edit, "Land (z.B. DE)")
+        e_ustid = self.create_input(d_edit, "USt-Id")
+        e_stnr = self.create_input(d_edit, "Steuernummer")
+        e_bank = self.create_input(d_edit, "Bank Name")
+        e_iban = self.create_input(d_edit, "IBAN")
+        e_bic = self.create_input(d_edit, "BIC")
+        e_mail = self.create_input(d_edit, "Email")
+        e_tel = self.create_input(d_edit, "Telefon")
+        
+        e_name.insert(0, f_daten.get('FirmaName', ''))
+        e_str.insert(0, f_daten.get('Strasse', ''))
+        e_plz.insert(0, f_daten.get('PLZ', ''))
+        e_ort.insert(0, f_daten.get('Ort', ''))
+        e_land.insert(0, f_daten.get('Land', 'DE'))
+        e_ustid.insert(0, f_daten.get('UStId', ''))
+        e_stnr.insert(0, f_daten.get('Steuernummer', ''))
+        e_bank.insert(0, f_daten.get('BankName', ''))
+        e_iban.insert(0, f_daten.get('IBAN', ''))
+        e_bic.insert(0, f_daten.get('BIC', ''))
+        e_mail.insert(0, f_daten.get('Email', ''))
+        e_tel.insert(0, f_daten.get('Telefon', ''))
+        
+        def save():
+            neu = {
+                'FirmaName': e_name.get().strip(), 'Strasse': e_str.get().strip(),
+                'PLZ': e_plz.get().strip(), 'Ort': e_ort.get().strip(), 'Land': e_land.get().strip(),
+                'UStId': e_ustid.get().strip(), 'Steuernummer': e_stnr.get().strip(),
+                'BankName': e_bank.get().strip(), 'IBAN': e_iban.get().strip(), 'BIC': e_bic.get().strip(),
+                'Email': e_mail.get().strip(), 'Telefon': e_tel.get().strip()
+            }
+            speichere_firma(pfad_firma, neu)
+            messagebox.showinfo("Gespeichert", "Firmendaten wurden aktualisiert!", parent=d_edit)
+            d_edit.destroy()
+            
+        self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
+
 
     # --- DATENBANK-MANAGER (KUNDEN) ---
     def open_kunden_manager(self):
@@ -1801,7 +1933,7 @@ class App(ctk.CTk):
         def delete_k(index):
             if messagebox.askyesno("Löschen", "Kunde wirklich löschen?", parent=dialog):
                 del self.kunden_liste[index]
-                speichere_alle_kunden(self.config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
+                speichere_alle_kunden(self.p_config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
                 self.entry_k_name.configure(values=[k['Name'] for k in self.kunden_liste])
                 refresh()
 
@@ -1836,7 +1968,7 @@ class App(ctk.CTk):
                 if index is not None: self.kunden_liste[index] = neu
                 else: self.kunden_liste.append(neu)
                     
-                speichere_alle_kunden(self.config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
+                speichere_alle_kunden(self.p_config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
                 self.entry_k_name.configure(values=[k['Name'] for k in self.kunden_liste])
                 refresh()
                 d_edit.destroy()
@@ -1872,7 +2004,7 @@ class App(ctk.CTk):
         def delete_p(index):
             if messagebox.askyesno("Löschen", "Produkt wirklich löschen?", parent=dialog):
                 del self.produkte_liste[index]
-                speichere_alle_produkte(self.config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
+                speichere_alle_produkte(self.p_config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
                 refresh()
 
         def edit_p(index=None):
@@ -1926,7 +2058,7 @@ class App(ctk.CTk):
                 if index is not None: self.produkte_liste[index] = neu
                 else: self.produkte_liste.append(neu)
                     
-                speichere_alle_produkte(self.config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
+                speichere_alle_produkte(self.p_config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
                 refresh()
                 d_edit.destroy()
                 
@@ -1937,6 +2069,9 @@ class App(ctk.CTk):
         
     # --- AUTO-UPDATER ---
     def check_for_updates(self):
+        res = messagebox.askyesno("Verbindung herstellen?", "Um nach Updates zu suchen, muss eine Verbindung zu den GitHub-Servern aufgebaut werden.\n\nMöchten Sie die Verbindung jetzt herstellen?")
+        if not res: return
+        
         self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
         self.btn_footer_update.configure(text="⏳ Suche...", state="disabled")
         
@@ -1960,7 +2095,6 @@ class App(ctk.CTk):
                 
                 download_url = assets[0].get("browser_download_url")
                 
-                # Reiner String-Vergleich funktioniert sicher, da das Format fest "1.YYYYMMDD.HHMM" ist
                 if latest_version > self.current_version:
                     self.after(0, lambda: self.prompt_update(latest_version, download_url))
                 else:
@@ -2046,7 +2180,7 @@ Version: {self.current_version}
 Die Anwendung (.exe) ist vollständig portabel und kann in einem beliebigen Ordner auf Ihrem PC oder auf einem freigegebenen Netzwerklaufwerk abgelegt werden.
 
 Automatische Einrichtung:
-Beim ersten Start legt das Programm alle benötigten Ordner (z.B. für PDFs und Auswertungen) sowie leere Konfigurations-Dateien (.csv) automatisch an. Sie müssen nichts manuell konfigurieren. 
+Beim ersten Start legt das Programm alle benötigten Ordner (z.B. für PDFs und Auswertungen) sowie leere Konfigurations-Dateien (.csv) automatisch für die aktuelle Firma an. Sie müssen nichts zwingend vorab manuell konfigurieren. 
 
 Briefbogen:
 Legen Sie in denselben Ordner eine Datei namens "briefbogen.pdf". Diese wird als Hintergrund für die Rechnung verwendet. 
@@ -2061,7 +2195,7 @@ Es wird ausdrücklich darauf hingewiesen, dass auch für das Anerkennen der erst
 Die Haftung ist gemäß § 521 BGB auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Nutzung im geschäftlichen Verkehr erfolgt auf Ihre eigene Gefahr. Bitte prüfen Sie erzeugte Rechnungen stichprobenartig.
 
 Datenschutz / Verbindungen:
-Das Programm arbeitet komplett lokal. Ausschließlich zur Updateprüfung, die nicht automatisch durchgeführt, sondern durch den entsprechenden Button vom Benutzer angestoßen wird, wird eine Datenverbindung zu GitHub benötigt und aufgebaut.
+Das Programm arbeitet komplett lokal. Ausschließlich zur Updateprüfung, die NICHT automatisch durchgeführt sondern durch den entsprechenden Button vom Benutzer angestoßen wird, wird eine Datenverbindung zu GitHub benötigt und aufgebaut.
 
 ===========================================
 3. PROGRAMMBESCHREIBUNG & AUFRUF (CLI / GUI)
@@ -2088,56 +2222,44 @@ Verfügbare CLI-Parameter (überschreiben temporär die config.json):
   --ausgabe        Ordner, in dem die fertigen PDFs landen sollen.
 
 ===========================================
-4. KUNDENDATENbank & PRODUKTDATENbank
+4. MANDANTEN & DATENBANKEN
 ===========================================
-Kundenbank:
-Unten links im Reiter "Manuelle Eingabe" finden Sie die Checkbox "Kunde speichern/updaten". 
-Ist diese angehakt, wird der eingegebene Kunde dauerhaft gespeichert. Über das Dropdown "Kunde Name" oder den Suchbutton (🔍) neben der Kundennummer können Sie diese Kunden jederzeit abrufen.
+Mandantenfähigkeit (Firmen):
+Sie können oben links über das Dropdown-Menü bis zu 5 verschiedene Firmenprofile anlegen. Jede Firma verwaltet ihre eigenen Dateipfade, Rechnungsnummern, Kunden und Produkte. In den Einstellungen können Sie unter "Firmendaten bearbeiten" die Adresse und Bankverbindung anpassen.
 
-Produktebank:
-In der Positionserfassung ist das Feld "Bezeichnung" ein Dropdown. 
-Wählen Sie ein Standardprodukt aus, werden Preis, Menge, Einheit und Steuer automatisch ausgefüllt.
-
-Manager:
-Im Reiter "Einstellungen" finden Sie unten die Buttons zur Verwaltung dieser Datenbanken.
+Kundenbank & Produktebank:
+Ihre erfassten Kunden und Produkte werden gespeichert. Über die Buttons im Reiter "Einstellungen" können Sie diese Bestände aufräumen, bearbeiten oder neue hinzufügen. In der Rechnungserfassung dient die "Bezeichnung" und das Suchen-Feld als Auto-Fill für diese Bestände.
 
 ===========================================
 5. RECHNUNGSPOSITIONEN & LEISTUNGSZEITRAUM
 ===========================================
 Nach Vorgaben der Finanzämter muss ein Leistungszeitraum für die erbrachte Leistung vorliegen.
-WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen.
+WICHTIG: Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum ZWINGEND kalendarisch INNERHALB des Kopf-Zeitraums liegen. (Tipp: Ist Start- und Enddatum identisch, wird auf dem PDF automatisch nur ein einzelnes Datum gedruckt).
 
 Negative Preise (Rabatte/Gutschriften): 
-Dürfen Sie wie gewohnt erfassen (z.B. "-100"). Das Programm rechnet das im Hintergrund automatisch normgerecht um.
+Dürfen Sie wie gewohnt erfassen (z.B. "-100"). Das Programm rechnet das im Hintergrund automatisch normgerecht in eine negative Menge um.
 
 ===========================================
-6. DATUMSEINGABEN
-===========================================
-Zulässige Formate: TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ oder JJJJ-MM-TT.
-
-===========================================
-7. TEXTFORMATIERUNGEN & TEXTE MERKEN
+6. TEXTFORMATIERUNGEN
 ===========================================
 Zeilenumbruch in der CSV: ~cr
 Fett drucken:  ~f Ihr Text f~
 Kursiv drucken:~k Ihr Text k~
 
 ===========================================
-8. JOURNAL & AUSWERTUNGEN
+7. JOURNAL & AUSWERTUNGEN
 ===========================================
 Das Programm erstellt bei jedem Speichervorgang im Hintergrund eine Monats-CSV (z.B. re202611.csv). 
-Im Reiter "Auswertungen" können Sie daraus mit einem Klick eine saubere, aufsummierte PDF-Tabelle erzeugen.
+Im Reiter "Auswertungen" können Sie daraus mit einem Klick ein sauberes PDF-Journal mit korrekter Steueraufschlüsselung erzeugen.
 
 ===========================================
-9. GITHUB & UPDATES
+8. GITHUB & UPDATES
 ===========================================
 Der Quellcode des Programms ist auf GitHub einsehbar:
 https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
 
 Neue Versionen können Sie hier herunterladen:
 https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
-
-Tipp: Nutzen Sie den Button "Auf Updates prüfen" unten in diesem Reiter, um das Programm automatisch zu aktualisieren.
 """
         hilfe_box = ctk.CTkTextbox(self.tab_hilfe, width=800, height=400, font=("Consolas", 13))
         hilfe_box.pack(pady=(10, 5), padx=10, fill="both", expand=True)
@@ -2236,14 +2358,15 @@ def main():
             except: pass
             sys.exit(0)
 
-    if args.firma: config['firma_csv'] = args.firma
-    if args.rechnung: config['rechnung_csv'] = args.rechnung
-    if args.briefbogen: config['briefbogen_pdf'] = args.briefbogen
-    if args.zusatz: config['zusatz_csv'] = args.zusatz
-    if args.gruss: config['gruss_csv'] = args.gruss
-    if args.header: config['header_csv'] = args.header
-    if args.einleitung: config['einleitung_csv'] = args.einleitung
-    if args.ausgabe: config['ausgabe_ordner'] = args.ausgabe
+    # Wenn CLI-Argumente übergeben wurden, werden diese in das AKTUELLE Profil temporär überschrieben
+    if args.firma: config["profiles"][config["active_profile_index"]]['firma_csv'] = args.firma
+    if args.rechnung: config["profiles"][config["active_profile_index"]]['rechnung_csv'] = args.rechnung
+    if args.briefbogen: config["profiles"][config["active_profile_index"]]['briefbogen_pdf'] = args.briefbogen
+    if args.zusatz: config["profiles"][config["active_profile_index"]]['zusatz_csv'] = args.zusatz
+    if args.gruss: config["profiles"][config["active_profile_index"]]['gruss_csv'] = args.gruss
+    if args.header: config["profiles"][config["active_profile_index"]]['header_csv'] = args.header
+    if args.einleitung: config["profiles"][config["active_profile_index"]]['einleitung_csv'] = args.einleitung
+    if args.ausgabe: config["profiles"][config["active_profile_index"]]['ausgabe_ordner'] = args.ausgabe
 
     if args.auto:
         run_auto_generation(config)
