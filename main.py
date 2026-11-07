@@ -35,8 +35,9 @@ def main():
     parser.add_argument("--ausgabe", type=str)
     parser.add_argument("--auswertungen", type=str)
     parser.add_argument("--jahr", type=str)
-    # NEU: Parameter zum Unterdrücken des PDF-Öffnens
     parser.add_argument("--no-open", action="store_true", help="Verhindert das Öffnen der erstellten PDF")
+    parser.add_argument("--zahlungsbedingungen", type=str, help="Zahlungsbedingungen (BT-20)")
+    parser.add_argument("--rechnungsvermerk", type=str, help="Rechnungsvermerk / Dauerrechnungshinweis (BT-22)")
 
     args = parser.parse_args()
 
@@ -90,7 +91,8 @@ def main():
     if args.ausgabe: config["profiles"][idx]['ausgabe_ordner'] = args.ausgabe
     if args.auswertungen: config["profiles"][idx]['auswertungen_ordner'] = args.auswertungen
     if args.jahr: config["profiles"][idx]['aktuelles_rechnungsjahr'] = args.jahr
-
+    if args.zahlungsbedingungen: config["profiles"][idx]['zahlungsbedingungen_default'] = args.zahlungsbedingungen
+    if args.rechnungsvermerk: config["profiles"][idx]['rechnungsvermerk_default'] = args.rechnungsvermerk
     # 7. Start-Weiche: GUI oder Auto-Generierung (CLI)
     if args.auto:
         run_auto_generation(config)
