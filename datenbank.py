@@ -1,0 +1,287 @@
+"""
+datenbank.py
+------------
+Datenverwaltung, Konfiguration und Hilfsfunktionen.
+Dieses Modul ist für das Einlesen, Validieren und Speichern aller lokalen Daten
+verantwortlich. Dazu gehören die Konfigurationsdatei (config.json), Firmenprofile, 
+Kunden- und Produktdatenbanken sowie die temporären Rechnungs-CSVs. Zudem enthält
+es globale Logik für Datumsberechnungen und Nummernkreise.
+"""
+import csv
+import os
+import sys
+import json
+import re
+from datetime import datetime
+
+CONFIG_DATEI = "config.json"
+LOCK_FILE = "erechnung.lock"
+
+EINHEITEN_LISTE = [
+    "Stück (C62)", "Pauschale (LS)", "Stunde(n) (HUR)", 
+    "Monat(e) (MON)", "Tag(e) (DAY)", "km (KMT)", "Satz (SET)"
+]
+
+EINHEITEN_MAPPING = {
+    "C62": "Stück", "LS": "Pauschale", "HUR": "Stunde(n)",
+    "MON": "Monat(e)", "DAY": "Tag(e)", "KMT": "km", "SET": "Satz"
+}
+
+def get_resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+def create_csv_if_missing(filename, header_str):
+    if not os.path.exists(filename):
+        with open(filename, 'w', encoding='utf-8-sig') as f:
+            if header_str: f.write(header_str + "\n")
+
+def get_default_profile(suffix=""):
+    s = f"_{suffix}" if suffix else ""
+    return {
+        "profil_name": "Hauptfirma" if not suffix else f"Firma {suffix}",
+        "firma_csv": f"firma{s}.csv",
+        "rechnung_csv": f"rechnung{s}.csv",
+        "briefbogen_pdf": f"briefbogen{s}.pdf",
+        "zusatz_csv": f"zusatz{s}.csv",
+        "gruss_csv": f"gruss{s}.csv",
+        "header_csv": f"header{s}.csv",
+        "einleitung_csv": f"einleitung{s}.csv",
+        "ausgabe_ordner": f"Rechnungen_PDF{s}",
+        "kunden_csv": f"kunden{s}.csv",
+        "produkte_csv": f"produkte{s}.csv",
+        "auswertungen_ordner": f"Auswertungen{s}",
+        "faelligkeit_tage": "29",
+        "letzte_rechnungsnummer": "",
+        "aktuelles_rechnungsjahr": str(datetime.now().year),
+        "letzte_einheit": "Stück (C62)",
+        "keep_header": True,
+        "keep_einleitung": True,
+        "keep_gruss": True,
+        "keep_raten": False,
+        "keep_kunde_speichern": False
+    }
+
+def init_config():
+    config = {}
+    if os.path.exists(CONFIG_DATEI):
+        try:
+            with open(CONFIG_DATEI, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except: pass
+
+    if "profiles" not in config:
+        prof1 = get_default_profile("")
+        keys_to_migrate = list(prof1.keys())
+        for k in keys_to_migrate:
+            if k in config:
+                prof1[k] = config.pop(k)
+        config["profiles"] = [prof1]
+        config["active_profile_index"] = 0
+
+    if "window_geometry" not in config: config["window_geometry"] = "950x850"
+    if "terms_accepted" not in config: config["terms_accepted"] = False
+
+    for p in config["profiles"]:
+        if "aktuelles_rechnungsjahr" not in p: p["aktuelles_rechnungsjahr"] = str(datetime.now().year)
+        
+        if not os.path.exists(p.get("ausgabe_ordner", "Rechnungen_PDF")): os.makedirs(p.get("ausgabe_ordner", "Rechnungen_PDF"))
+        if not os.path.exists(p.get("auswertungen_ordner", "Auswertungen")): os.makedirs(p.get("auswertungen_ordner", "Auswertungen"))
+        
+        create_csv_if_missing(p.get("firma_csv", "firma.csv"), "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
+        create_csv_if_missing(p.get("rechnung_csv", "rechnung.csv"), "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
+        create_csv_if_missing(p.get("kunden_csv", "kunden.csv"), "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
+        create_csv_if_missing(p.get("produkte_csv", "produkte.csv"), "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+        create_csv_if_missing(p.get("zusatz_csv", "zusatz.csv"), "")
+        create_csv_if_missing(p.get("gruss_csv", "gruss.csv"), "")
+        create_csv_if_missing(p.get("header_csv", "header.csv"), "")
+        create_csv_if_missing(p.get("einleitung_csv", "einleitung.csv"), "")
+
+    return config
+
+def speichere_config(config):
+    with open(CONFIG_DATEI, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=4)
+
+def berechne_naechste_rechnungsnummer(letzte_nr):
+    if not letzte_nr: return f"RE-{datetime.now().year}-001"
+    match = re.search(r'(\d+)$', letzte_nr)
+    if match:
+        zahl_str = match.group(1)
+        naechste_zahl = str(int(zahl_str) + 1).zfill(len(zahl_str))
+        return letzte_nr[:match.start()] + naechste_zahl
+    return letzte_nr + "-1"
+
+def lade_firma(pfad):
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            reader = list(csv.DictReader(f, delimiter=';'))
+            if reader: return reader[0]
+    except: pass
+    return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': ''}
+
+def speichere_firma(pfad, daten):
+    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Email', 'Telefon']
+    with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
+        writer.writeheader()
+        writer.writerow(daten)
+
+def lade_rechnungen(pfad):
+    rechnungen = {}
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f, delimiter=';'):
+                r_nr = row['Rechnungsnummer']
+                if r_nr not in rechnungen: rechnungen[r_nr] = {'kopf': row, 'positionen': []}
+                rechnungen[r_nr]['positionen'].append(row)
+    except: pass
+    return rechnungen
+
+def lade_zusatz_csv(pfad):
+    texte = []
+    if not os.path.exists(pfad): return texte
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                parts = line.split(';', 1)
+                if len(parts) == 2:
+                    texte.append({'pos': parts[0].strip(), 'text': parts[1].strip().replace('~cr', '\n')})
+    except: pass
+    return texte
+
+def lade_textdatei(pfad):
+    if not os.path.exists(pfad): return ""
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            return f.read().strip().replace('~cr', '\n')
+    except: return ""
+
+def speichere_textdatei(pfad, text):
+    if not pfad: return
+    try:
+        with open(pfad, 'w', encoding='utf-8-sig') as f:
+            f.write(text.replace('\n', '~cr').strip())
+    except: pass
+
+def lade_kunden(pfad):
+    kunden = []
+    if not os.path.exists(pfad): return kunden
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f, delimiter=';'):
+                kunden.append(row)
+    except: pass
+    return kunden
+
+def speichere_alle_kunden(pfad, kunden_liste):
+    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen']
+    with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
+        writer.writeheader()
+        writer.writerows(kunden_liste)
+
+def lade_produkte(pfad):
+    produkte = []
+    if not os.path.exists(pfad): return produkte
+    try:
+        with open(pfad, mode='r', encoding='utf-8-sig') as f:
+            for row in csv.DictReader(f, delimiter=';'):
+                produkte.append(row)
+    except: pass
+    return produkte
+
+def speichere_alle_produkte(pfad, produkte_liste):
+    fieldnames = ['Bezeichnung', 'Menge', 'Einheit', 'EinzelpreisNetto', 'Steuersatz']
+    with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
+        writer.writeheader()
+        writer.writerows(produkte_liste)
+
+def speichere_kunde(pfad, kunde_daten):
+    kunden = lade_kunden(pfad)
+    updated = False
+    for k in kunden:
+        if k['Name'].strip().lower() == kunde_daten['Name'].strip().lower():
+            k.update(kunde_daten)
+            updated = True
+            break
+    if not updated:
+        kunden.append(kunde_daten)
+    speichere_alle_kunden(pfad, kunden)
+
+def parse_flexible_date(d_str):
+    if not d_str: return ""
+    d_str = d_str.strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', d_str): return d_str
+    formate = ["%d%m%y", "%d,%m,%y", "%d.%m.%Y", "%d,%m,%Y", "%d.%m.%y"]
+    for fmt in formate:
+        try: return datetime.strptime(d_str, fmt).strftime("%Y-%m-%d")
+        except ValueError: continue
+    return d_str
+
+def parse_flexible_date_span(span_str):
+    if not span_str: return ""
+    span_str = span_str.strip()
+    if "|" in span_str:
+        parts = span_str.split('|', 1)
+        return f"{parse_flexible_date(parts[0])}|{parse_flexible_date(parts[1])}"
+    if "-" in span_str and not re.match(r'^\d{4}-\d{2}-\d{2}$', span_str):
+        parts = span_str.split('-', 1)
+        s = parse_flexible_date(parts[0])
+        e = parse_flexible_date(parts[1])
+        if re.match(r'^\d{4}-\d{2}-\d{2}$', s) and re.match(r'^\d{4}-\d{2}-\d{2}$', e):
+            return f"{s}|{e}"
+    return parse_flexible_date(span_str)
+
+def formatiere_datum(d_str): return datetime.strptime(d_str, '%Y-%m-%d').strftime('%Y%m%d')
+def formatiere_datum_lesbar(d_str): return datetime.strptime(d_str, '%Y-%m-%d').strftime('%d.%m.%Y')
+
+def parse_lz_lesbar(lz_str):
+    if not lz_str: return ""
+    if "|" in lz_str:
+        s, e = lz_str.split('|')
+        s_lesbar = formatiere_datum_lesbar(s)
+        e_lesbar = formatiere_datum_lesbar(e)
+        if s_lesbar == e_lesbar:
+            return s_lesbar
+        return f"{s_lesbar} - {e_lesbar}"
+    return formatiere_datum_lesbar(lz_str)
+
+def safe_float(wert, fallback=0.0):
+    try: return float(str(wert).replace(',', '.'))
+    except (ValueError, TypeError): return fallback
+
+def f_curr(val):
+    return f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " €"
+
+def f_num(val):
+    return f"{val:g}".replace('.', ',')
+
+def check_lz_logic(kopf, positionen):
+    def get_dates(lz_str):
+        if not lz_str: return None, None
+        parts = lz_str.split('|')
+        try:
+            s = datetime.strptime(parts[0], "%Y-%m-%d")
+            e = datetime.strptime(parts[1] if len(parts) > 1 else parts[0], "%Y-%m-%d")
+            return s, e
+        except: return None, None
+
+    g_s, g_e = get_dates(kopf.get('LeistungszeitraumKopf', '').strip())
+    
+    for pos in positionen:
+        lz_pos = pos.get('LeistungszeitraumPos', '').strip()
+        if not g_s and not lz_pos:
+            return False, f"Fehler bei Position {pos.get('PosNr')}: Es wurde weder ein Leistungszeitraum für die gesamte Rechnung noch für diese Position angegeben."
+        if g_s and g_e and lz_pos:
+            p_s, p_e = get_dates(lz_pos)
+            if p_s and p_e:
+                if p_s < g_s or p_e > g_e:
+                    return False, f"Fehler bei Position {pos.get('PosNr')}:\nDer Zeitraum der Position ({parse_lz_lesbar(lz_pos)}) liegt außerhalb des Zeitraums der Gesamtrechnung ({parse_lz_lesbar(kopf.get('LeistungszeitraumKopf', ''))}).\n\nBitte korrigieren Sie die Daten entsprechend."
+    return True, ""
