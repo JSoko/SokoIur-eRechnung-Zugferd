@@ -456,6 +456,15 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     if z_csv: xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(z_csv.replace('\\n', '\n'))}</ram:Content></ram:IncludedNote>\n"
     if gruss_text: xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(gruss_text)}</ram:Content></ram:IncludedNote>\n"
     
+    # XML Zahlungsbedingungen (BT-20)
+    z_bed = kopf.get('Zahlungsbedingungen', '').strip()
+    xml_payment_terms = f"<ram:Description>{clean_xml_text(z_bed)}</ram:Description>" if z_bed else ""
+    
+    # XML Rechnungsvermerk / Invoice Note (BT-22)
+    r_vermerk = kopf.get('Rechnungsvermerk', '').strip()
+    if r_vermerk:
+        xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(r_vermerk)}</ram:Content><ram:SubjectCode>REG</ram:SubjectCode></ram:IncludedNote>\n"
+    
     xml_buyer_ref = f"<ram:BuyerReference>{esc_xml(kopf.get('Aktenzeichen', '').strip())}</ram:BuyerReference>" if kopf.get('Aktenzeichen', '').strip() else ""
     xml_buyer_id = f"<ram:ID>{esc_xml(kopf.get('KundeNr', '').strip())}</ram:ID>" if kopf.get('KundeNr', '').strip() else ""
     
@@ -490,7 +499,10 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
             </ram:SpecifiedTradeSettlementPaymentMeans>
             {xml_tax_totals}
             {xml_billing_period_header}
-            <ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">{f_datum}</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>
+            <ram:SpecifiedTradePaymentTerms>
+                {xml_payment_terms}
+                <ram:DueDateDateTime><udt:DateTimeString format="102">{f_datum}</udt:DateTimeString></ram:DueDateDateTime>
+            </ram:SpecifiedTradePaymentTerms>
             <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
                 <ram:LineTotalAmount>{gesamt_netto:.2f}</ram:LineTotalAmount><ram:TaxBasisTotalAmount>{gesamt_netto:.2f}</ram:TaxBasisTotalAmount>
                 <ram:TaxTotalAmount currencyID="EUR">{gesamt_steuer:.2f}</ram:TaxTotalAmount><ram:GrandTotalAmount>{gesamt_brutto:.2f}</ram:GrandTotalAmount><ram:DuePayableAmount>{gesamt_brutto:.2f}</ram:DuePayableAmount>
