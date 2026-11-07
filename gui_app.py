@@ -27,7 +27,7 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
         tag_des_jahres = kompilierungs_datum.timetuple().tm_yday
         minute_des_tages = kompilierungs_datum.hour * 60 + kompilierungs_datum.minute
         
-        self.current_version = f"1.{yy}.{tag_des_jahres:03d}.{minute_des_tages:04d}"
+        self.current_version = f"1.{yy}{tag_des_jahres:03d}{minute_des_tages:04d}"
         
         icon_path = get_resource_path("SokoIur.ico")
         if os.path.exists(icon_path):
