@@ -1,3 +1,5 @@
+# Depricated!
+# Wird nicht mehr benötigt / weiterentwickelt
 import csv
 import os
 import sys
