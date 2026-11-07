@@ -14,32 +14,140 @@ ctk.set_default_color_theme("blue")
 
 class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin, TabHilfeMixin, UpdaterMixin):
     
-    def lock_firm(self, p_dict):
-        if not p_dict.get("base_data_path"): return True
-        firm_dir = os.path.join(p_dict["base_data_path"], p_dict["profil_name"].replace(" ", "_"))
-        if not os.path.exists(firm_dir): return True
-        
-        lock_file = os.path.join(firm_dir, "erechnung.lock")
-        if os.path.exists(lock_file):
-            messagebox.showwarning("Firma gesperrt", f"Die Firma '{p_dict['profil_name']}' wird aktuell von einem anderen Benutzer bearbeitet.\nBitte warten Sie, bis diese freigegeben ist.")
-            return False
-            
+    def get_firm_lock_path(self):
+        base_path = self.config.get("base_data_path")
+        if not base_path: return None
+        firm_dir = os.path.join(base_path, p_dict["profil_name"].replace(" ", "_")) if 'p_dict' in locals() else os.path.join(base_path, self.p_config["profil_name"].replace(" ", "_"))
+        if not os.path.exists(firm_dir): os.makedirs(firm_dir, exist_ok=True)
+        return os.path.join(firm_dir, "erechnung.lock")
+    
+    def set_firm_lock(self):
+        lock_file = self.get_firm_lock_path()
+        if not lock_file: return
         try:
             with open(lock_file, "w") as f: f.write("LOCKED")
             self.current_lock_file = lock_file
-            return True
-        except: return True
-
+        except: pass
+    
     def unlock_firm(self):
         if hasattr(self, 'current_lock_file') and self.current_lock_file and os.path.exists(self.current_lock_file):
             try: os.remove(self.current_lock_file)
             except: pass
             self.current_lock_file = None
+    
+    def on_tab_change(self):
+        if getattr(self, '_initializing', False):
+            return  # Während des Starts ignorieren
+            
+        selected_tab = self.tabview.get()
+        if selected_tab in ["Manuelle Eingabe", "Einstellungen"]:
+            if not self.check_and_handle_lock(selected_tab):
+                self.tabview.set("Hilfe & Doku")
+                return
+            self.lock_firm(self.p_config)
+        else:
+            self.unlock_firm()
+
+    def lock_firm(self, p_dict):
+        base_path = self.config.get("base_data_path")
+        if not base_path: return True
+        firm_dir = os.path.join(base_path, p_dict["profil_name"].replace(" ", "_"))
+        if not os.path.exists(firm_dir): os.makedirs(firm_dir, exist_ok=True)
+        
+        lock_file = os.path.join(firm_dir, "erechnung.lock")
+        
+        # WICHTIG: Wenn wir den Lock selbst halten (gleiche Sitzung), ist das unschädlich
+        if hasattr(self, 'current_lock_file') and self.current_lock_file == lock_file:
+            return True
+
+        if os.path.exists(lock_file):
+            # Optional: Prüfen ob die Lock-Datei veraltet ist (z.B. älter als 12 Stunden von einem abgestürzten Prozess)
+            try:
+                file_age = time.time() - os.path.getmtime(lock_file)
+                if file_age > 43200: # 12 Stunden
+                    os.remove(lock_file)
+                else:
+                    messagebox.showwarning("Firma gesperrt", f"Die Firma '{p_dict['profil_name']}' wird aktuell von einem anderen Benutzer bearbeitet.\nBitte warten Sie, bis diese freigegeben ist.")
+                    return False
+            except:
+                return False
+            
+        try:
+            with open(lock_file, "w") as f: f.write(str(os.getpid())) # Speichert die Prozess-ID zur Sicherheit
+            self.current_lock_file = lock_file
+            return True
+        except: return True
+
+    def check_and_handle_lock(self, target_tab):
+        base_path = self.config.get("base_data_path")
+        if not base_path: return True
+        firm_dir = os.path.join(base_path, self.p_config["profil_name"].replace(" ", "_"))
+        if not os.path.exists(firm_dir): os.makedirs(firm_dir, exist_ok=True)
+        lock_file = os.path.join(firm_dir, "erechnung.lock")
+
+        # WICHTIG: Wenn wir den Lock in dieser Instanz bereits halten, gar nicht erst warnen!
+        if hasattr(self, 'current_lock_file') and self.current_lock_file == lock_file:
+            return True
+
+        while os.path.exists(lock_file):
+            # Wenn wir selbst der Halter sind (gleiche PID), automatisch bereinigen und fortfahren
+            try:
+                with open(lock_file, "r") as f:
+                    content = f.read().strip()
+                if content == str(os.getpid()):
+                    self.current_lock_file = lock_file
+                    return True
+            except:
+                pass
+
+            dlg = ctk.CTkToplevel(self)
+            dlg.title("Firma gesperrt")
+            self.center_window(dlg, 450, 200)
+            dlg.transient(self); dlg.grab_set()
+
+            ctk.CTkLabel(dlg, text=f"Die Firma '{self.p_config['profil_name']}' wird aktuell\nvon einem anderen Benutzer bearbeitet.", font=("Helvetica", 13, "bold"), justify="center").pack(pady=20)
+
+            f_btn = ctk.CTkFrame(dlg, fg_color="transparent")
+            f_btn.pack(pady=10)
+
+            result = {"action": None}
+
+            def do_retry():
+                result["action"] = "retry"
+                dlg.destroy()
+
+            def do_force_unlock():
+                if messagebox.askyesno(
+                    "Sicherheitswarnung", 
+                    "Soll der Lock wirklich entfernt werden?\n\nEs droht Datenverlust! Stellen Sie sicher, dass die Daten aktuell nicht von einem anderen Benutzer bearbeitet werden.",
+                    parent=dlg,
+                    default="no"
+                ):
+                    result["action"] = "force"
+                    dlg.destroy()
+
+            self.create_button(f_btn, text="Erneut prüfen", width=120, command=do_retry).pack(side="left", padx=5)
+            self.create_button(f_btn, text="Lock entfernen", width=120, fg_color="#b30000", hover_color="#800000", command=do_force_unlock).pack(side="left", padx=5)
+
+            self.wait_window(dlg)
+
+            if result["action"] == "retry":
+                continue
+            elif result["action"] == "force":
+                try: os.remove(lock_file)
+                except: pass
+                break
+            else:
+                return False
+
+        return True
         
     def __init__(self, config, start_in_edit=False):
         super().__init__()
         self.config = config
+        self._initializing = True  # NEU: Verhindert zu frühes Auslösen beim Start
         self.title("SokoIur eRechnung")
+        self.setup_firm_folders(self.p_config, show_message=True)
         
         if getattr(sys, 'frozen', False):
             exe_zeit = os.path.getmtime(sys.executable)
@@ -77,26 +185,78 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
         
         self.build_profile_header()
         
-        self.tabview = ctk.CTkTabview(self)
+        self.tabview = ctk.CTkTabview(self)  # Ohne command=...
         self.tabview.pack(padx=20, pady=(10, 5), fill="both", expand=True)
         
         self.tab_manuell = self.tabview.add("Manuelle Eingabe")
         self.tab_ausw = self.tabview.add("Auswertungen")
         self.tab_settings = self.tabview.add("Einstellungen")
         self.tab_hilfe = self.tabview.add("Hilfe & Doku")
+        
         # Abfrage des Datenspeicherorts beim allerersten Start
-        if not self.p_config.get("base_data_path"):
+        if not self.config.get("base_data_path"):
             new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
             if not new_path:
                 sys.exit(0)
-            self.p_config["base_data_path"] = new_path
-            self.setup_firm_folders(self.p_config)
+            self.config["base_data_path"] = new_path
+            # Hier ist show_message=True gewollt, da es die Ersteinrichtung ist
+            self.setup_firm_folders(self.p_config, show_message=True)
             speichere_config(self.config)
 
-        #Versionsprüfung vor dem Laden der UI-Daten
+        # Versionsprüfung vor dem Laden der UI-Daten
         if not self.enforce_network_version():
             return
         
+        # NEU: Sofortige Lock-Prüfung beim Programmstart für die Start-Firma
+        # Wenn die Firma bereits blockiert ist, den Start abbrechen oder in den Hilfe-Modus schalten
+        lock_file = self.get_firm_lock_path()
+        if lock_file and os.path.exists(lock_file):
+            # Prüfen ob der Lock von einem *anderen* Prozess stammt
+            is_other_process = True
+            try:
+                with open(lock_file, "r") as f:
+                    content = f.read().strip()
+                if content == str(os.getpid()):
+                    is_other_process = False
+            except:
+                pass
+
+            if is_other_process:
+                messagebox.showerror(
+                    "Programmstart verweigert", 
+                    f"Die Firma '{self.p_config['profil_name']}' ist bereits auf diesem oder einem anderen Rechner in Bearbeitung (Lock aktiv).\n\n"
+                    "Das Programm wird zum Schutz vor Datenkonflikten beendet."
+                )
+                sys.exit(0)
+
+        # Start-Firma als aktiv sperren
+        self.set_firm_lock()
+            
+        self.refresh_all_ui()
+        self.tabview.set("Manuelle Eingabe")
+        
+        # NEU: Initialisierung abgeschlossen - Überwachung jetzt aktivieren
+        self._initializing = False
+        self.tabview.configure(command=self.on_tab_change)
+        
+        # GEÄNDERT: Abfrage der config (global) anstelle von p_config
+        if not self.config.get("base_data_path"):
+            new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
+            if not new_path:
+                sys.exit(0)
+            self.config["base_data_path"] = new_path
+            self.setup_firm_folders(self.p_config)
+            speichere_config(self.config)
+
+        # Versionsprüfung vor dem Laden der UI-Daten
+        if not self.enforce_network_version():
+            return
+        
+        # NEU: Start-Firma sperren
+        if not self.lock_firm(self.p_config):
+            # Falls beim Start gesperrt, Programm nicht hart beenden, aber der User wurde gewarnt.
+            pass
+            
         self.refresh_all_ui()
         self.tabview.set("Manuelle Eingabe")
 
@@ -113,6 +273,11 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
         lbl_footer_c = ctk.CTkLabel(f_footer, text=f"| Version: {self.current_version}")
         lbl_footer_c.pack(side="left", padx=10)
         
+        # NEU: Beenden-Button ganz rechts im Footer platziert
+        self.btn_footer_exit = ctk.CTkButton(f_footer, text="Beenden", width=80, fg_color="#b30000", hover_color="#800000", command=self.on_closing)
+        self.btn_footer_exit.pack(side="right", padx=(5, 0))
+
+        # Update-Button wandert dadurch (per pack side="right") optisch links neben den Beenden-Button
         self.btn_footer_update = ctk.CTkButton(f_footer, text="Update?", width=80, fg_color="#555", hover_color="#777", command=self.check_for_updates)
         self.btn_footer_update.pack(side="right")
 
@@ -147,14 +312,13 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
             
             return path_abs
 
-    def setup_firm_folders(self, p_dict):
-        base_path = p_dict["base_data_path"]
+    def setup_firm_folders(self, p_dict, show_message=False):
+        base_path = self.config.get("base_data_path")
         firm_folder = p_dict["profil_name"].replace(" ", "_")
         firm_dir = os.path.join(base_path, firm_folder)
         ausw_dir = os.path.join(firm_dir, "ausw")
         are_dir = os.path.join(firm_dir, "are")
         
-        # NEU: Prüfen, ob der Firmenordner im Netzwerk bereits existiert
         already_exists = os.path.exists(firm_dir) and os.path.exists(os.path.join(firm_dir, "firma.csv"))
         
         os.makedirs(ausw_dir, exist_ok=True)
@@ -169,17 +333,17 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
             p_dict[key_name] = os.path.join(firm_dir, datei)
             
         if already_exists:
-            # Daten sind schon da -> Nur verknüpfen und Nutzer informieren
-            messagebox.showinfo("Netzwerk-Daten gefunden", f"Es wurden bestehende Daten für '{p_dict['profil_name']}' gefunden und erfolgreich verknüpft!")
+            # Nur anzeigen, wenn es explizit gewünscht ist (z.B. bei Neuzuweisung / Ersteinrichtung)
+            if show_message:
+                messagebox.showinfo("Netzwerk-Daten gefunden", f"Es wurden bestehende Daten für '{p_dict['profil_name']}' gefunden und erfolgreich verknüpft!")
         else:
-            # Keine Daten da -> Leere Standard-Dateien erzeugen
             from datenbank import create_csv_if_missing
             create_csv_if_missing(p_dict["firma_csv"], "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
             create_csv_if_missing(p_dict["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
             create_csv_if_missing(p_dict["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
             create_csv_if_missing(p_dict["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
             for f in ["zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]: create_csv_if_missing(p_dict[f], "")
-            
+
     def build_profile_header(self):
         for w in self.header_container.winfo_children(): w.destroy()
         
@@ -197,15 +361,23 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
             self.create_button(self.header_container, text="🗑 Löschen", width=80, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
 
     def on_profile_switch(self, wahl):
+        self.setup_firm_folders(p)  # Bleibt ohne show_message=True, daher keine Meldung!
         for i, p in enumerate(self.config["profiles"]):
             if p["profil_name"] == wahl:
-                # Versuchen die neue Firma zu sperren. Schlägt es fehl, auf alte zurückspringen.
-                if not self.lock_firm(p):
-                    self.combo_profile.set(self.p_config["profil_name"])
-                    return
+                # Stelle sicher, dass die Ordner im Zentralpfad für diese Firma existieren
+                self.setup_firm_folders(p)
+                
+                # Check Lock manuell vorab, um ggf. den Wechsel abzubrechen
+                base_path = self.config.get("base_data_path")
+                if base_path:
+                    new_lock = os.path.join(base_path, p["profil_name"].replace(" ", "_"), "erechnung.lock")
+                    if os.path.exists(new_lock):
+                        messagebox.showwarning("Firma gesperrt", f"Die Firma '{p['profil_name']}' wird aktuell bearbeitet.\nBitte warten.")
+                        self.combo_profile.set(self.p_config["profil_name"])
+                        return
 
-                # Alte Firma entsperren
                 self.unlock_firm()
+                self.lock_firm(p)
                 
                 self.config["active_profile_index"] = i
                 speichere_config(self.config)
@@ -217,24 +389,25 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
                 break
 
     def add_profile(self):
+        self.setup_firm_folders(new_p, show_message=True)
         from datenbank import get_default_profile
         import time
         if len(self.config["profiles"]) >= 5: return messagebox.showwarning("Limit erreicht", "Maximal 5 Profile.")
         d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         name = d_name.get_input()
         if name:
-            # GEÄNDERT: Allgemeinere Formulierung
-            new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
-            if not new_path: return  # Anlage abgebrochen
-            
             new_p = get_default_profile(str(int(time.time()))[-5:])
             new_p["profil_name"] = name
-            new_p["base_data_path"] = new_path
             
-            # Automatische Ordneranlage und Verknüpfung
+            # Automatische Ordneranlage im bereits festgelegten ZENTRALEN Pfad
             self.setup_firm_folders(new_p)
             
             self.config["profiles"].append(new_p)
+            
+            # Neue Firma sofort sperren (da sie jetzt aktiv wird)
+            self.unlock_firm()
+            self.lock_firm(new_p)
+            
             self.config["active_profile_index"] = len(self.config["profiles"]) - 1
             speichere_config(self.config)
             self.build_profile_header()
