@@ -20,34 +20,6 @@ from pdf_zugferd import run_auto_generation
 from gui_app import App
 
 def main():
-    # 1. Lock-File Prüfung (verhindert Mehrfachstarts)
-    if os.path.exists(LOCK_FILE):
-        root = tk.Tk()
-        root.withdraw()
-        while os.path.exists(LOCK_FILE):
-            res = messagebox.askyesnocancel(
-                "Programm läuft bereits", 
-                "Die Sperrdatei (erechnung.lock) wurde gefunden. Das Programm läuft eventuell bereits im Hintergrund.\n\n"
-                "Ja = Sperrung aufheben und trotzdem starten\n"
-                "Nein = Warten (prüft erneut)\n"
-                "Abbrechen = Beenden", 
-                parent=root
-            )
-            if res is True: 
-                try: os.remove(LOCK_FILE)
-                except: pass
-                break
-            elif res is None: 
-                root.destroy()
-                sys.exit(0)
-            else: 
-                time.sleep(1)
-        root.destroy()
-        
-    try:
-        with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
-    except: pass
-
     # 2. Kommandozeilenparameter definieren und auslesen
     parser = argparse.ArgumentParser()
     parser.add_argument("--auto", action="store_true", help="Ohne GUI generieren")
@@ -104,8 +76,6 @@ def main():
             root.destroy()
         else:
             root.destroy()
-            try: os.remove(LOCK_FILE)
-            except: pass
             sys.exit(0)
 
     # 6. Etwaige Kommandozeilenpfade temporär in das aktive Profil überschreiben
@@ -124,8 +94,7 @@ def main():
     # 7. Start-Weiche: GUI oder Auto-Generierung (CLI)
     if args.auto:
         run_auto_generation(config)
-        try: os.remove(LOCK_FILE)
-        except: pass
+
     else:
         app = App(config, start_in_edit=args.edit)
         app.mainloop()
