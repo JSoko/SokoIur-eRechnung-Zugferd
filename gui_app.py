@@ -1,5 +1,6 @@
 import customtkinter as ctk
 import tkinter.messagebox as messagebox
+from tkinter import filedialog  # <--- Diese Zeile muss hinzugefügt werden
 import os
 import sys
 from datetime import datetime, timedelta
@@ -12,6 +13,29 @@ ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
 class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin, TabHilfeMixin, UpdaterMixin):
+    
+    def lock_firm(self, p_dict):
+        if not p_dict.get("base_data_path"): return True
+        firm_dir = os.path.join(p_dict["base_data_path"], p_dict["profil_name"].replace(" ", "_"))
+        if not os.path.exists(firm_dir): return True
+        
+        lock_file = os.path.join(firm_dir, "erechnung.lock")
+        if os.path.exists(lock_file):
+            messagebox.showwarning("Firma gesperrt", f"Die Firma '{p_dict['profil_name']}' wird aktuell von einem anderen Benutzer bearbeitet.\nBitte warten Sie, bis diese freigegeben ist.")
+            return False
+            
+        try:
+            with open(lock_file, "w") as f: f.write("LOCKED")
+            self.current_lock_file = lock_file
+            return True
+        except: return True
+
+    def unlock_firm(self):
+        if hasattr(self, 'current_lock_file') and self.current_lock_file and os.path.exists(self.current_lock_file):
+            try: os.remove(self.current_lock_file)
+            except: pass
+            self.current_lock_file = None
+        
     def __init__(self, config, start_in_edit=False):
         super().__init__()
         self.config = config
@@ -60,6 +84,15 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
         self.tab_ausw = self.tabview.add("Auswertungen")
         self.tab_settings = self.tabview.add("Einstellungen")
         self.tab_hilfe = self.tabview.add("Hilfe & Doku")
+        # Abfrage des Datenspeicherorts beim allerersten Start
+        if not self.p_config.get("base_data_path"):
+            new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
+            if not new_path:
+                sys.exit(0)
+            self.p_config["base_data_path"] = new_path
+            self.setup_firm_folders(self.p_config)
+            speichere_config(self.config)
+
         #Versionsprüfung vor dem Laden der UI-Daten
         if not self.enforce_network_version():
             return
@@ -87,6 +120,66 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
     def p_config(self):
         return self.config["profiles"][self.config["active_profile_index"]]
 
+    def ask_for_base_path(self, title_text):
+        program_dir = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        while True:
+            messagebox.showinfo(
+                "Datenspeicherort wählen", 
+                f"{title_text}\n\nBitte wählen Sie einen Ordner für die Datenspeicherung.\n\n"
+                "WICHTIG: Der Ordner darf NICHT im oder unterhalb des Programmverzeichnisses liegen! "
+                "Bei der Nutzung von mehreren Rechnern aus sollte zwingend ein freigegebenes Netzwerklaufwerk gewählt werden."
+            )
+            path = filedialog.askdirectory(title="Daten-Grundpfad wählen")
+            if not path:
+                if messagebox.askyesno("Abbruch", "Ohne Datenspeicherort kann die Firma nicht eingerichtet werden. Möchten Sie abbrechen?"):
+                    return None
+                continue
+            
+            path_abs = os.path.abspath(path)
+            try:
+                common = os.path.commonpath([program_dir, path_abs])
+                if common == program_dir:
+                    messagebox.showwarning("Ungültiger Pfad", f"Der gewählte Pfad liegt innerhalb des Programmordners:\n{program_dir}\n\nBitte wählen Sie einen anderen Ort (z. B. auf einem Netzwerklaufwerk).")
+                    continue
+            except ValueError:
+                # Unterschiedliche Laufwerke (z.B. C: und Z:) lösen einen ValueError aus = Gültig und sicher!
+                pass
+            
+            return path_abs
+
+    def setup_firm_folders(self, p_dict):
+        base_path = p_dict["base_data_path"]
+        firm_folder = p_dict["profil_name"].replace(" ", "_")
+        firm_dir = os.path.join(base_path, firm_folder)
+        ausw_dir = os.path.join(firm_dir, "ausw")
+        are_dir = os.path.join(firm_dir, "are")
+        
+        # NEU: Prüfen, ob der Firmenordner im Netzwerk bereits existiert
+        already_exists = os.path.exists(firm_dir) and os.path.exists(os.path.join(firm_dir, "firma.csv"))
+        
+        os.makedirs(ausw_dir, exist_ok=True)
+        os.makedirs(are_dir, exist_ok=True)
+        
+        p_dict["auswertungen_ordner"] = ausw_dir
+        p_dict["ausgabe_ordner"] = are_dir
+        
+        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
+        for datei in dateien:
+            key_name = datei.replace(".", "_")
+            p_dict[key_name] = os.path.join(firm_dir, datei)
+            
+        if already_exists:
+            # Daten sind schon da -> Nur verknüpfen und Nutzer informieren
+            messagebox.showinfo("Netzwerk-Daten gefunden", f"Es wurden bestehende Daten für '{p_dict['profil_name']}' gefunden und erfolgreich verknüpft!")
+        else:
+            # Keine Daten da -> Leere Standard-Dateien erzeugen
+            from datenbank import create_csv_if_missing
+            create_csv_if_missing(p_dict["firma_csv"], "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
+            create_csv_if_missing(p_dict["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
+            create_csv_if_missing(p_dict["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
+            create_csv_if_missing(p_dict["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
+            for f in ["zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]: create_csv_if_missing(p_dict[f], "")
+            
     def build_profile_header(self):
         for w in self.header_container.winfo_children(): w.destroy()
         
@@ -106,31 +199,46 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
     def on_profile_switch(self, wahl):
         for i, p in enumerate(self.config["profiles"]):
             if p["profil_name"] == wahl:
+                # Versuchen die neue Firma zu sperren. Schlägt es fehl, auf alte zurückspringen.
+                if not self.lock_firm(p):
+                    self.combo_profile.set(self.p_config["profil_name"])
+                    return
+
+                # Alte Firma entsperren
+                self.unlock_firm()
+                
                 self.config["active_profile_index"] = i
                 speichere_config(self.config)
-                #Versionsprüfung beim Profilwechsel
+                
                 if not self.enforce_network_version():
                     return
+                    
                 self.refresh_all_ui()
                 break
 
     def add_profile(self):
-        from datenbank import get_default_profile, create_csv_if_missing
+        from datenbank import get_default_profile
         import time
         if len(self.config["profiles"]) >= 5: return messagebox.showwarning("Limit erreicht", "Maximal 5 Profile.")
         d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         name = d_name.get_input()
         if name:
+            # GEÄNDERT: Allgemeinere Formulierung
+            new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
+            if not new_path: return  # Anlage abgebrochen
+            
             new_p = get_default_profile(str(int(time.time()))[-5:])
             new_p["profil_name"] = name
-            os.makedirs(new_p["ausgabe_ordner"], exist_ok=True); os.makedirs(new_p["auswertungen_ordner"], exist_ok=True)
-            create_csv_if_missing(new_p["firma_csv"], "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
-            create_csv_if_missing(new_p["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
-            create_csv_if_missing(new_p["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
-            create_csv_if_missing(new_p["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
-            for f in ["zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]: create_csv_if_missing(new_p[f], "")
-            self.config["profiles"].append(new_p); self.config["active_profile_index"] = len(self.config["profiles"]) - 1
-            speichere_config(self.config); self.build_profile_header(); self.refresh_all_ui()
+            new_p["base_data_path"] = new_path
+            
+            # Automatische Ordneranlage und Verknüpfung
+            self.setup_firm_folders(new_p)
+            
+            self.config["profiles"].append(new_p)
+            self.config["active_profile_index"] = len(self.config["profiles"]) - 1
+            speichere_config(self.config)
+            self.build_profile_header()
+            self.refresh_all_ui()
 
     def rename_profile(self):
         d_name = ctk.CTkInputDialog(text="Neuer Name für das Profil:", title="Profil umbenennen")
@@ -170,8 +278,7 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
     def on_closing(self):
         self.config["window_geometry"] = self.geometry()
         speichere_config(self.config)
-        try: os.remove(LOCK_FILE)
-        except: pass
+        self.unlock_firm() # NEU: Hebt die Sperre der aktiven Firma auf
         self.destroy()
 
     def center_window(self, dialog, width, height):
