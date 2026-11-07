@@ -569,22 +569,57 @@ class TabEinstellungenMixin:
         self.lbl_letzte_nr.pack(side="left", padx=10)
         self.create_button(f_nr, text="✏️ Korrigieren", width=80, command=self.edit_letzte_nr).pack(side="left")
 
-        ctk.CTkLabel(self.tab_settings, text="Dateipfade der aktiven Firma:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(10, 5))
+        # NEU: Strukturierte Pfadverwaltung
+        ctk.CTkLabel(self.tab_settings, text="Speicherorte & Ordnerstruktur:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(10, 5))
         
-        self.path_vars = {}
-        for key in ["firma_csv", "rechnung_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv", "ausgabe_ordner", "auswertungen_ordner", "kunden_csv", "produkte_csv"]:
-            val = self.p_config.get(key, "")
-            f = ctk.CTkFrame(self.tab_settings, fg_color="transparent"); f.pack(fill="x", pady=2, padx=20)
-            ctk.CTkLabel(f, text=key, width=150, anchor="w").pack(side="left")
-            entry = ctk.CTkEntry(f, width=400); entry.insert(0, val); entry.pack(side="left", padx=10, fill="x", expand=True)
-            self.path_vars[key] = entry
-            self.create_button(f, text="📂", width=40, command=lambda k=key, e=entry: self.browse_path_for_entry(e, is_dir=("ordner" in k))).pack(side="left")
+        # Startpfad (schreibgeschützt)
+        start_pfad = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        f_start = ctk.CTkFrame(self.tab_settings, fg_color="transparent"); f_start.pack(fill="x", pady=2, padx=20)
+        ctk.CTkLabel(f_start, text="Programm-Startpfad:", width=150, anchor="w").pack(side="left")
+        e_start = ctk.CTkEntry(f_start, width=400); e_start.insert(0, start_pfad); e_start.configure(state="readonly")
+        e_start.pack(side="left", padx=10, fill="x", expand=True)
+
+        ctk.CTkLabel(self.tab_settings, text="Hinweis: Bei Installation im Netzwerk sollte der Daten-Grundpfad auf einem Netzwerklaufwerk liegen.", text_color="orange", font=("Helvetica", 11)).pack(anchor="w", padx=20, pady=2)
+
+        # Daten-Grundpfad
+        f_base = ctk.CTkFrame(self.tab_settings, fg_color="transparent"); f_base.pack(fill="x", pady=2, padx=20)
+        ctk.CTkLabel(f_base, text="Daten-Grundpfad:", width=150, anchor="w").pack(side="left")
+        self.entry_base_path = ctk.CTkEntry(f_base, width=400)
+        self.entry_base_path.insert(0, self.p_config.get("base_data_path", start_pfad))
+        self.entry_base_path.pack(side="left", padx=10, fill="x", expand=True)
+        self.create_button(f_base, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_base_path, is_dir=True)).pack(side="left")
             
-        self.create_button(self.tab_settings, text="Pfade Speichern", command=self.save_settings).pack(pady=10)
+        self.create_button(self.tab_settings, text="Struktur anlegen & Pfade speichern", command=self.save_settings).pack(pady=10)
 
     def save_settings(self):
-        for key, entry in self.path_vars.items(): self.p_config[key] = entry.get()
-        speichere_config(self.config); messagebox.showinfo("Gespeichert", "Die Dateipfade wurden gespeichert!")
+        base_path = self.entry_base_path.get().strip()
+        if not base_path:
+            return messagebox.showwarning("Fehler", "Bitte einen Grundpfad angeben.")
+            
+        # Ordnername der Firma ohne Leerzeichen
+        firm_folder = self.p_config["profil_name"].replace(" ", "_")
+        
+        # Neue Struktur definieren (ohne 'daten' Unterordner)
+        firm_dir = os.path.join(base_path, firm_folder)
+        ausw_dir = os.path.join(firm_dir, "ausw")
+        are_dir = os.path.join(firm_dir, "are")
+        
+        # Ordner physisch anlegen
+        os.makedirs(ausw_dir, exist_ok=True)
+        os.makedirs(are_dir, exist_ok=True)
+        
+        # Pfade im Profil aktualisieren
+        self.p_config["base_data_path"] = base_path
+        self.p_config["auswertungen_ordner"] = ausw_dir
+        self.p_config["ausgabe_ordner"] = are_dir
+        
+        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
+        for datei in dateien:
+            key_name = datei.replace(".", "_")
+            self.p_config[key_name] = os.path.join(firm_dir, datei)
+            
+        speichere_config(self.config)
+        messagebox.showinfo("Gespeichert", f"Die Ordnerstruktur wurde in\n{firm_dir}\nangelegt und gespeichert!")
 
     def open_firma_manager(self):
         d_edit = ctk.CTkToplevel(self); d_edit.title("Firmendaten bearbeiten")
@@ -728,11 +763,48 @@ class TabHilfeMixin:
         for label, search_str in HILFE_KAPITEL:
             self.create_button(f_toc, text=label, anchor="w", fg_color="#444", hover_color="#666", command=lambda s=search_str: jump_to(s)).pack(pady=2, fill="x")
 
-
 class UpdaterMixin:
-    def check_for_updates(self):
-        if not messagebox.askyesno("Verbindung herstellen?", "Möchten Sie jetzt die Verbindung zu GitHub für die Update-Prüfung herstellen?"): return
-        self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
+    def enforce_network_version(self):
+        base_path = self.p_config.get("base_data_path", "")
+        if not base_path or not os.path.exists(base_path): return True
+        
+        version_file = os.path.join(base_path, "erech.txt")
+        stored_version = ""
+        if os.path.exists(version_file):
+            try:
+                with open(version_file, "r") as f:
+                    stored_version = f.read().strip()
+            except: pass
+            
+        def parse_v(v):
+            if not v: return 0.0
+            p = v.split('.')
+            return float(p[0] + '.' + ''.join(p[1:]))
+            
+        c_v = parse_v(self.current_version)
+        s_v = parse_v(stored_version)
+        
+        if c_v < s_v:
+            self.withdraw()  # Hauptfenster verstecken, um Datenzugriff zu blockieren
+            messagebox.showerror("Versionskonflikt", f"Die Daten wurden mit einer neueren Programmversion ({stored_version}) bearbeitet.\n\nUm Datenverlust im Netzwerk zu vermeiden, ist ein Update zwingend erforderlich!")
+            self.check_for_updates(force=True)
+            return False
+        elif c_v > s_v:
+            try:
+                with open(version_file, "w") as f:
+                    f.write(self.current_version)
+            except: pass
+        return True
+
+    def check_for_updates(self, force=False):
+        if not force:
+            if not messagebox.askyesno("Verbindung herstellen?", "Möchten Sie jetzt die Verbindung zu GitHub für die Update-Prüfung herstellen?"): return
+        else:
+            if not messagebox.askyesno("Update erforderlich", "Möchten Sie jetzt zu GitHub verbinden, um das zwingend erforderliche Update zu laden?\n(Bei 'Nein' wird das Programm sicherheitshalber beendet)"):
+                self.do_update_exit()
+                return
+                
+        if hasattr(self, 'btn_update'): self.btn_update.configure(text="⏳ Suche läuft...", state="disabled")
         if hasattr(self, 'btn_footer_update'): self.btn_footer_update.configure(text="⏳ Suche...", state="disabled")
         
         def _check():
@@ -745,9 +817,10 @@ class UpdaterMixin:
                 
                 if not latest_version or not assets:
                     self.after(0, lambda: [
-                        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                        (self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal") if hasattr(self, 'btn_update') else None),
                         (self.btn_footer_update.configure(text="Update?", state="normal") if hasattr(self, 'btn_footer_update') else None),
-                        messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden.")
+                        messagebox.showerror("Fehler", "Keine gültigen Release-Daten gefunden."),
+                        self.do_update_exit() if force else None
                     ])
                     return
                 
@@ -755,31 +828,43 @@ class UpdaterMixin:
                 
                 is_newer = False
                 try:
-                    l_v = list(map(int, latest_version.split('.')))
-                    c_v = list(map(int, self.current_version.split('.')))
-                    is_newer = l_v > c_v
-                except: is_newer = latest_version > self.current_version
+                    def parse_v(v):
+                        p = v.split('.')
+                        return float(p[0] + '.' + ''.join(p[1:]))
+                    
+                    is_newer = parse_v(latest_version) > parse_v(self.current_version)
+                except: 
+                    is_newer = latest_version > self.current_version
                 
-                if is_newer: self.after(0, lambda: self.prompt_update(latest_version, download_url))
+                if is_newer: 
+                    self.after(0, lambda: self.prompt_update(latest_version, download_url, force))
                 else:
                     self.after(0, lambda: [
-                        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                        (self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal") if hasattr(self, 'btn_update') else None),
                         (self.btn_footer_update.configure(text="Update?", state="normal") if hasattr(self, 'btn_footer_update') else None),
-                        messagebox.showinfo("Update-Prüfung", f"Sie nutzen bereits die aktuellste Version!\n\nIhre: {self.current_version}\nOnline: {latest_version}")
+                        messagebox.showinfo("Update-Prüfung", f"Sie nutzen bereits die aktuellste Version!\n\nIhre: {self.current_version}\nOnline: {latest_version}") if not force else messagebox.showerror("Fehler", "Online ist keine neuere Version verfügbar. Abbruch!"),
+                        self.do_update_exit() if force else None
                     ])
             except Exception as e:
                 self.after(0, lambda: [
-                    self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal"),
+                    (self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal") if hasattr(self, 'btn_update') else None),
                     (self.btn_footer_update.configure(text="Update?", state="normal") if hasattr(self, 'btn_footer_update') else None),
-                    messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}")
+                    messagebox.showerror("Fehler", f"Fehler bei der Update-Prüfung:\n{str(e)}"),
+                    self.do_update_exit() if force else None
                 ])
         threading.Thread(target=_check, daemon=True).start()
 
-    def prompt_update(self, latest_version, download_url):
-        self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
+    def prompt_update(self, latest_version, download_url, force=False):
+        if hasattr(self, 'btn_update'): self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
         if hasattr(self, 'btn_footer_update'): self.btn_footer_update.configure(text="Update?", state="normal")
-        if messagebox.askyesno("Update verfügbar!", f"Version {latest_version} ist verfügbar!\nMöchten Sie diese jetzt herunterladen und installieren?"):
+        
+        msg = f"Version {latest_version} ist verfügbar!\nMöchten Sie diese jetzt herunterladen und installieren?"
+        if force: msg = f"Zwingendes Update auf Version {latest_version} gefunden!\nJetzt installieren und neu starten?"
+        
+        if messagebox.askyesno("Update verfügbar!", msg):
             self.download_and_install_update(download_url)
+        elif force:
+            self.do_update_exit()
 
     def download_and_install_update(self, download_url):
         dl_win = ctk.CTkToplevel(self); dl_win.title("Update")
