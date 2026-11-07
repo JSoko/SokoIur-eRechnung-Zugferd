@@ -60,6 +60,9 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
         self.tab_ausw = self.tabview.add("Auswertungen")
         self.tab_settings = self.tabview.add("Einstellungen")
         self.tab_hilfe = self.tabview.add("Hilfe & Doku")
+        #Versionsprüfung vor dem Laden der UI-Daten
+        if not self.enforce_network_version():
+            return
         
         self.refresh_all_ui()
         self.tabview.set("Manuelle Eingabe")
@@ -105,6 +108,9 @@ class App(ctk.CTk, TabManuellMixin, TabAuswertungenMixin, TabEinstellungenMixin,
             if p["profil_name"] == wahl:
                 self.config["active_profile_index"] = i
                 speichere_config(self.config)
+                #Versionsprüfung beim Profilwechsel
+                if not self.enforce_network_version():
+                    return
                 self.refresh_all_ui()
                 break
 
