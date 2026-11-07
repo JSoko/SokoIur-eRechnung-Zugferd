@@ -229,9 +229,19 @@ class TabManuellMixin:
         chk_gruss = ctk.CTkCheckBox(dialog, text="Merken"); chk_gruss.pack(anchor="w", padx=20, pady=(0, 10))
         if self.p_config.get("keep_gruss", True): chk_gruss.select()
         
+        ctk.CTkLabel(dialog, text="Zahlungsbedingungen (BT-20 - Fälligkeitshinweis):").pack(anchor="w", padx=20, pady=(10, 0))
+        t_zahl = ctk.CTkTextbox(dialog, height=50); t_zahl.pack(fill="x", padx=20, pady=2)
+        t_zahl.insert("0.0", self.p_config.get("zahlungsbedingungen_default", ""))
+
+        ctk.CTkLabel(dialog, text="Rechnungsvermerk / Dauerrechnung (BT-22):").pack(anchor="w", padx=20, pady=(10, 0))
+        t_verm = ctk.CTkTextbox(dialog, height=50); t_verm.pack(fill="x", padx=20, pady=2)
+        t_verm.insert("0.0", self.p_config.get("rechnungsvermerk_default", ""))
+        
         def save_texte():
             self.header_text, self.einleitung_text, self.gruss_text = t_head.get("0.0", "end").strip(), t_einl.get("0.0", "end").strip(), t_gruss.get("0.0", "end").strip()
             self.p_config["keep_header"], self.p_config["keep_einleitung"], self.p_config["keep_gruss"] = bool(chk_head.get()), bool(chk_einl.get()), bool(chk_gruss.get())
+            self.p_config["zahlungsbedingungen_default"] = t_zahl.get("0.0", "end").strip()
+            self.p_config["rechnungsvermerk_default"] = t_verm.get("0.0", "end").strip()
             speichere_config(self.config); dialog.destroy()
             
         self.create_button(dialog, text="Übernehmen", command=save_texte).pack(pady=20)
@@ -329,6 +339,10 @@ class TabManuellMixin:
         self.update_totals_ui()
 
     def save_manual_invoice(self, silent=False):
+        # Vor dem Speichern sicherstellen, dass der Lock aktiv ist
+        if hasattr(self, 'check_and_handle_lock') and not self.check_and_handle_lock("Manuelle Eingabe"):
+            return False
+        self.set_firm_lock()
         if not self.positionen_liste: 
             messagebox.showwarning("Fehler", "Bitte erfassen Sie zunächst Positionen!"); return False
         r_datum = parse_flexible_date(self.entry_r_datum.get()); f_datum = parse_flexible_date(self.entry_f_datum.get())
@@ -348,7 +362,23 @@ class TabManuellMixin:
         full_positions = []
         for p in self.positionen_liste:
             p_copy = p.copy()
-            p_copy.update({'Rechnungsnummer': r_nr, 'Rechnungsdatum': r_datum, 'Faelligkeitsdatum': f_datum, 'KundeName': self.entry_k_name.get(), 'KundeStrasse': self.entry_k_strasse.get(), 'KundePLZ': plz, 'KundeOrt': ort, 'KundeLand': 'DE', 'Zusatztext': '', 'KundeNr': self.entry_k_nr.get().strip(), 'Aktenzeichen': self.entry_az.get().strip(), 'LeistungszeitraumKopf': lz_kopf, 'Ratenzahlung': str(bool(self.chk_raten.get()))})
+            p_copy.update({
+                'Rechnungsnummer': r_nr,
+                'Rechnungsdatum': r_datum,
+                'Faelligkeitsdatum': f_datum,
+                'KundeName': self.entry_k_name.get(),
+                'KundeStrasse': self.entry_k_strasse.get(),
+                'KundePLZ': plz,                
+                'KundeOrt': ort,
+                'KundeLand': 'DE',
+                'Zusatztext': '',
+                'KundeNr': self.entry_k_nr.get().strip(),
+                'Aktenzeichen': self.entry_az.get().strip(),
+                'LeistungszeitraumKopf': lz_kopf,
+                'Ratenzahlung': str(bool(self.chk_raten.get())),
+                'Zahlungsbedingungen': self.p_config.get("zahlungsbedingungen_default", ""),
+                'Rechnungsvermerk': self.p_config.get("rechnungsvermerk_default", "")
+                })
             full_positions.append(p_copy)
             
         fieldnames = ['Rechnungsnummer', 'Rechnungsdatum', 'Faelligkeitsdatum', 'KundeName', 'KundeStrasse', 'KundePLZ', 'KundeOrt', 'KundeLand', 'KundeNr', 'Aktenzeichen', 'LeistungszeitraumKopf', 'Ratenzahlung', 'PosNr', 'Menge', 'Einheit', 'Bezeichnung', 'EinzelpreisNetto', 'Steuersatz', 'Zusatztext', 'LeistungszeitraumPos']
@@ -568,10 +598,8 @@ class TabEinstellungenMixin:
         self.lbl_letzte_nr.pack(side="left", padx=10)
         self.create_button(f_nr, text="✏️ Korrigieren", width=80, command=self.edit_letzte_nr).pack(side="left")
 
-        # NEU: Strukturierte Pfadverwaltung
         ctk.CTkLabel(self.tab_settings, text="Speicherorte & Ordnerstruktur:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(10, 5))
         
-        # Startpfad (schreibgeschützt)
         start_pfad = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
         f_start = ctk.CTkFrame(self.tab_settings, fg_color="transparent"); f_start.pack(fill="x", pady=2, padx=20)
         ctk.CTkLabel(f_start, text="Programm-Startpfad:", width=150, anchor="w").pack(side="left")
@@ -580,11 +608,11 @@ class TabEinstellungenMixin:
 
         ctk.CTkLabel(self.tab_settings, text="Hinweis: Bei Installation im Netzwerk sollte der Daten-Grundpfad auf einem Netzwerklaufwerk liegen.", text_color="orange", font=("Helvetica", 11)).pack(anchor="w", padx=20, pady=2)
 
-        # Daten-Grundpfad
         f_base = ctk.CTkFrame(self.tab_settings, fg_color="transparent"); f_base.pack(fill="x", pady=2, padx=20)
         ctk.CTkLabel(f_base, text="Daten-Grundpfad:", width=150, anchor="w").pack(side="left")
         self.entry_base_path = ctk.CTkEntry(f_base, width=400)
-        self.entry_base_path.insert(0, self.p_config.get("base_data_path", start_pfad))
+        # GEÄNDERT: Sucht den Pfad jetzt global (self.config)
+        self.entry_base_path.insert(0, self.config.get("base_data_path", start_pfad))
         self.entry_base_path.pack(side="left", padx=10, fill="x", expand=True)
         self.create_button(f_base, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_base_path, is_dir=True)).pack(side="left")
             
@@ -595,20 +623,17 @@ class TabEinstellungenMixin:
         if not base_path:
             return messagebox.showwarning("Fehler", "Bitte einen Grundpfad angeben.")
             
-        # Ordnername der Firma ohne Leerzeichen
-        firm_folder = self.p_config["profil_name"].replace(" ", "_")
+        # GEÄNDERT: Legt den Pfad in der globalen Konfiguration ab
+        self.config["base_data_path"] = base_path
         
-        # Neue Struktur definieren (ohne 'daten' Unterordner)
+        firm_folder = self.p_config["profil_name"].replace(" ", "_")
         firm_dir = os.path.join(base_path, firm_folder)
         ausw_dir = os.path.join(firm_dir, "ausw")
         are_dir = os.path.join(firm_dir, "are")
         
-        # Ordner physisch anlegen
         os.makedirs(ausw_dir, exist_ok=True)
         os.makedirs(are_dir, exist_ok=True)
         
-        # Pfade im Profil aktualisieren
-        self.p_config["base_data_path"] = base_path
         self.p_config["auswertungen_ordner"] = ausw_dir
         self.p_config["ausgabe_ordner"] = are_dir
         
@@ -619,7 +644,6 @@ class TabEinstellungenMixin:
             
         speichere_config(self.config)
         messagebox.showinfo("Gespeichert", f"Die Ordnerstruktur wurde in\n{firm_dir}\nangelegt und gespeichert!")
-
     def open_firma_manager(self):
         d_edit = ctk.CTkToplevel(self); d_edit.title("Firmendaten bearbeiten")
         self.center_window(d_edit, 500, 500); d_edit.transient(self); d_edit.grab_set()
@@ -762,7 +786,7 @@ class TabHilfeMixin:
         
         # Datei im Programmverzeichnis speichern, damit sie für den Webspace greifbar ist
         program_dir = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
-        hilfe_pfad = os.path.join(program_dir, "SokoIur_Hilfe.html")
+        hilfe_pfad = os.path.join(program_dir, "eRech_SokoIur.html")
         
         try:
             with open(hilfe_pfad, "w", encoding="utf-8") as f:
@@ -774,9 +798,9 @@ class TabHilfeMixin:
 
 class UpdaterMixin:
     def enforce_network_version(self):
-        base_path = self.p_config.get("base_data_path", "")
+        base_path = self.config.get("base_data_path", "")
         if not base_path or not os.path.exists(base_path): return True
-        
+                
         version_file = os.path.join(base_path, "erech.txt")
         stored_version = ""
         if os.path.exists(version_file):
