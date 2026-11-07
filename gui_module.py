@@ -26,7 +26,6 @@ from reportlab.lib.pagesizes import A4, landscape
 
 from datenbank import *
 from pdf_zugferd import check_lz_logic, run_auto_generation
-from hilfe_texte import get_doku_text, HILFE_KAPITEL
 
 class TabManuellMixin:
     def open_date_picker(self, entry_widget):
@@ -744,24 +743,34 @@ class TabEinstellungenMixin:
             self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
         self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10); refresh()
 
-
 class TabHilfeMixin:
     def build_hilfe_tab(self):
-        f_split = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent"); f_split.pack(fill="both", expand=True, padx=10, pady=5)
-        f_toc = ctk.CTkScrollableFrame(f_split, width=220); f_toc.pack(side="left", fill="y", padx=(0, 10))
+        f = ctk.CTkFrame(self.tab_hilfe, fg_color="transparent")
+        f.pack(fill="both", expand=True, padx=40, pady=40)
         
-        hilfe_box = ctk.CTkTextbox(f_split, font=("Consolas", 13)); hilfe_box.pack(side="left", fill="both", expand=True)
-        hilfe_box.insert("0.0", get_doku_text(self.current_version)); hilfe_box.configure(state="disabled")
+        ctk.CTkLabel(f, text="Handbuch & Dokumentation", font=("Helvetica", 20, "bold")).pack(pady=(0, 20))
+        ctk.CTkLabel(f, text="Das Handbuch wurde als HTML-Datei erstellt und öffnet sich in Ihrem Standard-Webbrowser.\nEs benötigt keine Internetverbindung.\n\n(Die Datei 'SokoIur_Hilfe.html' liegt im Programmordner und kann auch\nauf einen Webserver hochgeladen werden.)", justify="center").pack(pady=(0, 30))
         
-        def jump_to(search_text):
-            hilfe_box.configure(state="normal")
-            idx = hilfe_box._textbox.search(search_text, "1.0", stopindex="end")
-            if idx: hilfe_box.see(idx)
-            hilfe_box.configure(state="disabled")
+        self.create_button(f, text="📖 Handbuch im Browser öffnen", width=250, height=40, command=self.open_html_help).pack()
 
-        ctk.CTkLabel(f_toc, text="Inhaltsverzeichnis", font=("Helvetica", 12, "bold")).pack(pady=(0, 10))
-        for label, search_str in HILFE_KAPITEL:
-            self.create_button(f_toc, text=label, anchor="w", fg_color="#444", hover_color="#666", command=lambda s=search_str: jump_to(s)).pack(pady=2, fill="x")
+    def open_html_help(self):
+        from hilfe_texte import get_doku_html
+        import webbrowser
+        
+        # HTML Inhalt generieren
+        html_content = get_doku_html(self.current_version)
+        
+        # Datei im Programmverzeichnis speichern, damit sie für den Webspace greifbar ist
+        program_dir = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
+        hilfe_pfad = os.path.join(program_dir, "SokoIur_Hilfe.html")
+        
+        try:
+            with open(hilfe_pfad, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            # Im Standard-Browser öffnen
+            webbrowser.open(f"file:///{hilfe_pfad.replace('\\', '/')}")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Hilfedatei konnte nicht geöffnet werden:\n{e}")
 
 class UpdaterMixin:
     def enforce_network_version(self):
