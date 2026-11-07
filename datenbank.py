@@ -64,6 +64,8 @@ def get_default_profile(suffix=""):
         "keep_gruss": True,
         "keep_raten": False,
         "keep_kunde_speichern": False
+        "zahlungsbedingungen_default": "",
+        "rechnungsvermerk_default": "
     }
 
 def init_config():
