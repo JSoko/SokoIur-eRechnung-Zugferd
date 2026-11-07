@@ -13,13 +13,16 @@ Version: {version_string}
 
 1. INSTALLATION & ERSTEINRICHTUNG
 ===========================================
-Die Anwendung (.exe) ist vollständig portabel und kann in einem beliebigen Ordner auf Ihrem PC oder auf einem freigegebenen Netzwerklaufwerk abgelegt werden.
+Die Anwendung (.exe) ist vollständig portabel und kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden.
 
-Automatische Einrichtung:
-Beim ersten Start legt das Programm alle benötigten Ordner (z.B. für PDFs und Auswertungen) sowie leere Konfigurations-Dateien (.csv) automatisch für die aktuelle Firma an. Sie müssen nichts zwingend vorab manuell konfigurieren. 
+Ersteinrichtung und Datenspeicherort:
+Beim allerersten Start des Programms werden Sie aufgefordert, einen Grundpfad für die Datenspeicherung auszuwählen. 
+WICHTIG: Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden!
+Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.
+Anschließend legt das Programm dort alle benötigten Unterordner und leeren Konfigurations-Dateien (.csv) automatisch für Ihre erste Firma an.
 
 Briefbogen:
-Legen Sie in denselben Ordner eine Datei namens "briefbogen.pdf". Diese wird als Hintergrund für die Rechnung verwendet. 
+Legen Sie in den soeben erstellten Firmenordner eine Datei namens "briefbogen.pdf". Diese wird als Hintergrund für die Rechnung verwendet. 
 Tipp: Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab, sodass nur die Fußzeile erhalten bleibt.
 
 2. HAFTUNGSAUSSCHLUSS & DATENSCHUTZ
@@ -86,7 +89,7 @@ Um Journale der Vorjahre auszudrucken, wechseln Sie in den Reiter "Auswertungen"
 6. MANDANTEN & DATENBANKEN
 ===========================================
 Mandantenfähigkeit (Firmen):
-Sie können oben links über das Dropdown-Menü bis zu 5 verschiedene Firmenprofile anlegen. Jede Firma verwaltet ihre eigenen Dateipfade.
+Sie können oben links über das Dropdown-Menü bis zu 5 verschiedene Firmenprofile anlegen. Bei der Neuanlage werden Sie, genau wie beim Erststart, nach dem gewünschten Datenspeicherort (Grundpfad) für diese neue Firma gefragt. Jede Firma verwaltet somit ihre eigenen Dateipfade.
 WICHTIG: Wenn Sie eine Firma anlegen oder bearbeiten, müssen für eine gültige ZUGFeRD eRechnung mindestens Name, PLZ, Ort, IBAN und USt-Id (bzw. Steuernummer) eingegeben werden!
 
 Firma löschen:
