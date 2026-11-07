@@ -384,7 +384,7 @@ class TabManuellMixin:
         except Exception as e:
             messagebox.showerror("Fehler", str(e)); return False
 
-def save_generate_open_exit(self):
+    def save_generate_open_exit(self):
         if not self.positionen_liste: return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
         valid, lz_msg = check_lz_logic({'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())}, [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste])
         if not valid: return messagebox.showwarning("Prüfung fehlgeschlagen", lz_msg)
