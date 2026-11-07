@@ -16,6 +16,7 @@ from datetime import datetime
 
 CONFIG_DATEI = "config.json"
 LOCK_FILE = "erechnung.lock"
+LOCAL_CONFIG = "local_config.json"
 
 EINHEITEN_LISTE = [
     "Stück (C62)", "Pauschale (LS)", "Stunde(n) (HUR)", 
@@ -66,45 +67,50 @@ def get_default_profile(suffix=""):
     }
 
 def init_config():
-    config = {}
-    if os.path.exists(CONFIG_DATEI):
+    # 1. Lokale Config laden (für Startpfad und Geometrie)
+    config = {"window_geometry": "950x850", "terms_accepted": False, "base_data_path": "", "active_profile_index": 0}
+    if os.path.exists(LOCAL_CONFIG):
         try:
-            with open(CONFIG_DATEI, 'r', encoding='utf-8') as f:
-                config = json.load(f)
+            with open(LOCAL_CONFIG, 'r', encoding='utf-8') as f:
+                local_data = json.load(f)
+                config.update(local_data)
         except: pass
 
-    if "profiles" not in config:
-        prof1 = get_default_profile("")
-        keys_to_migrate = list(prof1.keys())
-        for k in keys_to_migrate:
-            if k in config:
-                prof1[k] = config.pop(k)
-        config["profiles"] = [prof1]
-        config["active_profile_index"] = 0
+    # 2. Globale Config aus dem Netzwerk laden (falls base_data_path existiert)
+    config["profiles"] = []
+    if config.get("base_data_path") and os.path.exists(config["base_data_path"]):
+        shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")
+        if os.path.exists(shared_config_path):
+            try:
+                with open(shared_config_path, 'r', encoding='utf-8') as f:
+                    config["profiles"] = json.load(f)
+            except: pass
 
-    if "window_geometry" not in config: config["window_geometry"] = "950x850"
-    if "terms_accepted" not in config: config["terms_accepted"] = False
-
-    for p in config["profiles"]:
-        if "aktuelles_rechnungsjahr" not in p: p["aktuelles_rechnungsjahr"] = str(datetime.now().year)
-        
-        if not os.path.exists(p.get("ausgabe_ordner", "Rechnungen_PDF")): os.makedirs(p.get("ausgabe_ordner", "Rechnungen_PDF"))
-        if not os.path.exists(p.get("auswertungen_ordner", "Auswertungen")): os.makedirs(p.get("auswertungen_ordner", "Auswertungen"))
-        
-        create_csv_if_missing(p.get("firma_csv", "firma.csv"), "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Email;Telefon")
-        create_csv_if_missing(p.get("rechnung_csv", "rechnung.csv"), "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeNr;Aktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
-        create_csv_if_missing(p.get("kunden_csv", "kunden.csv"), "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen")
-        create_csv_if_missing(p.get("produkte_csv", "produkte.csv"), "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
-        create_csv_if_missing(p.get("zusatz_csv", "zusatz.csv"), "")
-        create_csv_if_missing(p.get("gruss_csv", "gruss.csv"), "")
-        create_csv_if_missing(p.get("header_csv", "header.csv"), "")
-        create_csv_if_missing(p.get("einleitung_csv", "einleitung.csv"), "")
+    # Fallback, falls noch keine Firmen existieren
+    if not config["profiles"]:
+        config["profiles"] = [get_default_profile("")]
 
     return config
 
 def speichere_config(config):
-    with open(CONFIG_DATEI, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=4)
+    # 1. Lokale Config speichern (Programmordner)
+    local_data = {
+        "window_geometry": config.get("window_geometry", "950x850"),
+        "terms_accepted": config.get("terms_accepted", False),
+        "base_data_path": config.get("base_data_path", ""),
+        "active_profile_index": config.get("active_profile_index", 0),
+        "cli_open_pdf": config.get("cli_open_pdf", False),
+        "cli_keep_open": config.get("cli_keep_open", False),
+        "cli_no_open": config.get("cli_no_open", False)
+    }
+    with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
+        json.dump(local_data, f, indent=4)
+
+    # 2. Globale Profile im Netzwerk speichern (Firmenübergreifend)
+    if config.get("base_data_path") and os.path.exists(config["base_data_path"]):
+        shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")
+        with open(shared_config_path, 'w', encoding='utf-8') as f:
+            json.dump(config["profiles"], f, indent=4)
 
 def berechne_naechste_rechnungsnummer(letzte_nr):
     if not letzte_nr: return f"RE-{datetime.now().year}-001"
