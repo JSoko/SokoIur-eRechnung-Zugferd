@@ -59,13 +59,20 @@ Verfügbare CLI-Parameter (überschreiben temporär das aktive Profil):
   --jahr           Zwingt das Programm in ein spezielles Rechnungsjahr.
   --no-open        Verhindert das automatische Öffnen der PDF nach der Erstellung.
 
-4. AUFBAU UND ZWECK DER CSV-DATEIEN
+4. ORDNERSTRUKTUR UND DATEIEN
 ===========================================
-- firma.csv: Eigene Firmendaten (IBAN, USt-ID, Name etc.). Enthält genau 1 Zeile unter der Kopfzeile.
-- rechnung.csv: Enthält die eigentlichen Rechnungsdaten (Kopf + Positionen). In der GUI wird hier immer nur die *aktuell bearbeitete* Rechnung temporär gespeichert.
-- kunden.csv / produkte.csv: Stamm-Datenbanken für Auto-Fill in der Oberfläche.
-- zusatz.csv: Positionsspezifische Anmerkungen (Format: "1,3;Hier ist ein Zusatztext").
-- header.csv / einleitung.csv / gruss.csv: Einfache Textdateien für Standard-Textbausteine.
+Das Programm verwendet eine feste Ordnerstruktur, die sich an einem von Ihnen in den Einstellungen gewählten "Daten-Grundpfad" orientiert.
+
+Netzwerkbetrieb & Versionsschutz:
+Das Programm (.exe) selbst kann lokal auf verschiedenen Rechnern installiert sein, während der Datenspeicherpfad auf einem freigegebenen Netzwerklaufwerk liegt. So greifen alle Nutzer auf denselben Datenbestand zu.
+WICHTIG: Sobald ein Rechner mit einer neueren Programmversion auf die Netzwerkdaten zugreift, wird diese Version in einer unsichtbaren Datei namens "erech.txt" im Daten-Grundpfad hinterlegt. Versucht danach ein Rechner mit einer älteren Programmversion auf diese Daten zuzugreifen, wird der Zugriff zum Schutz vor Datenkorruption blockiert. Das Programm bietet Ihnen dann automatisch an, sich über GitHub auf die aktuelle Version zu aktualisieren, bevor Sie weiterarbeiten können.
+
+Der Ordner für die jeweilige Firma wird automatisch anhand des Firmennamens (ohne Leerzeichen) im Grundpfad generiert. Innerhalb dieses Firmenordners wird folgende Struktur angelegt:
+
+- / (Firmen-Hauptordner) : Hier liegen alle zentralen Stammdaten.
+  - firma.csv, rechnung.csv, kunden.csv, produkte.csv, zusatz.csv, gruss.csv, header.csv, einleitung.csv sowie der briefbogen.pdf.
+- /ausw/ : Dieser Ordner sammelt alle Dateien und Journale für die Auswertungen.
+- /are/ : Hier werden alle Ausgangsrechnungen als fertige PDFs archiviert, automatisch sortiert in Jahresunterordner (z.B. "2026"). Bei einem Jahreswechsel generiert das Programm den neuen Ordner selbstständig. 
 
 5. JAHRESWECHSEL
 ===========================================
@@ -116,18 +123,39 @@ https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases/new
 
 Neue Versionen können Sie hier herunterladen:
 https://github.com/JSoko/SokoIur-eRechnung-Zugferd/releases
+
+12. LIZENZEN & DRITTPARTY-MODULE
+===========================================
+Dieses Programm wurde in Python geschrieben und nutzt für bestimmte Funktionen Open-Source-Bibliotheken von Drittanbietern. Nachfolgend finden Sie eine Auflistung der verwendeten Hauptkomponenten sowie Links zu deren jeweiligen Lizenzbedingungen:
+
+- Python (Programmiersprache)
+  Lizenz: Python Software Foundation License (PSF)
+  Link: https://docs.python.org/3/license.html
+
+- CustomTkinter (Für das Design der Benutzeroberfläche)
+  Lizenz: MIT License
+  Link: https://github.com/TomSchimansky/CustomTkinter/blob/master/LICENSE
+
+- ReportLab (Für die PDF-Generierung des Rechnungslayouts)
+  Lizenz: BSD License
+  Link: https://bitbucket.org/rptlab/reportlab/src/master/LICENSE.txt
+
+- pypdf (Für das Einbetten der ZUGFeRD XML-Datei in das PDF)
+  Lizenz: BSD 3-Clause License
+  Link: https://github.com/py-pdf/pypdf/blob/main/LICENSE
 """
 
 HILFE_KAPITEL = [
     ("1. Installation", "1. INSTALLATION"),
     ("2. Haftung", "2. HAFTUNGSAUSSCHLUSS"),
     ("3. CLI & GUI", "3. PROGRAMMBESCHREIBUNG"),
-    ("4. CSV Dateien", "4. AUFBAU UND ZWECK"),
+    ("4. Ordnerstruktur", "4. ORDNERSTRUKTUR"),
     ("5. Jahreswechsel", "5. JAHRESWECHSEL"),
     ("6. Mandanten", "6. MANDANTEN"),
     ("7. Positionen", "7. RECHNUNGSPOSITIONEN"),
     ("8. Datumseingaben", "8. DATUMSEINGABEN"),
     ("9. Formatierungen", "9. TEXTFORMATIERUNGEN"),
     ("10. Journal", "10. JOURNAL"),
-    ("11. Updates", "11. GITHUB")
+    ("11. Updates", "11. GITHUB"),
+    ("12. Lizenzen", "12. LIZENZEN")
 ]
