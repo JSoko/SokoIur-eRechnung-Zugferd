@@ -14,9 +14,19 @@ import json
 import re
 from datetime import datetime
 
+def get_appdata_dir():
+    appdata = os.environ.get('LOCALAPPDATA')
+    if not appdata:
+        appdata = os.path.expanduser('~')
+    app_dir = os.path.join(appdata, "SokoIur_eRechnung")
+    os.makedirs(app_dir, exist_ok=True)
+    return app_dir
+
+APP_DIR = get_appdata_dir()
+
 CONFIG_DATEI = "config.json"
 LOCK_FILE = "erechnung.lock"
-LOCAL_CONFIG = "local_config.json"
+LOCAL_CONFIG = os.path.join(APP_DIR, "local_config.json")
 
 EINHEITEN_LISTE = [
     "Stück (C62)", "Pauschale (LS)", "Stunde(n) (HUR)", 
@@ -63,9 +73,16 @@ def get_default_profile(suffix=""):
         "keep_einleitung": True,
         "keep_gruss": True,
         "keep_raten": False,
-        "keep_kunde_speichern": False
+        "keep_kunde_speichern": False,
         "zahlungsbedingungen_default": "",
-        "rechnungsvermerk_default": "
+        "rechnungsvermerk_default": "",
+        "letzte_eingangsrechnungsnummer": "",
+        "xrechnung_leseabschrift": True,
+        "eingang_loesch_warteliste": [],
+        "eingangsordner": f"reneu{s}",
+        "bearbeitete_eingangsrechnungen_ordner": f"rebearb{s}",
+        "eingangsrechnungen_ordner": f"rchn{s}",
+        "eingangsjournal_ordner": f"einj{s}"
     }
 
 def init_config():
@@ -129,10 +146,10 @@ def lade_firma(pfad):
             reader = list(csv.DictReader(f, delimiter=';'))
             if reader: return reader[0]
     except: pass
-    return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': ''}
+    return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': '', 'Kontoinhaber': '', 'Girocode': '1'}
 
 def speichere_firma(pfad, daten):
-    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Email', 'Telefon']
+    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Kontoinhaber', 'Girocode', 'Email', 'Telefon']
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
@@ -188,7 +205,7 @@ def lade_kunden(pfad):
     return kunden
 
 def speichere_alle_kunden(pfad, kunden_liste):
-    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen']
+    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen', 'Endpoint', 'EndpointScheme']
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
