@@ -12,6 +12,7 @@ import os
 import sys
 import json
 import re
+import ctypes
 from datetime import datetime
 
 def get_appdata_dir():
@@ -22,8 +23,40 @@ def get_appdata_dir():
     os.makedirs(app_dir, exist_ok=True)
     return app_dir
 
-APP_DIR = get_appdata_dir()
+def get_app_version():
+    """Liest die Produktversion aus den Dateiinformationen der kompilierten .exe aus."""
+    v_string = "1.000000"  # Standard-Fallback
+    if getattr(sys, 'frozen', False):
+        try:
+            size = ctypes.windll.version.GetFileVersionInfoSizeW(sys.executable, None)
+            if size > 0:
+                res = ctypes.create_string_buffer(size)
+                ctypes.windll.version.GetFileVersionInfoW(sys.executable, None, size, res)
+                
+                r_length = ctypes.c_uint()
+                r_address = ctypes.c_void_p()
+                # Zuerst die Sprache und Codepage (Translation) ermitteln
+                ctypes.windll.version.VerQueryValueW(res, "\\VarFileInfo\\Translation", ctypes.byref(r_address), ctypes.byref(r_length))
+                
+                if r_length.value >= 4:
+                    lang_codepage = ctypes.cast(r_address, ctypes.POINTER(ctypes.c_uint32)).contents.value
+                    lang = lang_codepage & 0xFFFF
+                    codepage = lang_codepage >> 16
+                    
+                    # Pfad zur Produktversion zusammensetzen
+                    sub_block = f"\\StringFileInfo\\{lang:04x}{codepage:04x}\\ProductVersion"
+                    ctypes.windll.version.VerQueryValueW(res, sub_block, ctypes.byref(r_address), ctypes.byref(r_length))
+                    
+                    if r_length.value > 0:
+                        v_string = ctypes.cast(r_address, ctypes.c_wchar_p).value
+        except Exception:
+            pass
+    else:
+        v_string = "Entwickler-Version"
+    return v_string
 
+APP_DIR = get_appdata_dir()
+# ... ab hier geht der restliche Code weiter (CONFIG_DATEI = ...) ...
 CONFIG_DATEI = "config.json"
 LOCK_FILE = "erechnung.lock"
 LOCAL_CONFIG = os.path.join(APP_DIR, "local_config.json")
@@ -205,7 +238,7 @@ def lade_kunden(pfad):
     return kunden
 
 def speichere_alle_kunden(pfad, kunden_liste):
-    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen', 'Endpoint', 'EndpointScheme']
+    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen', 'KundeAktenzeichen', 'Endpoint', 'EndpointScheme']
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
