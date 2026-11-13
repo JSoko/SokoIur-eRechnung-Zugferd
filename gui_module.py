@@ -27,8 +27,52 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4, landscape
 
 from datenbank import *
-from pdf_zugferd import check_lz_logic, run_auto_generation
+import tkinter as tk
 import hilfe_texte
+
+class ToolTip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tipwindow = None
+        self.id = None
+        self.widget.bind("<Enter>", self.enter)
+        self.widget.bind("<Leave>", self.leave)
+        self.widget.bind("<ButtonPress>", self.leave)
+
+    def enter(self, event=None):
+        self.id = self.widget.after(500, self.showtip) # 500ms Verzögerung
+
+    def leave(self, event=None):
+        if self.id:
+            self.widget.after_cancel(self.id)
+            self.id = None
+        if self.tipwindow:
+            self.tipwindow.destroy()
+            self.tipwindow = None
+
+    def showtip(self, event=None):
+        if self.tipwindow: return
+        
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        
+        self.tipwindow = tk.Toplevel(self.widget)
+        self.tipwindow.wm_overrideredirect(True)
+        self.tipwindow.wm_geometry(f"+{x}+{y}")
+        self.tipwindow.attributes("-topmost", True)
+        
+        label = tk.Label(self.tipwindow, text=self.text, justify="left",
+                         background="#2b2b2b", foreground="white", 
+                         relief="solid", borderwidth=1,
+                         font=("Helvetica", 10), padx=8, pady=5)
+        label.pack()
+
+def create_tooltip(widget, text):
+    ToolTip(widget, text)
+    
+from pdf_zugferd import check_lz_logic, run_auto_generation
+
 
 class TabManuellMixin:
     def open_date_picker(self, entry_widget):
@@ -227,8 +271,13 @@ class TabManuellMixin:
         left_frame = ctk.CTkFrame(self.tab_manuell, width=350); left_frame.pack(side="left", fill="y", padx=10, pady=10)
         right_frame = ctk.CTkFrame(self.tab_manuell); right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
         
-        self.create_button(left_frame, text="📥 Letzte Rechnungs-CSV laden (Alt+L)", command=lambda: self.load_manual_invoice(is_button_click=True), fg_color="#444", hover_color="#666").pack(pady=(10, 5), padx=10, fill="x")
-        self.create_button(left_frame, text="📁 Rechnungs-CSV wählen", command=self.choose_and_load_csv, fg_color="#444", hover_color="#666").pack(pady=(0, 10), padx=10, fill="x")
+        btn_load = self.create_button(left_frame, text="📥 Letzte Rechnungs-CSV laden (Alt+L)", command=lambda: self.load_manual_invoice(is_button_click=True), fg_color="#444", hover_color="#666")
+        btn_load.pack(pady=(10, 5), padx=10, fill="x")
+        create_tooltip(btn_load, "Lädt den zuletzt bearbeiteten Rechnungsentwurf der aktuellen Firma.")
+        
+        btn_choose = self.create_button(left_frame, text="📁 Rechnungs-CSV wählen", command=self.choose_and_load_csv, fg_color="#444", hover_color="#666")
+        btn_choose.pack(pady=(0, 10), padx=10, fill="x")
+        create_tooltip(btn_choose, "Lädt eine alte Rechnung oder einen Entwurf aus einer CSV-Datei.")
         
         ctk.CTkLabel(left_frame, text="Kopfdaten", font=("Helvetica", 14, "bold")).pack(pady=5)
         self.entry_r_nr = self.create_input(left_frame, "Rechnungs-Nr.")
@@ -265,11 +314,16 @@ class TabManuellMixin:
         # Frame für geteilte Buttons (Papier & XRechnung) ---
         f_split_btns = ctk.CTkFrame(right_frame, fg_color="transparent")
         f_split_btns.pack(pady=5, fill="x", padx=20)
-        self.create_button(f_split_btns, text="Papierrechnung erstellen", fg_color="#FFF2A8", text_color="#3D3200", hover_color="#E6D77A", command=self.save_generate_papierrechnung_exit).pack(side="left", fill="x", expand=True, padx=(0, 5))
-        self.create_button(f_split_btns, text="XRechnung & Begleit-PDF erstellen", fg_color="#cccccc", hover_color="#14375d", command=self.save_generate_xrechnung_exit).pack(side="left", fill="x", expand=True, padx=(5, 0))
-        # ------------------------------------------------------------
+        btn_papier = self.create_button(f_split_btns, text="Papierrechnung erstellen", fg_color="#FFF2A8", text_color="#3D3200", hover_color="#E6D77A", command=self.save_generate_papierrechnung_exit)
+        btn_papier.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        create_tooltip(btn_papier, "Erstellt ein reines Sicht-PDF ohne elektronische XML-Daten.\n(Nur als Übergangslösung empfohlen)")
         
-        self.create_button(right_frame, text="Zugpferdrechnung erstellen & öffnen (Alt+P)", fg_color="#289102", hover_color="#5dc21c", command=self.save_generate_open_exit).pack(pady=5, fill="x", padx=20)        
+        btn_xrech = self.create_button(f_split_btns, text="XRechnung & Begleit-PDF erstellen", fg_color="#cccccc", hover_color="#14375d", command=self.save_generate_xrechnung_exit)
+        btn_xrech.pack(side="left", fill="x", expand=True, padx=(5, 0))
+        create_tooltip(btn_xrech, "Erzeugt eine XML-Datei für Behördenportale (Leitweg-ID erforderlich)\nund zusätzlich eine lesbare Leseabschrift (PDF) für Ihre Akten.")
+        btn_zugferd = self.create_button(right_frame, text="Zugpferdrechnung erstellen & öffnen (Alt+P)", fg_color="#289102", hover_color="#5dc21c", command=self.save_generate_open_exit)
+        btn_zugferd.pack(pady=5, fill="x", padx=20)
+        create_tooltip(btn_zugferd, "Erzeugt eine ZUGFeRD Hybrid-PDF (PDF inkl. unsichtbarem XML).\nIdeal für Geschäftskunden (B2B) per E-Mail.")
 
     def load_manual_invoice(self, is_button_click=False, silent=False, custom_path=None):
         rech_pfad = custom_path if custom_path else self.p_config.get('rechnung_csv', '')
@@ -782,7 +836,29 @@ class TabManuellMixin:
 class TabAuswertungenMixin:
     
     def generate_eingang_auswertung(self):
-        messagebox.showinfo("Hinweis", "Diese Funktion ist noch nicht implementiert.")
+        folder = self.p_config.get("eingangsjournal_ordner", "")
+        year = self.combo_eingang_jahr.get()
+        month = self.combo_eingang_monat.get()
+        
+        # Firmennamen für den PDF-Kopf auslesen
+        f_daten = lade_firma(self.p_config.get('firma_csv', ''))
+        firma_name = f_daten.get('FirmaName', self.p_config.get("profil_name", "Unbekannte Firma"))
+        
+        from eingangsrechnung import create_journal_pdf
+        import os
+        
+        # PDF generieren lassen
+        pdf_path = create_journal_pdf(folder, year, month, firma_name)
+        
+        if not pdf_path:
+            zeit_str = year if month == "Alle Monate" else f"{month}.{year}"
+            return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
+            
+        # PDF sofort öffnen
+        try:
+            os.startfile(pdf_path)
+        except Exception:
+            messagebox.showinfo("Fertig", f"Eingangsjournal erstellt:\n{pdf_path}")
     
     def build_ausgang_tab(self):
         f = ctk.CTkFrame(self.tab_ausgang)
@@ -814,9 +890,17 @@ class TabAuswertungenMixin:
         
         f_btns = ctk.CTkFrame(f, fg_color="transparent")
         f_btns.pack(pady=20)
-        self.create_button(f_btns, text="📄 Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700").pack(side="left", padx=10)
-        self.create_button(f_btns, text="📊 Journal als CSV exportieren & öffnen", command=self.generate_auswertung_csv, fg_color="#1f538d", hover_color="#14375d").pack(side="left", padx=10)
-        self.create_button(f_btns, text="📈 DATEV-Export erzeugen", command=self.generate_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30").pack(side="left", padx=10)
+        btn_a_pdf = self.create_button(f_btns, text="📄 Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700")
+        btn_a_pdf.pack(side="left", padx=10)
+        create_tooltip(btn_a_pdf, "Erstellt eine übersichtliche PDF-Tabelle Ihrer Ausgangsrechnungen\nfür die eigenen Akten oder den Druck.")
+        
+        btn_a_csv = self.create_button(f_btns, text="📊 Journal als CSV exportieren & öffnen", command=self.generate_auswertung_csv, fg_color="#1f538d", hover_color="#14375d")
+        btn_a_csv.pack(side="left", padx=10)
+        create_tooltip(btn_a_csv, "Exportiert die Daten im CSV-Format, ideal für die weitere\nVerarbeitung in Microsoft Excel.")
+        
+        btn_a_datev = self.create_button(f_btns, text="📈 DATEV-Export erzeugen", command=self.generate_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30")
+        btn_a_datev.pack(side="left", padx=10)
+        create_tooltip(btn_a_datev, "Erstellt eine spezielle DATEV-ASCII-Datei für den Steuerberater.\nNimmt automatisch das nötige Steuer-Splitting vor.")
         
         self.update_ausw_jahre()
     
@@ -851,18 +935,17 @@ class TabAuswertungenMixin:
 
         f_btns_e = ctk.CTkFrame(z, fg_color="transparent")
         f_btns_e.pack(side="left", padx=10)
-        self.create_button(
-            f_btns_e, text="📄 Eingangsjournal als PDF",
-            command=self.generate_eingang_auswertung, fg_color="#b85c00", hover_color="#8f4700"
-        ).pack(side="left", padx=5)
-        self.create_button(
-            f_btns_e, text="📊 Eingangsjournal als CSV",
-            command=self.generate_eingang_auswertung_csv, fg_color="#1f538d", hover_color="#14375d"
-        ).pack(side="left", padx=5)
-        self.create_button(
-            f_btns_e, text="📈 DATEV-Export erzeugen",
-            command=self.generate_eingang_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30"
-        ).pack(side="left", padx=5)
+        btn_e_pdf = self.create_button(f_btns_e, text="📄 Eingangsjournal als PDF", command=self.generate_eingang_auswertung, fg_color="#b85c00", hover_color="#8f4700")
+        btn_e_pdf.pack(side="left", padx=5)
+        create_tooltip(btn_e_pdf, "Erstellt eine PDF-Tabelle mit direkten, klickbaren Links\nzu den archivierten Originalbelegen.")
+        
+        btn_e_csv = self.create_button(f_btns_e, text="📊 Eingangsjournal als CSV", command=self.generate_eingang_auswertung_csv, fg_color="#1f538d", hover_color="#14375d")
+        btn_e_csv.pack(side="left", padx=5)
+        create_tooltip(btn_e_csv, "Exportiert die Eingangsdaten im CSV-Format für Excel.")
+        
+        btn_e_datev = self.create_button(f_btns_e, text="📈 DATEV-Export erzeugen", command=self.generate_eingang_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30")
+        btn_e_datev.pack(side="left", padx=5)
+        create_tooltip(btn_e_datev, "Erstellt eine spezielle DATEV-ASCII-Datei für den Steuerberater.\nBucht automatisch auf die Vorsteuer-Aufwandskonten.")
 
         ctk.CTkLabel(
             f,
@@ -1045,7 +1128,9 @@ class TabAuswertungenMixin:
             pfad = os.path.join(ordner, jahr, datei) if os.path.exists(os.path.join(ordner, jahr, datei)) else os.path.join(ordner, datei)
             if os.path.exists(pfad):
                 with open(pfad, 'r', encoding='utf-8-sig') as f:
-                    for row in csv.DictReader(f, delimiter=';'): gefundene.append(row)
+                    reader = csv.DictReader(f, delimiter=';')
+                    if not reader.fieldnames: continue
+                    for row in reader: gefundene.append(row)
                         
         if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
         
@@ -1054,8 +1139,70 @@ class TabAuswertungenMixin:
         os.makedirs(jahr_ordner, exist_ok=True)
         pdf_pfad = os.path.join(jahr_ordner, f"Journal_{zeit_str.replace('.','_')}.pdf")
         
-        c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4))
-        breite, hoehe = landscape(A4)
+        try:
+            c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4))
+            breite, hoehe = landscape(A4)
+            
+            def render_journal(c_obj, is_final=False, total_pages=1):
+                page_num = 1
+                def draw_header():
+                    c_obj.setFont("Helvetica-Bold", 16)
+                    c_obj.drawString(40, hoehe - 50, f"Rechnungsjournal - {zeit_str} - {firma_name}")
+                    c_obj.setFont("Helvetica-Bold", 10)
+                    c_obj.drawString(40, hoehe - 80, "Datum"); c_obj.drawString(100, hoehe - 80, "Rechnungs-Nr."); c_obj.drawString(220, hoehe - 80, "Empfänger")
+                    c_obj.drawRightString(500, hoehe - 80, "Netto"); c_obj.drawRightString(580, hoehe - 80, "19% USt."); c_obj.drawRightString(660, hoehe - 80, "7% USt.")
+                    c_obj.drawRightString(740, hoehe - 80, "0% USt."); c_obj.drawRightString(820, hoehe - 80, "Brutto")
+                    c_obj.line(40, hoehe - 85, 820, hoehe - 85)
+                    return hoehe - 105
+                
+                def draw_footer():
+                    c_obj.setFont("Helvetica", 9)
+                    c_obj.drawString(40, 20, f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr")
+                    if total_pages > 1: c_obj.drawRightString(820, 20, f"Seite {page_num} / {total_pages}")
+                
+                y = draw_header()
+                if is_final: draw_footer()
+                c_obj.setFont("Helvetica", 10)
+                
+                sum_n = sum_19 = sum_7 = sum_0 = sum_b = 0.0
+                for r in gefundene:
+                    if y < 60:
+                        c_obj.showPage()
+                        page_num += 1
+                        y = draw_header()
+                        if is_final: draw_footer()
+                        c_obj.setFont("Helvetica", 10)
+                        
+                    n = safe_float(r.get('Netto', 0)); m19 = safe_float(r.get('MwSt_19', 0)); m7 = safe_float(r.get('MwSt_7', 0)); m0 = safe_float(r.get('MwSt_0', 0)); b = safe_float(r.get('Brutto', 0))
+                    sum_n += n; sum_19 += m19; sum_7 += m7; sum_0 += m0; sum_b += b
+                    
+                    c_obj.drawString(40, y, str(r.get('Datum', ''))); c_obj.drawString(100, y, str(r.get('Rechnungsnummer', '')))
+                    empf = str(r.get('Empfaenger', ''))
+                    c_obj.drawString(220, y, empf[:22] + "..." if len(empf) > 25 else empf)
+                    c_obj.drawRightString(500, y, f_curr(n)); c_obj.drawRightString(580, y, f_curr(m19)); c_obj.drawRightString(660, y, f_curr(m7))
+                    c_obj.drawRightString(740, y, f_curr(m0)); c_obj.drawRightString(820, y, f_curr(b))
+                    y -= 15
+                    
+                c_obj.line(40, y + 10, 820, y + 10); y -= 10
+                c_obj.setFont("Helvetica-Bold", 10); c_obj.drawString(40, y, "GESAMTSUMMEN:")
+                c_obj.drawRightString(500, y, f_curr(sum_n)); c_obj.drawRightString(580, y, f_curr(sum_19)); c_obj.drawRightString(660, y, f_curr(sum_7))
+                c_obj.drawRightString(740, y, f_curr(sum_0)); c_obj.drawRightString(820, y, f_curr(sum_b))
+                return page_num
+            
+            t_pages = render_journal(c_dummy)
+            c = canvas.Canvas(pdf_pfad, pagesize=landscape(A4))
+            render_journal(c, is_final=True, total_pages=t_pages)
+            c.save()
+            
+            try: 
+                os.startfile(pdf_pfad)
+            except Exception: 
+                messagebox.showinfo("Fertig", f"Journal erfolgreich erstellt unter:\n{pdf_pfad}")
+                
+        except PermissionError:
+            messagebox.showerror("Zugriff verweigert", f"Das PDF konnte nicht überschrieben werden, da es bereits in einem anderen Programm (z. B. Acrobat Reader) geöffnet ist:\n\n{pdf_pfad}\n\nBitte schließen Sie das PDF-Dokument und versuchen Sie es erneut.")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Ein technischer Fehler ist aufgetreten:\n{str(e)}")
         
         def render_journal(c_obj, is_final=False, total_pages=1):
             page_num = 1
@@ -1384,137 +1531,146 @@ class TabEinstellungenMixin:
                 )
             except Exception as e:
                 messagebox.showerror("Fehler", f"Fehler beim Kopieren des Briefbogens:\n{str(e)}")
+    
+    #Einstellungstab
     def build_settings_tab(self):
-        # --- NEU: Haupt-Scrollbereich für den gesamten Reiter anlegen ---
+        from datenbank import get_appdata_dir
+        
         scroll_main = ctk.CTkScrollableFrame(self.tab_settings)
-        scroll_main.pack(fill="both", expand=True)
+        scroll_main.pack(fill="both", expand=True, padx=10, pady=5)
 
-        f_stammdaten = ctk.CTkFrame(scroll_main)
-        f_stammdaten.pack(fill="x", pady=(10, 10), padx=20)
-        ctk.CTkLabel(f_stammdaten, text="Stammdaten der aktiven Firma verwalten", font=("Helvetica", 14, "bold")).pack(pady=5)
+        # Farb-Design für die "Karten" (Hellmodus / Dunkelmodus)
+        card_fg = ("#e8e8e8", "#2b2b2b") 
 
-        f_prof = ctk.CTkFrame(scroll_main)
-        f_prof.pack(fill="x", pady=(10, 10), padx=20)
-        ctk.CTkLabel(f_prof, text="Aktive Firma / Profil verwalten", font=("Helvetica", 14, "bold")).pack(pady=5)
+        # --- KARTE 1: Profil & Firma ---
+        f_prof_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
+        f_prof_card.pack(fill="x", pady=(5, 10), padx=10)
         
-        f_prof_btns = ctk.CTkFrame(f_prof, fg_color="transparent"); f_prof_btns.pack(pady=10)
-        self.create_button(f_prof_btns, text="+ Neu", width=100, command=self.add_profile).pack(side="left", padx=5)
-        self.create_button(f_prof_btns, text="✎ Umbenennen", width=100, command=self.rename_profile).pack(side="left", padx=5)
+        ctk.CTkLabel(f_prof_card, text="👤 Aktive Firma / Profil verwalten", font=("Helvetica", 15, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
         
-        # NEUER BUTTON: Ruft die Funktion clear_profile_data auf
-        self.create_button(f_prof_btns, text="🧹 Daten leeren", width=110, fg_color="#b85c00", hover_color="#8f4700", command=self.clear_profile_data).pack(side="left", padx=5)
+        f_prof_btns = ctk.CTkFrame(f_prof_card, fg_color="transparent")
+        f_prof_btns.pack(fill="x", padx=15, pady=(0, 15))
+        
+        self.create_button(f_prof_btns, text="+ Neu", width=100, command=self.add_profile).pack(side="left", padx=(0, 10))
+        self.create_button(f_prof_btns, text="✎ Umbenennen", width=110, command=self.rename_profile).pack(side="left", padx=10)
+        
+        btn_leer = self.create_button(f_prof_btns, text="🧹 Daten leeren", width=110, fg_color="#b85c00", hover_color="#8f4700", command=self.clear_profile_data)
+        btn_leer.pack(side="left", padx=10)
+        create_tooltip(btn_leer, "Löscht alle Rechnungen und Journale der aktiven Firma.\nStammdaten (Kunden, Produkte, Briefbogen) bleiben erhalten.")
         
         if len(self.config["profiles"]) > 1:
-            self.create_button(f_prof_btns, text="🗑 Löschen", width=100, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
-        
-        f_btns = ctk.CTkFrame(f_stammdaten, fg_color="transparent"); f_btns.pack(pady=10)
-        self.create_button(f_btns, text="🏢 Firmendaten bearbeiten", command=self.open_firma_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        self.create_button(f_btns, text="👥 Kundendaten verwalten", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        self.create_button(f_btns, text="📦 Produktdaten verwalten", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        self.create_button(f_btns, text="📄 Briefbogen hinterlegen", command=self.choose_briefbogen, fg_color="#1f538d", hover_color="#14375d").pack(side="left", padx=10)
-        # Rahmen und Buttons für den Import
-        f_import_btns = ctk.CTkFrame(f_stammdaten, fg_color="transparent"); f_import_btns.pack(pady=(0, 10))
-        self.create_button(f_import_btns, text="⬇️ Kunden importieren (CSV)", command=self.import_kunden_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        self.create_button(f_import_btns, text="⬇️ Produkte importieren (CSV)", command=self.import_produkte_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        f_num_jahr = ctk.CTkFrame(scroll_main); f_num_jahr.pack(fill="x", pady=10, padx=20)
-        ctk.CTkLabel(f_num_jahr, text="Nummernkreise & Rechnungsjahr", font=("Helvetica", 14, "bold")).pack(pady=5)
-        
-        f_jahr = ctk.CTkFrame(f_num_jahr, fg_color="transparent"); f_jahr.pack(fill="x", pady=5, padx=10)
-        ctk.CTkLabel(f_jahr, text="Aktuelles Rechnungsjahr:", width=200, anchor="w").pack(side="left")
-        
-        self.combo_jahr = ctk.CTkComboBox(f_jahr, values=self.get_available_years(), command=self.on_settings_jahr_change)
-        self.combo_jahr.set(self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))); self.combo_jahr.pack(side="left", padx=10)
-        
-        f_nr = ctk.CTkFrame(f_num_jahr, fg_color="transparent"); f_nr.pack(fill="x", pady=5, padx=10)
-        ctk.CTkLabel(f_nr, text="Letzte Rechnungs-Nr.:", width=200, anchor="w").pack(side="left")
-        self.lbl_letzte_nr = ctk.CTkLabel(f_nr, text=self.p_config.get("letzte_rechnungsnummer", "Noch keine"), width=150, anchor="w")
-        self.lbl_letzte_nr.pack(side="left", padx=10)
-        self.create_button(f_nr, text="✏️ Korrigieren", width=80, command=self.edit_letzte_nr).pack(side="left")
-        
-        f_er=ctk.CTkFrame(f_num_jahr,fg_color="transparent");f_er.pack(fill="x",pady=5,padx=10)
-        ctk.CTkLabel(f_er,text="Letzte Eingangsrechnungs-Nr.:",width=200,anchor="w").pack(side="left")
-        self.lbl_letzte_er_nr=ctk.CTkLabel(f_er,text=self.p_config.get("letzte_eingangsrechnungsnummer","") or "Noch keine",width=150,anchor="w");self.lbl_letzte_er_nr.pack(side="left",padx=10)
-        self.create_button(f_er,text="✏️ Korrigieren",width=80,command=self.edit_letzte_eingangs_nr).pack(side="left")
-        
-        self.chk_xrechnung_leseabschrift=ctk.CTkCheckBox(f_num_jahr,text="Bei XRechnungen standardmäßig eine PDF-Leseabschrift erzeugen")
-        self.chk_xrechnung_leseabschrift.pack(anchor="w",padx=220,pady=(2,8))
-        if self.p_config.get("xrechnung_leseabschrift",True):self.chk_xrechnung_leseabschrift.select()
+            self.create_button(f_prof_btns, text="🗑 Löschen", width=100, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=10)
 
-        ctk.CTkLabel(scroll_main, text="Speicherorte & Ordnerstruktur:", font=("Helvetica", 14, "bold")).pack(anchor="w", padx=20, pady=(10, 5))
+        # --- KARTE 2: Stammdaten & Datenbanken ---
+        f_stamm_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
+        f_stamm_card.pack(fill="x", pady=10, padx=10)
         
-        start_pfad = os.path.abspath(os.path.dirname(sys.executable if getattr(sys, 'frozen', False) else __file__))
-        f_start = ctk.CTkFrame(scroll_main, fg_color="transparent"); f_start.pack(fill="x", pady=2, padx=20)
-        ctk.CTkLabel(f_start, text="Programm-Startpfad:", width=150, anchor="w").pack(side="left")
-        e_start = ctk.CTkEntry(f_start, width=400); e_start.insert(0, start_pfad); e_start.configure(state="readonly")
-        e_start.pack(side="left", padx=10, fill="x", expand=True)
+        ctk.CTkLabel(f_stamm_card, text="📁 Stammdaten & Datenbanken", font=("Helvetica", 15, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        f_stamm_r1 = ctk.CTkFrame(f_stamm_card, fg_color="transparent")
+        f_stamm_r1.pack(fill="x", padx=15, pady=5)
+        self.create_button(f_stamm_r1, text="🏢 Firmendaten", command=self.open_firma_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=(0, 10))
+        self.create_button(f_stamm_r1, text="👥 Kunden", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        self.create_button(f_stamm_r1, text="📦 Produkte", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        
+        btn_datev = self.create_button(f_stamm_r1, text="📈 DATEV-Konten", command=self.open_datev_manager, fg_color="#107C41", hover_color="#0b5c30")
+        btn_datev.pack(side="left", padx=10)
+        create_tooltip(btn_datev, "Konfigurieren Sie hier die Erlös- und Aufwandskonten\nfür den Buchhaltungsexport zum Steuerberater.")
+        
+        btn_brief = self.create_button(f_stamm_r1, text="📄 Briefbogen hinterlegen", command=self.choose_briefbogen, fg_color="#1f538d", hover_color="#14375d")
+        btn_brief.pack(side="left", padx=10)
+        create_tooltip(btn_brief, "Hinterlegen Sie ein PDF als Design-Vorlage\n(Logo, Fußzeile) für Ihre Ausgangsrechnungen.")
 
-        ctk.CTkLabel(scroll_main, text="Hinweis: Bei Installation im Netzwerk sollte der Daten-Grundpfad auf einem Netzwerklaufwerk liegen.", text_color="orange", font=("Helvetica", 11)).pack(anchor="w", padx=20, pady=2)
+        f_stamm_r2 = ctk.CTkFrame(f_stamm_card, fg_color="transparent")
+        f_stamm_r2.pack(fill="x", padx=15, pady=(5, 15))
+        self.create_button(f_stamm_r2, text="⬇️ Kunden importieren (CSV)", command=self.import_kunden_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=(0, 10))
+        self.create_button(f_stamm_r2, text="⬇️ Produkte importieren (CSV)", command=self.import_produkte_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
 
-        f_base = ctk.CTkFrame(scroll_main, fg_color="transparent"); f_base.pack(fill="x", pady=2, padx=20)
-        ctk.CTkLabel(f_base, text="Daten-Grundpfad:", width=150, anchor="w").pack(side="left")
-        self.entry_base_path = ctk.CTkEntry(f_base, width=400)
-        self.entry_base_path.insert(0, self.config.get("base_data_path", start_pfad))
+        # --- KARTE 3: Nummernkreise ---
+        f_num_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
+        f_num_card.pack(fill="x", pady=10, padx=10)
+        ctk.CTkLabel(f_num_card, text="🔢 Nummernkreise & Rechnungsjahr", font=("Helvetica", 15, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        f_num_grid = ctk.CTkFrame(f_num_card, fg_color="transparent")
+        f_num_grid.pack(fill="x", padx=15, pady=(0, 15))
+        
+        ctk.CTkLabel(f_num_grid, text="Aktuelles Rechnungsjahr:", width=180, anchor="w").grid(row=0, column=0, pady=5, sticky="w")
+        self.combo_jahr = ctk.CTkComboBox(f_num_grid, values=self.get_available_years(), command=self.on_settings_jahr_change)
+        self.combo_jahr.set(self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year)))
+        self.combo_jahr.grid(row=0, column=1, pady=5, sticky="w")
+        
+        ctk.CTkLabel(f_num_grid, text="Letzte Rechnungs-Nr.:", width=180, anchor="w").grid(row=1, column=0, pady=5, sticky="w")
+        self.lbl_letzte_nr = ctk.CTkLabel(f_num_grid, text=self.p_config.get("letzte_rechnungsnummer", "Noch keine"), width=150, anchor="w")
+        self.lbl_letzte_nr.grid(row=1, column=1, pady=5, sticky="w")
+        self.create_button(f_num_grid, text="✏️ Korrigieren", width=100, command=self.edit_letzte_nr).grid(row=1, column=2, padx=10, pady=5, sticky="w")
+        
+        ctk.CTkLabel(f_num_grid, text="Letzte ER-Nr.:", width=180, anchor="w").grid(row=2, column=0, pady=5, sticky="w")
+        self.lbl_letzte_er_nr = ctk.CTkLabel(f_num_grid, text=self.p_config.get("letzte_eingangsrechnungsnummer","") or "Noch keine", width=150, anchor="w")
+        self.lbl_letzte_er_nr.grid(row=2, column=1, pady=5, sticky="w")
+        self.create_button(f_num_grid, text="✏️ Korrigieren", width=100, command=self.edit_letzte_eingangs_nr).grid(row=2, column=2, padx=10, pady=5, sticky="w")
+
+        self.chk_xrechnung_leseabschrift = ctk.CTkCheckBox(f_num_grid, text="Bei XRechnungen standardmäßig PDF-Leseabschrift erzeugen")
+        self.chk_xrechnung_leseabschrift.grid(row=3, column=0, columnspan=3, pady=(15, 5), sticky="w")
+        create_tooltip(self.chk_xrechnung_leseabschrift, "XRechnungen sind reine XML-Dateien.\nDiese Option erzeugt zusätzlich ein menschlich\nlesbares PDF-Dokument für Ihr Ausgangsarchiv.")
+        if self.p_config.get("xrechnung_leseabschrift", True): self.chk_xrechnung_leseabschrift.select()
+
+        # --- KARTE 4: Speicherorte ---
+        f_path_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
+        f_path_card.pack(fill="x", pady=10, padx=10)
+        ctk.CTkLabel(f_path_card, text="📂 Speicherorte & Ordnerstruktur", font=("Helvetica", 15, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
+        
+        f_base = ctk.CTkFrame(f_path_card, fg_color="transparent")
+        f_base.pack(fill="x", padx=15, pady=5)
+        
+        ctk.CTkLabel(f_base, text="Daten-Grundpfad:", width=180, anchor="w").pack(side="left")
+        self.entry_base_path = ctk.CTkEntry(f_base)
+        self.entry_base_path.insert(0, self.config.get("base_data_path", ""))
         self.entry_base_path.pack(side="left", padx=10, fill="x", expand=True)
-        self.create_button(f_base, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_base_path, is_dir=True)).pack(side="left")
-            
-        # --- NEU: Button hierhin verschoben und umbenannt ---
-        self.create_button(scroll_main, text="Pfade speichern", command=self.save_settings).pack(pady=(10, 0))
+        btn_browse = self.create_button(f_base, text="📁", width=40, command=lambda: self.browse_path_for_entry(self.entry_base_path, is_dir=True))
+        btn_browse.pack(side="left")
+        create_tooltip(btn_browse, "Hauptverzeichnis für alle Firmendaten.\nSollte bei Nutzung durch mehrere Rechner\nzwingend auf einem Netzlaufwerk liegen.")
         
-        ctk.CTkLabel(scroll_main, text="Aktive Pfade der aktuellen Firma (schreibgeschützt):", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=20, pady=(15, 0))
+        self.create_button(f_base, text="💾 Pfade anlegen & speichern", command=self.save_settings, fg_color="#1f538d", hover_color="#14375d").pack(side="left", padx=(10,0))
         
-        f_pfade = ctk.CTkScrollableFrame(scroll_main, height=130)
-        f_pfade.pack(fill="x", padx=20, pady=5)
+        ctk.CTkLabel(f_path_card, text="Aktive Pfade der aktuellen Firma (schreibgeschützt):", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=15, pady=(15, 0))
         
-        # Lokale Programmdaten (App-Data) als erster Eintrag ---
-        from datenbank import get_appdata_dir
-        row_app = ctk.CTkFrame(f_pfade, fg_color="transparent")
-        row_app.pack(fill="x", pady=2)
-        ctk.CTkLabel(row_app, text="Lokale Programmdaten (App-Data):", width=220, anchor="w").pack(side="left")
-        e_app = ctk.CTkEntry(row_app)
-        e_app.insert(0, get_appdata_dir())
-        e_app.configure(state="readonly")
-        e_app.pack(side="left", fill="x", expand=True, padx=(5, 0))
-        # ---------------------------------------------------------------
-
+        f_pfade = ctk.CTkFrame(f_path_card, fg_color="transparent")
+        f_pfade.pack(fill="x", padx=15, pady=(5, 15))
+        
         pfade_liste = [
-            ("Ausgangsrechnungen (PDF)", "ausgabe_ordner"),
-            ("Ausgangsjournale (CSV)", "auswertungen_ordner"),
-            ("Posteingang Neu (reneu)", "eingangsordner"),
-            ("Eingangsarchiv Belege (rchn)", "eingangsrechnungen_ordner"),
-            ("Eingangsarchiv Originale (rebearb)", "bearbeitete_eingangsrechnungen_ordner"),
-            ("Eingangsjournale (einj)", "eingangsjournal_ordner"),
-            ("Rechnungs-Datenbank", "rechnung_csv"),
-            ("Kunden-Datenbank", "kunden_csv"),
-            ("Produkte-Datenbank", "produkte_csv"),
-            ("Briefbogen (PDF)", "briefbogen_pdf"),
-            ("Firmen-Stammdaten", "firma_csv")
+            ("Lokale App-Data", get_appdata_dir()),
+            ("Ausgangsrechnungen", self.p_config.get("ausgabe_ordner", "Nicht gesetzt")),
+            ("Ausgangsjournale", self.p_config.get("auswertungen_ordner", "Nicht gesetzt")),
+            ("Eingangsarchiv Originale", self.p_config.get("bearbeitete_eingangsrechnungen_ordner", "Nicht gesetzt")),
+            ("Eingangsarchiv Belege", self.p_config.get("eingangsrechnungen_ordner", "Nicht gesetzt")),
+            ("Eingangsjournale", self.p_config.get("eingangsjournal_ordner", "Nicht gesetzt"))
         ]
         
-        for label_text, key in pfade_liste:
-            row = ctk.CTkFrame(f_pfade, fg_color="transparent")
-            row.pack(fill="x", pady=2)
-            ctk.CTkLabel(row, text=label_text + ":", width=220, anchor="w").pack(side="left")
-            e_pfad = ctk.CTkEntry(row)
-            e_pfad.insert(0, self.p_config.get(key, "Nicht gesetzt"))
+        for r_idx, (label_text, val) in enumerate(pfade_liste):
+            ctk.CTkLabel(f_pfade, text=label_text + ":", width=180, anchor="w").grid(row=r_idx, column=0, pady=3, sticky="w")
+            e_pfad = ctk.CTkEntry(f_pfade, fg_color="transparent", border_width=0, text_color="gray")
+            e_pfad.insert(0, val)
             e_pfad.configure(state="readonly")
-            e_pfad.pack(side="left", fill="x", expand=True, padx=(5, 0))
-            
-       
-        f_cli = ctk.CTkFrame(scroll_main)
-        f_cli.pack(fill="x", pady=(20, 10), padx=20)
-        ctk.CTkLabel(f_cli, text="Beispielaufruf für Kommandozeile (CLI) / Fremdprogramme", font=("Helvetica", 14, "bold")).pack(pady=(10, 5))
+            e_pfad.grid(row=r_idx, column=1, pady=3, sticky="ew", padx=10)
+        f_pfade.columnconfigure(1, weight=1)
+
+        # --- KARTE 5: CLI ---
+        f_cli_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
+        f_cli_card.pack(fill="x", pady=10, padx=10)
+        
+        lbl_cli = ctk.CTkLabel(f_cli_card, text="💻 Kommandozeile (CLI) / Fremdprogramme", font=("Helvetica", 15, "bold"))
+        lbl_cli.pack(anchor="w", padx=15, pady=(10, 0))
+        create_tooltip(lbl_cli, "Kopierbarer Beispielaufruf.\nFremdprogramme können diesen nutzen,\num Rechnungen unsichtbar im Hintergrund zu generieren.")
         
         prof_name = self.p_config.get("profil_name", "")
         letzte_nr = self.p_config.get("letzte_rechnungsnummer") or "RE-1000"
         naechste_nr = berechne_naechste_rechnungsnummer(letzte_nr)
-        
         cmd = f'SokoIur_eRechnung.exe --auto --profil "{prof_name}" --renr "{naechste_nr}" --rechnung "%TEMP%\\rechnung.csv" --kopie "%USERPROFILE%\\Documents"'
         
-        # CTkEntry erlaubt das Markieren und Kopieren (readonly statt disabled)
-        self.entry_cli = ctk.CTkEntry(f_cli, font=("Consolas", 12))
-        self.entry_cli.pack(fill="x", padx=15, pady=(5, 15))
+        self.entry_cli = ctk.CTkEntry(f_cli_card, font=("Consolas", 12))
         self.entry_cli.insert(0, cmd)
         self.entry_cli.configure(state="readonly")
+        self.entry_cli.pack(fill="x", padx=15, pady=(10, 15))
     
     def save_settings(self):
         base_path = self.entry_base_path.get().strip()
@@ -2243,18 +2399,17 @@ class TabErfassenMixin:
 
         btn_bar = ctk.CTkFrame(f, fg_color="transparent")
         btn_bar.pack(pady=8)
-        self.create_button(
-            btn_bar, text="📥 Nächste Eingangsrechnung prüfen", command=self.process_next_incoming,
-            fg_color="#1f538d", hover_color="#14375d", height=36, width=260
-        ).pack(side="left", padx=6)
-        self.create_button(
-            btn_bar, text="🔄 Liste aktualisieren", command=self.refresh_incoming_list,
-            fg_color="#444", hover_color="#666", height=36, width=160
-        ).pack(side="left", padx=6)
-        self.create_button(
-            btn_bar, text="📂 Ordner öffnen", command=self.open_incoming_folder,
-            fg_color="#444", hover_color="#666", height=36, width=140
-        ).pack(side="left", padx=6)
+        btn_next_in = self.create_button(btn_bar, text="📥 Nächste Eingangsrechnung prüfen", command=self.process_next_incoming, fg_color="#1f538d", hover_color="#14375d", height=36, width=260)
+        btn_next_in.pack(side="left", padx=6)
+        create_tooltip(btn_next_in, "Prüft die oberste Datei im Eingangsordner auf gesetzliche \nVorgaben und startet den Erfassungsprozess.")
+        
+        btn_ref_in = self.create_button(btn_bar, text="🔄 Liste aktualisieren", command=self.refresh_incoming_list, fg_color="#444", hover_color="#666", height=36, width=160)
+        btn_ref_in.pack(side="left", padx=6)
+        create_tooltip(btn_ref_in, "Sucht nach neu hinzugefügten Dateien im Eingangsordner.")
+        
+        btn_open_in = self.create_button(btn_bar, text="📂 Ordner öffnen", command=self.open_incoming_folder, fg_color="#444", hover_color="#666", height=36, width=140)
+        btn_open_in.pack(side="left", padx=6)
+        create_tooltip(btn_open_in, "Öffnet den Ordner (reneu) im Windows-Explorer, \num Dateien per Drag & Drop hineinzuziehen.")
 
         ctk.CTkLabel(f, text="Wartende Belege im Eingangsordner:", font=("Helvetica", 13, "bold")).pack(pady=(8, 2))
         self.incoming_scroll = ctk.CTkScrollableFrame(f, height=220)
@@ -2333,9 +2488,10 @@ class TabErfassenMixin:
             ctk.CTkLabel(self.incoming_scroll, text=hinweis, text_color="gray", wraplength=680).pack(pady=15)
             return
 
+        from eingangsrechnung import check_duplicate_incoming, load_all_journal_entries
+
         journal_folder = self.p_config.get('eingangsjournal_ordner', '')
         
-        # NEU: Journale genau EINMAL auslesen, bevor die Schleife startet!
         alle_journale = load_all_journal_entries(journal_folder)
 
         for idx, fpath in enumerate(files):

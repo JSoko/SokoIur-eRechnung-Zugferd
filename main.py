@@ -14,17 +14,17 @@ import argparse
 from datetime import datetime
 import tkinter as tk
 import tkinter.messagebox as messagebox
-from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
 
 if getattr(sys, 'frozen', False):
     sys.path.append(sys._MEIPASS)
 else:
     sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-# Importieren der Funktionen aus unseren eigenen 3 Modulen (ERST HIER!)
+# Importieren der Funktionen aus unseren eigenen  Modulen (ERST HIER!)
 from datenbank import init_config, speichere_config, LOCK_FILE, ensure_utf8_csv
 from pdf_zugferd import run_auto_generation
 from gui_app import App
+from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
 
 def main():
     # 2. Kommandozeilenparameter definieren und auslesen

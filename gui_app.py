@@ -137,23 +137,23 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         if getattr(self, '_initializing', False): return  
         selected_tab = self.tabview.get()
         
-        if selected_tab == "📝 ERSTELLEN":
+        if selected_tab == self.name_manuell:
             if not self.check_and_handle_lock(selected_tab, "erechnung.lock"):
-                self.tabview.set("ℹ️ Info")
+                self.tabview.set(self.name_hilfe)
                 return
             self.lock_firm(self.p_config, "erechnung.lock")
             self.unlock_firm("erfassung.lock")
             
-        elif selected_tab == "📥 ERFASSEN":
+        elif selected_tab == self.name_erfassen:
             if not self.check_and_handle_lock(selected_tab, "erfassung.lock"):
-                self.tabview.set("ℹ️ Info")
+                self.tabview.set(self.name_hilfe)
                 return
             self.lock_firm(self.p_config, "erfassung.lock")
             self.unlock_firm("erechnung.lock")
             
-        elif selected_tab == "⚙️ Einst.":
+        elif selected_tab == self.name_settings:
             if not self.check_and_handle_lock(selected_tab, "erechnung.lock") or not self.check_and_handle_lock(selected_tab, "erfassung.lock"):
-                self.tabview.set("ℹ️ Info")
+                self.tabview.set(self.name_hilfe)
                 return
             self.lock_firm(self.p_config, "erechnung.lock")
             self.lock_firm(self.p_config, "erfassung.lock")
@@ -192,15 +192,17 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.bind('<Alt-S>', lambda e: self.save_manual_invoice())
         self.bind('<Alt-p>', lambda e: self.save_generate_open_exit())
         self.bind('<Alt-P>', lambda e: self.save_generate_open_exit())
-        self.bind('<Alt-e>', lambda e: self.tabview.set("📝 ERSTELLEN"))
-        self.bind('<Alt-E>', lambda e: self.tabview.set("📝 ERSTELLEN"))
-        self.bind('<Alt-a>', lambda e: self.tabview.set("📊 AUSGANG"))
-        self.bind('<Alt-A>', lambda e: self.tabview.set("📊 AUSGANG"))
-        self.bind('<Alt-f>', lambda e: self.tabview.set("📥 ERFASSEN"))
-        self.bind('<Alt-F>', lambda e: self.tabview.set("📥 ERFASSEN"))
-        self.bind('<Alt-i>', lambda e: self.tabview.set("📊 EINGANG"))
-        self.bind('<Alt-I>', lambda e: self.tabview.set("📊 EINGANG"))
-        self.bind('<F1>', lambda e: self.tabview.set("ℹ️ Info"))
+        self.bind('<Alt-e>', lambda e: self.tabview.set(self.name_manuell))
+        self.bind('<Alt-E>', lambda e: self.tabview.set(self.name_manuell))
+        self.bind('<Alt-f>', lambda e: self.tabview.set(self.name_erfassen))
+        self.bind('<Alt-F>', lambda e: self.tabview.set(self.name_erfassen))
+        self.bind('<Alt-a>', lambda e: self.tabview.set(self.name_ausgang))
+        self.bind('<Alt-A>', lambda e: self.tabview.set(self.name_ausgang))
+        self.bind('<Alt-i>', lambda e: self.tabview.set(self.name_eingang))
+        self.bind('<Alt-I>', lambda e: self.tabview.set(self.name_eingang))
+        self.bind('<Alt-k>', lambda e: self.tabview.set(self.name_settings))
+        self.bind('<Alt-K>', lambda e: self.tabview.set(self.name_settings))
+        self.bind('<F1>', lambda e: self.tabview.set(self.name_hilfe))
         
         self.header_container = ctk.CTkFrame(self, fg_color="transparent")
         self.header_container.pack(fill="x", padx=20, pady=(10, 0))
@@ -210,14 +212,21 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.tabview = ctk.CTkTabview(self) 
         self.tabview.pack(padx=20, pady=(10, 5), fill="both", expand=True)
         
-        self.tab_manuell = self.tabview.add("📝 ERSTELLEN")
-        self.tab_erfassen = self.tabview.add("📥 ERFASSEN")
-        self.tab_ausgang = self.tabview.add("📊 AUSGANG")
-        self.tab_eingang = self.tabview.add("📊 EINGANG")
-        self.tab_settings = self.tabview.add("⚙️ Einst.")
-        self.tab_hilfe = self.tabview.add("ℹ️ Info")
+        # Spezielle Unicode-Zeichen für fette Buchstaben (Sans-Serif Bold)
+        self.name_manuell = "📝 [E]RSTELLEN"
+        self.name_erfassen = "📥 ER[F]ASSEN"
+        self.name_ausgang = "📊 [A]USGANG"
+        self.name_eingang = "📊 E[I]NGANG"
+        self.name_settings = "⚙️ [K]onfig."
+        self.name_hilfe = "ℹ️ Info [F1]"
+
+        self.tab_manuell = self.tabview.add(self.name_manuell)
+        self.tab_erfassen = self.tabview.add(self.name_erfassen)
+        self.tab_ausgang = self.tabview.add(self.name_ausgang)
+        self.tab_eingang = self.tabview.add(self.name_eingang)
+        self.tab_settings = self.tabview.add(self.name_settings)
+        self.tab_hilfe = self.tabview.add(self.name_hilfe)
         
-        self.tabview.set("📝 ERSTELLEN")
 
         # 3. DATENSPEICHERORT PRÜFEN & ORDNER SETUP
         if not self.config.get("base_data_path"):
@@ -283,7 +292,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.set_firm_lock()
         self.refresh_all_ui()
         
-        self.tabview.set("📝 ERSTELLEN")
+        self.tabview.set(self.name_manuell)
         
         # Initialisierung abgeschlossen - Überwachung jetzt aktivieren
         self._initializing = False
@@ -561,11 +570,11 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         dialog.geometry(f"{width}x{height}+{x}+{y}")
 
     def handle_plus_key(self, event):
-        if self.tabview.get() == "📝 ERSTELLEN":
+        if self.tabview.get() == self.name_manuell:
             widget = self.focus_get()
             if widget and widget.winfo_class() in ('Entry', 'Text'): return
             self.open_pos_popup()
-
+    
     def create_button(self, parent, text, command, **kwargs):
         btn = ctk.CTkButton(parent, text=text, command=command, **kwargs)
         btn.bind('<Return>', lambda e: command()); btn.bind('<space>', lambda e: command())

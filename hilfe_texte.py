@@ -3,6 +3,7 @@ hilfe_texte.py
 --------------
 HTML- und Markdown-Generierung für das Handbuch und Changelog.
 """
+import re
 
 def get_doku_html(version_string):
     return rf"""<!DOCTYPE html>
@@ -12,62 +13,105 @@ def get_doku_html(version_string):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SokoIur eRechnung - Handbuch</title>
     <style>
-        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #ffffff; }}
-        h1, h2, h3 {{ color: #1f538d; }}
-        h2 {{ border-bottom: 2px solid #1f538d; padding-bottom: 5px; margin-top: 40px; }}
-        a {{ color: #1f538d; text-decoration: none; font-weight: bold; }}
-        a:hover {{ text-decoration: underline; }}
-        .toc {{ background: #f4f7f6; padding: 20px; border-radius: 8px; margin-bottom: 30px; border: 1px solid #ddd; }}
+        html {{ background-color: #e9ecef; scroll-behavior: smooth; }}
+        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.7; color: #333; max-width: 1300px; margin: 40px auto; padding: 0 20px; display: flex; gap: 30px; }}
+        .sidebar {{ flex: 0 0 300px; position: sticky; top: 40px; height: calc(100vh - 80px); overflow-y: auto; background-color: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }}
+        .main-content {{ flex: 1; background-color: #ffffff; padding: 50px 60px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); min-width: 0; }}
+        h1 {{ color: #1f538d; text-align: center; margin-bottom: 5px; font-size: 2.2em; }}
+        p.version {{ text-align: center; color: #6c757d; margin-top: 0; margin-bottom: 40px; }}
+        h2 {{ color: #1f538d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 50px; font-size: 1.6em; }}
+        h3 {{ color: #2c3e50; margin-top: 30px; font-size: 1.2em; }}
+        a {{ color: #0066cc; text-decoration: none; }}
+        a:hover {{ text-decoration: underline; color: #004999; }}
+        p, li {{ font-size: 15px; }}
         .toc ul {{ list-style-type: none; padding: 0; margin: 0; }}
-        .toc li {{ margin-bottom: 8px; }}
-        .toc-link {{ text-decoration: none; color: #333; font-weight: normal; }}
-        .toc-link:hover {{ color: #1f538d; text-decoration: underline; }}
-        code {{ background: #eee; padding: 2px 5px; border-radius: 3px; font-family: Consolas, monospace; color: #d63384; }}
-        .highlight {{ background-color: #fff3cd; border-left: 4px solid #ffecb5; padding: 10px; margin: 15px 0; }}
-        .warning-box {{ background-color: #f9e2e2; border-left: 4px solid #d9534f; padding: 10px; margin: 15px 0; }}
+        .toc li {{ margin-bottom: 12px; font-size: 14px; }}
+        .toc-link {{ color: #495057; text-decoration: none; display: block; transition: all 0.2s; border-left: 2px solid transparent; padding-left: 10px; margin-left: -12px; }}
+        .toc-link:hover {{ color: #1f538d; font-weight: bold; border-left: 2px solid #1f538d; background: #f8f9fa; }}
+        code {{ background: #f1f3f5; padding: 3px 6px; border-radius: 4px; font-family: 'Consolas', monospace; color: #d63384; font-size: 0.95em; }}
+        .highlight {{ background-color: #f8fbff; border-left: 5px solid #6fa8dc; padding: 15px 20px; margin: 25px 0; border-radius: 0 8px 8px 0; }}
+        .warning-box {{ background-color: #fff5f5; border-left: 5px solid #e06666; padding: 15px 20px; margin: 25px 0; border-radius: 0 8px 8px 0; color: #990000; }}
+        .badge-beginner {{ background-color: #e2f0d9; color: #385723; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }}
+        .badge-pro {{ background-color: #ddefff; color: #1f538d; padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }}
+        
+        table.cheat-sheet {{ width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 15px; }}
+        table.cheat-sheet th, table.cheat-sheet td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 14px; }}
+        table.cheat-sheet th {{ background-color: #f8f9fa; color: #1f538d; }}
+        
+        details {{ background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 15px; padding: 15px; transition: all 0.2s ease; }}
+        details[open] {{ background: #ffffff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
+        summary {{ font-size: 15px; cursor: pointer; color: #1f538d; outline: none; list-style: none; display: flex; align-items: center; justify-content: space-between; }}
+        summary::-webkit-details-marker {{ display: none; }}
+        summary:after {{ content: '+'; font-size: 20px; font-weight: bold; color: #1f538d; }}
+        details[open] summary:after {{ content: '-'; }}
+        details p {{ margin-top: 15px; margin-bottom: 0; padding-top: 15px; border-top: 1px solid #e9ecef; }}
+        
+        @media (max-width: 950px) {{ body {{ flex-direction: column; padding: 10px; }} .sidebar {{ position: static; height: auto; padding: 20px; }} .main-content {{ padding: 30px 20px; }} }}
     </style>
 </head>
+
 <body>
-    <h1>SokoIur eRechnung - Handbuch</h1>
-    <p><strong>Version: {version_string}</strong></p>
-
-    <div class="toc">
-        <h2 style="margin-top: 0; border: none;">Inhaltsverzeichnis</h2>
-        <ul>
-            <li><a class="toc-link" href="#kap1">1. Installation & Ersteinrichtung</a></li>
-            <li><a class="toc-link" href="#kap2">2. Haftungsausschluss, Support & Datenschutz</a></li>
-            <li><a class="toc-link" href="#kap2_1">2.1 Lizenzerklärung</a></li>
-            <li><a class="toc-link" href="#kap3">3. Programmbeschreibung & Aufruf (CLI / GUI)</a></li>
-            <li><a class="toc-link" href="#kap3_1">3.1 Die Benutzeroberfläche (Tabs) im Detail</a></li>
-            <li><a class="toc-link" href="#kap3_2">3.2 Die Kommandozeilenparameter (CLI) im Detail</a></li>
-            <li><a class="toc-link" href="#kap3_3">3.3 Programmfunktionen, Verwendungsszenarien & Anwendungsfälle</a></li>
-            <li><a class="toc-link" href="#kap4">4. Ordnerstruktur und Dateien</a></li>
-            <li><a class="toc-link" href="#kap5">5. Jahreswechsel</a></li>
-            <li><a class="toc-link" href="#kap6">6. Mandanten & Datenbanken</a></li>
-            <li><a class="toc-link" href="#kap7">7. Rechnungspositionen, Leistungszeitraum & Duplikate</a></li>
-            <li><a class="toc-link" href="#kap8">8. Rechnungsformate, Papierrechnung & elektronische Empfängeradresse</a></li>
-            <li><a class="toc-link" href="#kap9">9. Datumseingaben</a></li>
-            <li><a class="toc-link" href="#kap10">10. Standardtexte & Formatierungen</a></li>
-            <li><a class="toc-link" href="#kap11">11. Eingangsrechnungen erfassen und auswerten</a></li>
-            <li><a class="toc-link" href="#kap11_rev">11.8 Hinweise zur revisionssicheren Archivierung (Ausblick)</a></li>
-            <li><a class="toc-link" href="#kap12">12. DATEV-Export & Buchhaltung</a></li>
-            <li><a class="toc-link" href="#kap13">13. GitHub & Updates</a></li>
-            <li><a class="toc-link" href="#kap14">14. Import-Format (Beispiel rechnung.csv)</a></li>
-            <li><a class="toc-link" href="#kap15">15. Lizenzen & Drittparty-Module</a></li>
-        </ul>
+    <div class="sidebar">
+        <h2 style="margin-top: 0; border: none; font-size: 1.4em;">Inhaltsverzeichnis</h2>
+        <div class="toc">
+            <ul>
+                <li><a class="toc-link" href="#kap1">1. Zielgruppe, Zweck & Schnellstart</a></li>
+                <li><a class="toc-link" href="#kap2">2. Haftungsausschluss & Support</a></li>
+                <li><a class="toc-link" href="#kap2_1">2.1 Lizenzerklärung</a></li>
+                <li><a class="toc-link" href="#kap3">3. Programmaufruf & CLI (Cheat-Sheet)</a></li>
+                <li><a class="toc-link" href="#kap3_1">3.1 Benutzeroberfläche & Tabs</a></li>
+                <li><a class="toc-link" href="#kap3_2">3.2 Kommandozeilenparameter</a></li>
+                <li><a class="toc-link" href="#kap3_3">3.3 Verwendungsszenarien & Use Cases</a></li>
+                <li><a class="toc-link" href="#kap4">4. Ordnerstruktur & Admin-Guide</a></li>
+                <li><a class="toc-link" href="#kap5">5. Jahreswechsel</a></li>
+                <li><a class="toc-link" href="#kap6">6. Mandanten & Datenbanken</a></li>
+                <li><a class="toc-link" href="#kap7">7. Positionen & Leistungszeitraum</a></li>
+                <li><a class="toc-link" href="#kap8">8. Rechnungsformate (ZUGFeRD/XRechnung)</a></li>
+                <li><a class="toc-link" href="#kap9">9. Datumseingaben</a></li>
+                <li><a class="toc-link" href="#kap10">10. Standardtexte & Formatierung</a></li>
+                <li><a class="toc-link" href="#kap11">11. Eingangsrechnungen & Archiv</a></li>
+                <li><a class="toc-link" href="#kap12">12. DATEV-Export & Buchhaltung</a></li>
+                <li><a class="toc-link" href="#kap13">13. GitHub & Updates</a></li>
+                <li><a class="toc-link" href="#kap14">14. Import-Format (CSV)</a></li>
+                <li><a class="toc-link" href="#kap15">15. Mini-Glossar</a></li>
+                <li><a class="toc-link" href="#kap16">16. FAQ – Häufige Fragen</a></li>
+                <li><a class="toc-link" href="#kap17">17. Schlagwortverzeichnis</a></li>
+            </ul>
+        </div>
     </div>
+    
+    <div class="main-content">
+        <h1>SokoIur eRechnung - Handbuch</h1>
+        <p class="version"><strong>Version: {version_string}</strong></p>
 
-    <h2 id="kap1">1. Installation & Ersteinrichtung</h2>
+    <h2 id="kap1">1. Zielgruppe, Zweck & Schnellstart <span class="badge-beginner">🟢</span></h2>
+    
+    <h3>Für wen und what ist das Programm gedacht?</h3>
+    <p>Das Programm <strong>SokoIur eRechnung</strong> richtet sich an Freiberufler, Selbstständige, Handwerker sowie kleine bis mittlere Unternehmen, die rechtssichere elektronische Rechnungen im modernen <strong>ZUGFeRD-</strong> und <strong>XRechnung-Standard</strong> erstellen, empfangen und verwalten möchten. Es fungiert entweder als eigenständige Standalone-Lösung für den Arbeitsplatz oder als unsichtbare „Druck-Engine“ im Hintergrund, die von externen Branchenprogrammen via Kommandozeile ferngesteuert werden kann.</p>
+
+    <h3>Welche Aufgaben kann das Programm erfüllen?</h3>
+    <ul>
+        <li><strong>Ausgangsrechnungen:</strong> Schreiben und Generieren von GoBD-konformen Rechnungen inkl. automatischer Steuerberechnung, optionalem Girocode (QR-Code) und integriertem PDF-Briefpapier.</li>
+        <li><strong>Eingangsrechnungen:</strong> Automatisierte formelle Prüfung nach EN 16931 / § 14 UStG, Duplikatskontrolle (Hash & Inhalt) und revisionsvorbereitende Archivierung.</li>
+        <li><strong>Buchhaltung & Export:</strong> Erstellung von Ein- und Ausgangsjournalen als PDF oder CSV sowie direkter DATEV-Export (EXTF) mit automatischem Steuer-Splitting.</li>
+        <li><strong>Netzwerk- & Mehrplatzbetrieb:</strong> Parallele Nutzung über ein zentrales Netzlaufwerk mit integriertem File-Locking (Sperrdateien) zur Vermeidung von Konflikten.</li>
+    </ul>
+
+    <h3>Installation & Ersteinrichtung</h3>
     <p>Die Anwendung (<code>.exe</code>) kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden – auch in systemgeschützten Verzeichnissen wie <code>C:\Programme</code>. Lokale Geräteeinstellungen speichert das Programm automatisch sicher in Ihrem Windows-Benutzerverzeichnis (<code>%LOCALAPPDATA%\SokoIur_eRechnung</code>), sodass keine Administratorrechte für den täglichen Betrieb nötig sind.</p>
-    <h3>Ersteinrichtung und Datenspeicherort:</h3>
-    <p>Beim allerersten Start des Programms werden Sie aufgefordert, einen Grundpfad für die Datenspeicherung auszuwählen.</p>
+    
     <div class="highlight">
-        <strong>WICHTIG:</strong> Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden!<br>
-        Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.
+        <strong>⚡ In 3 Schritten zur ersten Rechnung (Quickstart für Eilige):</strong><br>
+        1. <strong>Grundpfad wählen:</strong> Beim ersten Start einen zentralen Datenspeicherort (bei Mehrplatznutzung ein Netzlaufwerk) festlegen.<br>
+        2. <strong>Briefbogen hinterlegen:</strong> Im Reiter <strong>⚙️ Konfig.</strong> über den Button <em>„Briefbogen hinterlegen“</em> Ihre PDF-Vorlage hochladen.<br>
+        3. <strong>Rechnung schreiben:</strong> In den Reiter <strong>📝 ERSTELLEN</strong> wechseln, Kundendaten eintragen, Positionen hinzufügen und unten auf <em>„Zugpferdrechnung erstellen & öffnen (Alt+P)“</em> klicken.
     </div>
+
+    <p><strong>WICHTIGER HINWEIS ZUM DATENSPEICHERORT:</strong> Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden! Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.</p>
     <p>Anschließend legt das Programm dort alle benötigten Unterordner und leeren Konfigurations-Dateien (<code>.csv</code>) automatisch für Ihre erste Firma an.</p>
+    
     <h3>Briefbogen hinterlegen:</h3>
-    <p>Um Ihr eigenes Rechnungsdesign (Logo, Fußzeile etc.) als Hintergrund für die Rechnungen zu verwenden, wechseln Sie in den Reiter <strong>⚙️ Einst.</strong> und klicken Sie im Bereich der Firmendaten auf den Button <strong>„📄 Briefbogen hinterlegen“</strong>. Wählen Sie dort einfach Ihre PDF-Vorlage aus.</p>
+    <p>Um Ihr eigenes Rechnungsdesign (Logo, Fußzeile etc.) als Hintergrund für die Rechnungen zu verwenden, wechseln Sie in den Reiter <strong>⚙️ Konfig.</strong> und klicken Sie im Bereich der Firmendaten auf den Button <strong>„📄 Briefbogen hinterlegen“</strong>. Wählen Sie dort einfach Ihre PDF-Vorlage aus.</p>
     <p><em>Tipp:</em> Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab.</p>
     
     <h2 id="kap2">2. Haftungsausschluss, Support & Datenschutz</h2>
@@ -85,81 +129,104 @@ def get_doku_html(version_string):
     <p><strong>3. Quellcode:</strong> Der Quellcode ist auf GitHub einsehbar. Die .exe darf nicht dekompiliert oder manipuliert werden.</p>
     <p><strong>4. Drittkomponenten:</strong> Dieses Programm nutzt Open-Source-Bibliotheken (Python, CustomTkinter, ReportLab, pypdf, qrcode).</p>
     
-    <h2 id="kap3">3. Programmbeschreibung & Aufruf (CLI / GUI)</h2>
-    <p>SokoIur eRechnung ist ein Rechnungstool zur Erstellung elektronischer Rechnungen. Es kann komplett über die grafische Oberfläche (GUI) gesteuert werden oder als "Druck-Engine" für externe Programme fungieren.</p>
-    <h3>Aufruf über Kommandozeile (CLI):</h3>
+    <h2 id="kap3">3. Programmaufruf & CLI (Power-User Cheat-Sheet) <span class="badge-pro">🔵</span></h2>
+    <p>SokoIur eRechnung is ein Rechnungstool zur Erstellung elektronischer Rechnungen. Es kann komplett über die grafische Oberfläche (GUI) gesteuert werden oder als "Druck-Engine" für externe Branchensoftware fungieren.</p>
+    
+    <h3>Tastenkürzel-Übersicht (GUI):</h3>
     <ul>
-        <li><code>SokoIur_eRechnung.exe --auto [Parameter]</code> &rarr; Generiert direkt unsichtbar im Hintergrund</li>
-        <li><code>SokoIur_eRechnung.exe --edit [Parameter]</code> &rarr; Öffnet die GUI (Manuelle Eingabe) mit vorgefüllten Daten.</li>
+        <li><code>Alt + E</code> &rarr; Zum Reiter ERSTELLEN wechseln</li>
+        <li><code>Alt + F</code> &rarr; Zum Reiter ERFASSEN wechseln</li>
+        <li><code>Alt + A</code> &rarr; Zum Reiter AUSGANG wechseln</li>
+        <li><code>Alt + I</code> &rarr; Zum Reiter EINGANG wechseln</li>
+        <li><code>Alt + K</code> &rarr; Zum Reiter Konfig. wechseln</li>
+        <li><code>F1</code> &rarr; Hilfe & Info aufrufen</li>
+        <li><code>Alt + L</code> &rarr; Letzte Rechnungs-CSV laden</li>
+        <li><code>Alt + T</code> &rarr; Texte bearbeiten (Header, Einleitung, Gruß)</li>
+        <li><code>Alt + P</code> &rarr; ZUGFeRD-Rechnung generieren, öffnen & beenden</li>
+        <li><code>+</code> (Plus-Taste) &rarr; Neue Position im Formular hinzufügen</li>
     </ul>
 
     <h2 id="kap3_1">3.1 Die Benutzeroberfläche (Tabs) im Detail</h2>
-    <h3>📝 ERSTELLEN (Ausgangsrechnungen schreiben)</h3>
+    <p><em>Tipp: Sie können zwischen allen Reitern schnell über die Tastatur wechseln. Halten Sie dazu die <strong>Alt-Taste</strong> gedrückt und tippen Sie den unterstrichenen Buchstaben der Tab-Überschrift.</em></p>
+    <h3>📝 E̲RSTELLEN (Ausgangsrechnungen schreiben)</h3>
     <p>Hier erfassen und generieren Sie Ihre eigenen Ausgangsrechnungen an Kunden inkl. automatischer Steuerberechnung.</p>
-    <h3>📥 ERFASSEN (Eingangsrechnungen prüfen)</h3>
+    <h3>📥 ERF̲ASSEN (Eingangsrechnungen prüfen)</h3>
     <p>Haltautomatisierte Prüfung, Erfassung und Archivierung von Rechnungen Ihrer Lieferanten (Prüfung nach EN 16931 / § 14 UStG).</p>
-    <h3>📊 AUSGANG (Ausgangsjournal)</h3>
+    <h3>📊 A̲USGANG (Ausgangsjournal)</h3>
     <p>Auswertung der geschriebenen Rechnungen als PDF, CSV oder DATEV-Export.</p>
-    <h3>📊 EINGANG (Eingangsjournal & Verwaltung)</h3>
+    <h3>📊 EI̲NGANG (Eingangsjournal & Verwaltung)</h3>
     <p>Durchsuchen, Verwalten und Auswerten der erfassten Eingangsrechnungen (Storno-Funktion inklusive).</p>
-    <h3>⚙️ Einst. (Einstellungen & Stammdaten)</h3>
-    <p>Zentrale Konfiguration Ihrer Firmen, Nummernkreise, DATEV-Konten und Stammdaten.</p>
+    <h3>⚙️ K̲onfig. (Einstellungen & Stammdaten)</h3>
+    <p>Zentrale Konfiguration Ihrer Firmen, Nummernkreise, DATEV-Konten und Stammdaten mit hilfreichen Tooltips.</p>
     <h3>ℹ️ Info (Hilfe & Statistik)</h3>
     <p>Dokumentation, Version, Statistiken und Update-Suche.</p>
     
-    <h2 id="kap3_2">3.2 Die Kommandozeilenparameter (CLI) im Detail</h2>
-    <ul>
-        <li><code>--auto</code>: Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.</li>
-        <li><code>--edit</code>: Startet die grafische Oberfläche zur manuellen Nachbearbeitung (enthält einen Schutz vor versehentlichem Beenden ohne Rechnungserstellung).</li>
-        <li><code>--profil "Name"</code>: Wählt das Firmenprofil aus (Programm bricht sicherheitshalber mit einer Fehlermeldung ab, falls das Profil nicht existiert).</li>
-        <li><code>--renr "RE-Nummer"</code>: Überschreibt die in der CSV enthaltene Rechnungsnummer.</li>
-        <li><code>--rechnung "Pfad"</code>: Pfad zur einzulesenden <code>rechnung.csv</code> (z.B. Export-Datei).</li>
-        <li><code>--kopie "Pfad"</code>: Zusätzliches Zielverzeichnis für eine Kopie der generierten Rechnung.</li>
-    </ul>
+    <h2 id="kap3_2">3.2 Die Kommandozeilenparameter (CLI Cheat-Sheet) <span class="badge-pro">🔵</span></h2>
+    <table class="cheat-sheet">
+        <tr>
+            <th>Parameter</th>
+            <th>Beschreibung / Verwendung</th>
+        </tr>
+        <tr>
+            <td><code>--auto</code></td>
+            <td>Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.</td>
+        </tr>
+        <tr>
+            <td><code>--edit</code></td>
+            <td>Startet die GUI zur manuellen Nachbearbeitung (enthält Schutz vor versehentlichem Schließen).</td>
+        </tr>
+        <tr>
+            <td><code>--profil "Name"</code></td>
+            <td>Wählt das Firmenprofil aus (bricht bei nicht existierendem Profil sicherheitshalber ab).</td>
+        </tr>
+        <tr>
+            <td><code>--renr "Nummer"</code></td>
+            <td>Überschreibt die in der CSV enthaltene Rechnungsnummer.</td>
+        </tr>
+        <tr>
+            <td><code>--rechnung "Pfad"</code></td>
+            <td>Pfad zur einzulesenden <code>rechnung.csv</code> (z. B. Export-Datei aus Fremdsoftware).</td>
+        </tr>
+        <tr>
+            <td><code>--kopie "Pfad"</code></td>
+            <td>Zusätzliches Zielverzeichnis für eine Kopie der generierten Rechnung.</td>
+        </tr>
+    </table>
 
     <h2 id="kap3_3">3.3 Programmfunktionen, Verwendungsszenarien & Anwendungsfälle</h2>
-    <h3>Kernfunktionen des Programms</h3>
-    <ul>
-        <li><strong>eRechnungserstellung:</strong> Generierung von normkonformen ZUGFeRD- (Hybrid-PDF) und XRechnungen (XML) inkl. Leseabschrift.</li>
-        <li><strong>Eingangsrechnungs-Verarbeitung:</strong> Automatisierte formelle Prüfung, Duplikatskontrolle (Hash & Inhalt) und revisionsvorbereitende Archivierung von Eingangsbelegen.</li>
-        <li><strong>Stammdatenverwaltung:</strong> Pflege von mehreren Firmenprofilen (Mandantenfähigkeit), Kunden-, Produkt- und Text-Datenbanken.</li>
-        <li><strong>Buchhaltung & Export:</strong> Erstellung von Journalen für Ein- und Ausgang sowie direkter DATEV-Export (EXTF) inkl. automatischem Steuer-Splitting.</li>
-        <li><strong>Automatisierung (CLI):</strong> Fernsteuerung über Kommandozeilenparameter zur nahtlosen Integration in Dritt-Software.</li>
-        <li><strong>Netzwerkbetrieb:</strong> Lokale Installation mit zentralem Datenspeicher auf Netzlaufwerken zur parallelen Nutzung inkl. File-Locking.</li>
-    </ul>
-
-    <h3>Typische Verwendungsszenarien</h3>
-    <div class="highlight">
-        <strong>Szenario A: Standalone-Lösung (Freiberufler & Handwerker)</strong><br>
-        Ein Unternehmer nutzt das Tool als primäres Abrechnungswerkzeug. Er pflegt Kunden und Artikel im Programm, schreibt seine Rechnungen über die Maske, prüft eingehende Belege und erzeugt am Monatsende mit einem Klick den DATEV-Export.
-    </div>
-    <div class="highlight">
-        <strong>Szenario B: Integrierte "Druck-Engine" (Mittelstand)</strong><br>
-        Ein Unternehmen nutzt eine Branchensoftware, die Rechnungen nur als einfache CSV-Liste ausgibt. SokoIur eRechnung wird per Kommandozeile (<code>--auto</code>) aufgerufen, liest die CSV ein, bettet sie in den Briefbogen ein und generiert vollautomatisch eine ZUGFeRD-PDF für den Versand, ohne dass der Anwender die GUI sieht.
-    </div>
+    <h3>Kernfunktionen & Typische Szenarien</h3>
+    <p><strong>Szenario A (Standalone):</strong> Freiberufler nutzen das Tool als Abrechnungswerkzeug für Kunden, Artikel und DATEV-Export.<br>
+    <strong>Szenario B (Druck-Engine):</strong> Mittelständische Branchensoftware übergibt CSV-Daten per CLI (<code>--auto</code>), das Tool bettet sie in den Briefbogen ein und versendet ZUGFeRD-PDFs ohne GUI.</p>
 
     <h3>Spezifische Anwendungsfälle (Use Cases)</h3>
     <ul>
-        <li><strong>Rechnung an Behörden (B2G - XRechnung):</strong> Für Rechnungen an öffentliche Auftraggeber (Bund, Länder, Kommunen) ist das XRechnung-Format verpflichtend. Tragen Sie bei der Rechnungserstellung im Feld "E-Mail / Leitweg-ID" die vom Amt mitgeteilte <strong>Leitweg-ID</strong> ein und setzen Sie das "Endpoint-Schema" auf <code>0204</code>. Klicken Sie anschließend auf "XRechnung erstellen". Das Programm generiert die reine XML-Datei für den Upload in Portale (z.B. ZRE, OZG-RE) und zusätzlich ein übersichtliches Lese-PDF für Ihre eigenen Akten.</li>
-        <li><strong>Rechnung an Geschäftskunden (B2B - E-Rechnungspflicht ab 2027/2028):</strong> Gemäß Wachstumschancengesetz gilt für inländische B2B-Umsätze schrittweise eine E-Rechnungspflicht (Übergangsregelungen bis Ende 2026 bzw. 2027 je nach Umsatz). Um diese Gesetzesvorgaben zu erfüllen, nutzen Sie idealerweise den Button <strong>"Zugpferdrechnung erstellen" (ZUGFeRD)</strong>. Hierfür reicht als Empfängeradresse die reguläre E-Mail-Adresse (Endpoint-Schema: <code>EM</code>). Sie erhalten <em>eine einzige</em> PDF-Datei, die vom Menschen gelesen werden kann und gleichzeitig die nach EN 16931 geforderten XML-Daten unsichtbar in sich trägt. Diese Datei können Sie einfach per E-Mail an Ihre Kunden versenden.</li>
-        <li><strong>Stornorechnung erstellen:</strong> Über "Rechnungs-CSV wählen" wird eine alte Rechnung geladen. Die Beträge werden manuell ins Minus gesetzt und das Programm ändert bei der Generierung automatisch die Hinweistexte ("Dieser Beleg weist ein Guthaben aus...").</li>
-        <li><strong>Girocode für Schnellzahler:</strong> Wird der "Girocode" in den Firmeneinstellungen aktiviert, druckt das Programm einen normierten EPC-QR-Code auf die Rechnung. Der Kunde kann diesen mit seiner Banking-App scannen, sodass IBAN, Betrag und Verwendungszweck (Rechnungsnummer) fehlerfrei übernommen werden.</li>
+        <li><strong>Behörden (B2G - XRechnung):</strong> Leitweg-ID im Feld "E-Mail / Leitweg-ID" eintragen, Endpoint-Schema auf <code>0204</code> setzen. Generiert reine XML-Dateien für Upload-Portale (ZRE/OZG-RE) und Begleit-PDFs.</li>
+        <li><strong>Geschäftskunden (B2B - E-Rechnungspflicht):</strong> ZUGFeRD-Button nutzen. Enthält Menschen-lesbare PDF-Ansicht und unsichtbare EN 16931 XML-Daten.</li>
+        <li><strong>Stornorechnung:</strong> Alte Rechnung via CSV laden, Beträge ins Minus setzen, Hinweistexte anpassen.</li>
+        <li><strong>Girocode:</strong> EPC-QR-Code aufdrucken für schnelles Scannen und Bezahlen per Banking-App.</li>
     </ul>
 
-    <h2 id="kap4">4. Ordnerstruktur und Dateien</h2>
-    <p>Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Einstellungen (AppData) und Ihren Firmendaten (Daten-Grundpfad auf dem Laufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (<code>aausw</code>, <code>eausw</code>) und Archive an.</p>
+    <h2 id="kap4">4. Ordnerstruktur und Admin-Guide <span class="badge-pro">🔵</span></h2>
+    <p>Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk).</p>
+    
+    <div class="highlight">
+        <strong>🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:</strong><br>
+        - Das Programm nutzt Sperrdateien (<code>erechnung.lock</code> und <code>erfassung.lock</code>) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.<br>
+        - Sollte ein Arbeitsplatz abstürzen, erkennt das System verwaiste Locks und erlaubt nach einer Sicherheitswarnung das manuelle Entfernen der Sperre ("Lock entfernen").<br>
+        - Lokale Konfigurationen landen sicher in <code>%LOCALAPPDATA%\SokoIur_eRechnung</code>, was UAC-Berechtigungskonflikte ausschließt.
+    </div>
 
     <h2 id="kap5">5. Jahreswechsel</h2>
     <p>Ändern Sie in den "Einstellungen" einfach das "Aktuelle Rechnungsjahr" im Dropdown oder legen Sie ein neues Firmenprofil an.</p>
 
     <h2 id="kap6">6. Mandanten, Datenbanken & Firmendaten</h2>
-    <p>Sie können im Reiter "Einst." verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad.</p>
+    <p>Sie können im Reiter "Konfig." verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad.</p>
 
     <h2 id="kap7">7. Rechnungspositionen, Leistungszeitraum & Duplikate</h2>
     <p>Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum zwingend innerhalb des Kopf-Zeitraums liegen.</p>
 
     <h2 id="kap8">8. Rechnungsformate, Papierrechnung & elektronische Empfängeradresse</h2>
-    <p>Das Programm unterstützt ZUGFeRD (Hybrid-PDF mit XML), reine XRechnung (XML + Begleit-PDF) und Papierrechnungen (nur als Übergangslösung).</p>
+    <p>Das Programm unterstützt ZUGFeRD (Hybrid-PDF mit XML), reine XRechnung (XML + Begleit-PDF) und Papierrechnungen (Übergangslösung).</p>
 
     <h2 id="kap9">9. Datumseingaben</h2>
     <p>Zulässige Formate: <code>TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ</code> oder <code>JJJJ-MM-TT</code>.</p>
@@ -168,67 +235,98 @@ def get_doku_html(version_string):
     <p>Über "Texte bearbeiten" (<code>Alt+T</code>) legen Sie Zahlungsbedingungen (BT-20) und Rechnungsvermerke (BT-22) fest. Formatierungs-Kürzel: Zeilenumbruch <code>~cr</code>, Fett <code>~f Text f~</code>, Kursiv <code>~k Text k~</code>.</p>
 
     <h2 id="kap11">11. Eingangsrechnungen erfassen und auswerten</h2>
-    <p>Legen Sie neue Eingangsrechnungen in den Ordner <code>reneu</code>. Das Programm prüft diese automatisiert. Fehlerhafte Belege werden abgewiesen. Nach der erfolgreichen Erfassung wird der Beleg im Archiv (<code>rchn</code>) gespeichert und im Journal (<code>eausw</code>) vermerkt.</p>
+    <p>Legen Sie neue Eingangsrechnungen in den Ordner <code>reneu</code>. Das Programm prüft diese automatisiert. Fehlerhafte Belege werden abgewiesen. Nach erfolgreicher Erfassung wird der Beleg im Archiv (<code>rchn</code>) gespeichert und im Journal (<code>eausw</code>) vermerkt.</p>
 
     <h2 id="kap11_rev">11.8 Hinweise zur revisionssicheren Archivierung (Ausblick)</h2>
     <p>Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (<code>rchn</code> und <code>are</code>) automatisch in einen <strong>WORM-Onlinespeicher</strong> (z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung technisch ausschließt.</p>
 
-    <h2 id="kap12">12. DATEV-Export & Buchhaltung</h2>
-    <p>SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung, die speziell auf den Import in DATEV-Rechnungswesen (Stapelverarbeitung im ASCII-CSV / EXTF-Format) zugeschnitten ist.</p>
+    <h2 id="kap12">12. DATEV-Export & Buchhaltung <span class="badge-pro">🔵</span></h2>
+    <p>SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung (Stapelverarbeitung im ASCII-CSV / EXTF-Format).</p>
     
     <div class="warning-box">
         <strong style="color: #d9534f;">WICHTIGER HINWEIS (BETA-FUNKTION):</strong><br>
-        Die DATEV-Exportfunktionen sind neu implementiert und wurden <strong>bisher nicht abschließend in einer produktiven DATEV-Umgebung getestet</strong>. Bitte übergeben Sie diese Daten zunächst zwingend nur probeweise und mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import (z.B. Feldzuordnungen, Längenbeschränkungen) sicherzustellen. Für buchhalterische Schäden oder Mehraufwand wird keine Haftung übernommen!
+        Die DATEV-Exportfunktionen wurden bisher nicht abschließend in einer produktiven DATEV-Umgebung getestet. Bitte übergeben Sie Daten zunächst probeweise mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import (Feldzuordnungen, 7 Pflichtspalten, Längenbeschränkungen) sicherzustellen.
     </div>
 
-    <h3>12.1 Konfiguration (SKR03 / SKR04)</h3>
-    <p>Wechseln Sie in den Reiter <strong>⚙️ Einst.</strong> und klicken Sie auf <strong>„📈 DATEV-Konten“</strong>. Hier können Sie die Standardkonten für die gängigen Kontenrahmen SKR03 oder SKR04 laden oder individuelle Sachkonten pflegen:</p>
-    <ul>
-        <li><strong>Erlöskonten (Ausgangsrechnungen):</strong> Getrennte Konten für 19%, 7% und 0% USt.</li>
-        <li><strong>Aufwandskonten (Eingangsrechnungen):</strong> Getrennte Konten für 19%, 7% und 0% Vorsteuer.</li>
-        <li><strong>Sammelkonten:</strong> Pflege von zentralen Debitoren- (z.B. 10000) und Kreditorenkonten (z.B. 70000), sofern Sie nicht mit Personenkonten pro Kunde arbeiten.</li>
-    </ul>
-
-    <h3>12.2 DATEV-Export erzeugen</h3>
-    <p>In den Reitern <strong>📊 AUSGANG</strong> und <strong>📊 EINGANG</strong> erzeugt der Button <strong>„📈 DATEV-Export erzeugen“</strong> eine DATEV-konforme ASCII-CSV-Datei für den gewählten Monat oder das gesamte Jahr.</p>
-    <p>Das Programm nimmt Ihrem Steuerberater dabei folgende Arbeit ab:</p>
-    <ul>
-        <li><strong>Automatisches Steuer-Splitting:</strong> Rechnungen, die Positionen mit unterschiedlichen Steuersätzen enthalten, werden automatisch centgenau zerlegt. Das Programm berechnet den anteiligen Bruttobetrag pro Steuersatz exakt zurück und erzeugt dafür jeweils eine eigene Buchungszeile.</li>
-        <li><strong>Soll/Haben-Kennzeichen (S/H):</strong> Die Kennzeichen werden intelligent vergeben (Erlöse aus Ausgangsrechnungen = Haben, Aufwände aus Eingangsrechnungen = Soll).</li>
-        <li><strong>Daten-Mapping:</strong> Die generierte CSV enthält die 7 Pflichtspalten, die für die DATEV-Stapelverarbeitung zwingend benötigt werden: <em>Umsatz (ohne Soll/Haben-Kz), Soll/Haben-Kennzeichen, Konto, Gegenkonto (BU-Schlüssel), Belegdatum (TTMM), Belegfeld 1 (Rechnungsnummer), Buchungstext (Lieferant/Kunde)</em>.</li>
-    </ul>
+    <h3>12.1 Konfiguration (SKR03 / SKR04) & Automatisches Steuer-Splitting</h3>
+    <p>Im Reiter <strong>⚙️ Konfig.</strong> können Sie über <strong>„📈 DATEV-Konten“</strong> Standardkonten für SKR03/SKR04 laden. Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt, anteilig zurückgerechnet und mit intelligent vergebenen Soll/Haben-Kennzeichen (S/H) versehen.</p>
 
     <h2 id="kap13">13. GitHub & Updates</h2>
-    <p>Quellcode und Releases sind auf GitHub einsehbar. Über die Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.</p>
+    <p>Quellcode und Releases sind auf GitHub einsehbar. Über die Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen.</p>
 
     <h2 id="kap14">14. Import-Formate (CSV)</h2>
-    <p>SokoIur eRechnung bietet den Import von Kunden- und Produktdaten sowie das Einlesen von Rechnungsentwürfen an. Alle CSV-Dateien müssen durch ein Semikolon (<code>;</code>) getrennt und im Format UTF-8 vorliegen (bei ANSI-Dateien aus Excel führt das Programm eine automatische Reparatur durch).</p>
-    
-    <h3>14.1 Kundendaten Importieren</h3>
-    <p>Wechseln Sie in die Einstellungen und nutzen Sie den Button "Kunden importieren (CSV)". Wenn die Spalte <code>KundeNr</code> in der Import-Datei identisch mit einem bestehenden Kunden in der Datenbank ist, werden dessen Daten überschrieben (Update-Funktion). Ansonsten wird der Kunde neu angelegt. Die CSV muss folgende Kopfzeile exakt aufweisen:</p>
-    <code>Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme</code>
-    
-    <h3>14.2 Produktdaten Importieren</h3>
-    <p>Nutzen Sie in den Einstellungen den Button "Produkte importieren (CSV)". Importierte Produkte werden immer an die bestehende Liste angehängt. Die CSV muss folgende Kopfzeile exakt aufweisen:</p>
-    <code>Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz</code>
-    
-    <h3>14.3 Rechnungsentwürfe (rechnung.csv)</h3>
-    <p>Die <code>rechnung.csv</code> für den externen CLI-Aufruf benötigt feste Spalten. Die Kopfdaten werden in jeder Zeile wiederholt, lediglich die Positionsdaten ändern sich je Zeile.</p>
-    <h2 id="kap15">15. Lizenzen & Drittparty-Module</h2>
-    <p>Dieses Programm wurde in Python geschrieben und nutzt folgende Open-Source-Bibliotheken. Wir danken den Entwicklern für ihre Arbeit:</p>
+    <p>Alle CSV-Dateien müssen semikolongetrennt (<code>;</code>) und im Format UTF-8 vorliegen (bei ANSI-Dateien aus Excel erfolgt eine automatische Reparatur).</p>
+
+    <h2 id="kap15">15. Mini-Glossar für Einsteiger</h2>
     <ul>
-        <li><strong>Python:</strong> <a href="https://docs.python.org/3/license.html" target="_blank">Python Software Foundation License (PSFL)</a></li>
-        <li><strong>CustomTkinter:</strong> <a href="https://github.com/TomSchimansky/CustomTkinter/blob/master/LICENSE" target="_blank">MIT License</a></li>
-        <li><strong>ReportLab:</strong> <a href="https://www.reportlab.com/open_source/license/" target="_blank">BSD License</a></li>
-        <li><strong>pypdf:</strong> <a href="https://github.com/py-pdf/pypdf/blob/main/LICENSE" target="_blank">BSD-3-Clause License</a></li>
-        <li><strong>qrcode:</strong> <a href="https://github.com/lincolnloop/python-qrcode/blob/master/LICENSE" target="_blank">BSD-3-Clause License</a></li>
+        <li><strong>ZUGFeRD:</strong> Ein Hybrid-Format, das eine normale PDF-Ansicht für Menschen mit einer unsichtbaren XML-Datei für Computer/Buchhaltung kombiniert.</li>
+        <li><strong>XRechnung:</strong> Ein reines XML-Datenformat, das vor allem von öffentlichen Auftraggebern (Behörden) vorgeschrieben wird.</li>
+        <li><strong>Leitweg-ID:</strong> Die digitale Postanschrift für Rechnungen an Behörden (erscheint anstelle einer normalen E-Mail-Adresse).</li>
+        <li><strong>WORM-Speicher:</strong> (Write Once, Read Many) Ein Speichersystem, bei dem Dateien nach dem Schreiben nicht mehr verändert oder gelöscht werden können (wichtig für GoBD-Konformität).</li>
+        <li><strong>DATEV EXTF:</strong> Ein standardisiertes ASCII-CSV-Format zum verlustfreien Import von Buchungsstapeln in die Kanzlei-Software des Steuerberaters.</li>
     </ul>
+
+    <h2 id="kap16">16. FAQ – Häufig gestellte Fragen</h2>
     
+    <details>
+        <summary><strong>Wie kann ich mein eigenes Logo auf die Rechnung drucken?</strong></summary>
+        <p>Das Programm nutzt eine PDF-Vorlage als Hintergrund. Erstellen Sie z. B. in Word Ihr Briefpapier mit Logo, speichern Sie es als PDF und hinterlegen Sie es im Reiter <em>Konfig.</em> unter „Briefbogen hinterlegen“.</p>
+    </details>
+    
+    <details>
+        <summary><strong>Wie setze ich die Rechnungsnummern für das neue Jahr zurück?</strong></summary>
+        <p>Wechseln Sie im Reiter <em>Konfig.</em> einfach das „Aktuelle Rechnungsjahr“ und korrigieren Sie darunter die „Letzte Rechnungs-Nr.“ einmalig händisch auf den Startwert.</p>
+    </details>
+    
+    <details>
+        <summary><strong>Wie erstelle ich eine XRechnung für Behörden?</strong></summary>
+        <p>Tragen Sie bei der Rechnungserstellung in das Feld „E-Mail / Leitweg-ID“ die Leitweg-ID ein und setzen Sie das „Endpoint-Schema“ auf <code>0204</code>.</p>
+    </details>
+    
+    <details>
+        <summary><strong>Das Programm startet nicht mehr oder ist gesperrt. Was tun?</strong></summary>
+        <p>Wenn eine Firma gesperrt ist (Lock), wurde das Programm evtl. unsanft beendet. Beim Versuch, den Reiter zu wechseln, erscheint ein Hinweisfenster, in dem Sie den „Lock entfernen“ können.</p>
+    </details>
+
+    <h2 id="kap17">17. Schlagwortverzeichnis (Index)</h2>
+    <div style="column-count: 2; column-gap: 40px; margin-top: 10px;">
+        <p><strong>B</strong><br>
+        <a href="#kap1">Briefbogen hinterlegen</a><br>
+        <a href="#kap12">Buchhaltung</a></p>
+        <p><strong>D</strong><br>
+        <a href="#kap1">Daten-Speicherort</a><br>
+        <a href="#kap2">Datenschutz</a><br>
+        <a href="#kap12">DATEV-Export</a></p>
+        <p><strong>E</strong><br>
+        <a href="#kap11">Eingangsrechnungen prüfen</a><br>
+        <a href="#kap3_3">E-Rechnungspflicht</a></p>
+        <p><strong>G</strong><br>
+        <a href="#kap3_3">Girocode (QR-Code)</a></p>
+        <p><strong>I</strong><br>
+        <a href="#kap14">Import (Kunden & Produkte)</a></p>
+        <p><strong>J</strong><br>
+        <a href="#kap5">Jahreswechsel</a><br>
+        <a href="#kap3_1">Journale (Ausgang / Eingang)</a></p>
+        <p><strong>L</strong><br>
+        <a href="#kap3_3">Leitweg-ID</a></p>
+        <p><strong>M</strong><br>
+        <a href="#kap6">Mandanten & Firmenprofile</a></p>
+        <p><strong>N</strong><br>
+        <a href="#kap1">Netzwerkbetrieb</a></p>
+        <p><strong>S</strong><br>
+        <a href="#kap10">Standardtexte</a><br>
+        <a href="#kap3_3">Stornorechnung</a></p>
+        <p><strong>X</strong><br>
+        <a href="#kap8">XRechnung</a></p>
+        <p><strong>Z</strong><br>
+        <a href="#kap8">ZUGFeRD</a></p>
+    </div>
     <hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">
     <p style="text-align: center; color: #666; font-size: 0.9em;">
         &copy; Joachim Sokolowski, Offenbacher Str. 99, 63263 Neu-Isenburg
     </p>
     <br><br><br>
+    </div> <!-- Ende der main-content -->
 </body>
 </html>"""
 
@@ -242,6 +340,7 @@ def get_doku_body_html(version_string):
         return full_html[start_pos + len(start_marker):end_pos].strip()
     return "<p>Handbuch-Inhalt konnte nicht extrahiert werden.</p>"
 
+
 def get_changelog_html(version_string):
     return rf"""<!DOCTYPE html>
 <html lang="de">
@@ -250,18 +349,30 @@ def get_changelog_html(version_string):
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Changelog - SokoIur eRechnung</title>
     <style>
-        body {{ font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 0 auto; padding: 20px; background-color: #ffffff; }}
-        h1, h2, h3 {{ color: #1f538d; }}
-        h2 {{ border-bottom: 2px solid #1f538d; padding-bottom: 5px; margin-top: 40px; }}
-        h3 {{ margin-top: 25px; margin-bottom: 10px; color: #d63384; }}
+        html {{ background-color: #e9ecef; }}
+        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.7; color: #333; max-width: 900px; margin: 40px auto; padding: 50px 60px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }}
+        h1 {{ color: #1f538d; text-align: center; margin-bottom: 5px; font-size: 2.2em; }}
+        p.version {{ text-align: center; color: #6c757d; margin-top: 0; margin-bottom: 40px; }}
+        h2 {{ color: #1f538d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 50px; font-size: 1.6em; }}
+        h3 {{ margin-top: 25px; margin-bottom: 10px; color: #0066cc; font-size: 1.1em; text-transform: uppercase; letter-spacing: 0.5px; }}
         ul {{ padding-left: 20px; }}
-        li {{ margin-bottom: 10px; }}
+        li {{ margin-bottom: 12px; font-size: 15px; }}
+        code {{ background: #f1f3f5; padding: 3px 6px; border-radius: 4px; font-family: 'Consolas', monospace; color: #d63384; font-size: 0.95em; }}
+        @media (max-width: 768px) {{ body {{ margin: 10px; padding: 20px; }} }}
     </style>
 </head>
 <body>
     <h1>Changelog – SokoIur eRechnung</h1>
     <p><strong>Aktuelle Version: {version_string}</strong></p>
-
+    <h2>Version 2.000151</h2>
+    <h3>✨ UI/UX-Verbesserungen & Einstellungen</h3>
+    <ul>
+        <li><strong>Schnellnavigation (Shortcuts):</strong> Die Tastenkürzel für den direkten Wechsel der Reiter (z. B. Alt+E für Erstellen) werden nun platzsparend und visuell elegant durch einen Unterstrich im jeweiligen Buchstaben der Tab-Überschrift (z. B. E̲RSTELLEN) signalisiert.</li>
+        <li><strong>Umbenennung:</strong> Der Reiter „Einstellungen“ wurde in „Konfig.“ (Tastenkürzel Alt+K) umbenannt, um die Tab-Leiste kompakt zu halten.</li>
+        <li><strong>Modernes Karten-Design:</strong> Der Reiter „Einstellungen“ wurde komplett überarbeitet und in übersichtliche Themen-Karten (Cards) unterteilt.</li>
+        <li><strong>Hover-Erklärungen (Tooltips):</strong> Wichtige Buttons und Checkboxen in den Einstellungen sind nun mit hilfreichen Tooltips versehen, die beim Darüberfahren mit der Maus Erklärungen einblenden.</li>
+        <li><strong>DATEV-Konten Manager:</strong> Der Konfigurations-Button für die DATEV-Kontenrahmen (SKR03/SKR04) ist nun prominent im Bereich der Stammdaten integriert.</li>
+    </ul>
     <h2>Version 2.000150</h2>
     <h3>✨ Kommandozeile (CLI) & Fremdprogramm-Integration</h3>
     <ul>
@@ -281,7 +392,7 @@ def get_changelog_html(version_string):
     <h2>Version 2.000134</h2>
     <h3>✨ DATEV-Export & Buchhaltung</h3>
     <ul>
-        <li><strong>Automatischer DATEV-Export:</strong> In den Reitern „Ausgang“ und „Eingang“ können nun vollautomatisch DATEV-konforme ASCII-CSV-Dateien (Stapelverarbeitung) für den Steuerberater erzeugt werden.</li>
+        <li><strong>Automatisierter DATEV-Export:</strong> In den Reitern „Ausgang“ und „Eingang“ können nun vollautomatisch DATEV-konforme ASCII-CSV-Dateien (Stapelverarbeitung) für den Steuerberater erzeugt werden.</li>
         <li><strong>Steuer-Splitting:</strong> Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt und auf die jeweils passenden Sachkonten aufgeteilt. Die Soll/Haben-Kennzeichen (S/H) werden vom System intelligent vergeben.</li>
         <li><strong>DATEV-Konfigurationsmanager:</strong> Im Reiter „Einst.“ wurde ein Manager für die DATEV-Buchhaltung hinzugefügt. Per Knopfdruck lassen sich hier die Standardkonten für den Kontenrahmen <strong>SKR03</strong> oder <strong>SKR04</strong> laden oder individuelle Aufwands-, Erlös- und Sammelkonten pflegen.</li>
     </ul>
@@ -348,194 +459,30 @@ def get_changelog_body_html(version_string):
         return full_html[start_pos + len(start_marker):end_pos].strip()
     return "<p>Changelog-Inhalt konnte nicht extrahiert werden.</p>"
 
+def html_to_md(html_text):
+    body_match = re.search(r'<body>(.*?)</body>', html_text, re.DOTALL | re.IGNORECASE)
+    text = body_match.group(1) if body_match else html_text
+    text = re.sub(r'<div class="toc">.*?</div>', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<h1[^>]*>(.*?)</h1>', r'# \1\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<h2[^>]*>(.*?)</h2>', r'## \1\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<h3[^>]*>(.*?)</h3>', r'### \1\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<strong[^>]*>(.*?)</strong>', r'**\1**', text, flags=re.IGNORECASE)
+    text = re.sub(r'<b[^>]*>(.*?)</b>', r'**\1**', text, flags=re.IGNORECASE)
+    text = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', text, flags=re.IGNORECASE)
+    text = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', text, flags=re.IGNORECASE)
+    text = re.sub(r'<a[^>]*href="(.*?)"[^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.IGNORECASE)
+    text = re.sub(r'<li[^>]*>(.*?)</li>', r'* \1\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\1\n\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<hr[^>]*>', '---\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', '', text)
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
+    text = text.replace('&copy;', '©').replace('&rarr;', '->')
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
 def get_doku_md(version_string):
-    return f"""# SokoIur eRechnung - Handbuch
-**Version: {version_string}**
-
-## Inhaltsverzeichnis
-- [1. Installation & Ersteinrichtung](#1-installation--ersteinrichtung)
-- [2. Haftungsausschluss, Support & Datenschutz](#2-haftungsausschluss-support--datenschutz)
-- [2.1 Lizenzerklärung](#21-lizenzerklärung)
-- [3. Programmbeschreibung & Aufruf (CLI / GUI)](#3-programmbeschreibung--aufruf-cli--gui)
-- [3.1 Die Benutzeroberfläche (Tabs) im Detail](#31-die-benutzeroberfläche-tabs-im-detail)
-- [3.2 Die Kommandozeilenparameter (CLI) im Detail](#32-die-kommandozeilenparameter-cli-im-detail)
-- [3.3 Programmfunktionen, Verwendungsszenarien & Anwendungsfälle](#33-programmfunktionen-verwendungsszenarien--anwendungsfälle)
-- [4. Ordnerstruktur und Dateien](#4-ordnerstruktur-und-dateien)
-- [5. Jahreswechsel](#5-jahreswechsel)
-- [6. Mandanten & Datenbanken](#6-mandanten--datenbanken)
-- [7. Rechnungspositionen, Leistungszeitraum & Duplikate](#7-rechnungspositionen-leistungszeitraum--duplikate)
-- [8. Rechnungsformate, Papierrechnung & elektronische Empfängeradresse](#8-rechnungsformate-papierrechnung--elektronische-empfängeradresse)
-- [9. Datumseingaben](#9-datumseingaben)
-- [10. Standardtexte & Formatierungen](#10-standardtexte--formatierungen)
-- [11. Eingangsrechnungen erfassen und auswerten](#11-eingangsrechnungen-erfassen-und-auswerten)
-- [11.8 Hinweise zur revisionssicheren Archivierung (Ausblick)](#118-hinweise-zur-revisionssicheren-archivierung-ausblick)
-- [12. DATEV-Export & Buchhaltung](#12-datev-export--buchhaltung)
-- [13. GitHub & Updates](#13-github--updates)
-- [14. Import-Formate (CSV)](#14-import-formate-csv)
-- [15. Lizenzen & Drittparty-Module](#15-lizenzen--drittparty-module)
-
-## 1. Installation & Ersteinrichtung
-Die Anwendung (`.exe`) kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden – auch in systemgeschützten Verzeichnissen wie `C:\\Programme`. Lokale Geräteeinstellungen speichert das Programm automatisch sicher in Ihrem Windows-Benutzerverzeichnis (`%LOCALAPPDATA%\\SokoIur_eRechnung`), sodass keine Administratorrechte für den täglichen Betrieb nötig sind.
-
-### Ersteinrichtung und Datenspeicherort:
-Beim allerersten Start des Programms werden Sie aufgefordert, einen Grundpfad für die Datenspeicherung auszuwählen.
-
-> **WICHTIG:** Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden!
-> Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.
-
-Anschließend legt das Programm dort alle benötigten Unterordner und leeren Konfigurations-Dateien (`.csv`) automatisch für Ihre erste Firma an.
-
-### Briefbogen hinterlegen:
-Um Ihr eigenes Rechnungsdesign (Logo, Fußzeile etc.) als Hintergrund für die Rechnungen zu verwenden, wechseln Sie in den Reiter **⚙️ Einst.** und klicken Sie im Bereich der Firmendaten auf den Button **„📄 Briefbogen hinterlegen“**. Wählen Sie dort einfach Ihre PDF-Vorlage aus.
-Tipp: Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite.
-
-## 2. Haftungsausschluss, Support & Datenschutz
-Das Programm „SokoIur eRechnung“ wird Ihnen unentgeltlich zur Verfügung gestellt. Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische Umsetzung der ZUGFeRD- und XRechnung-Spezifikationen, wird ausdrücklich ausgeschlossen.
-
-> **Kontakt:** Webseite: [https://erech.6078.de](https://erech.6078.de) | E-Mail: SokoIur@6078.de
-
-## 2.1 Lizenzerklärung
-1. **Nutzungsrechte:** Das Programm (ausführbare Datei) wird als Freeware/Donationware bereitgestellt. Die private und gewerbliche Nutzung ist kostenfrei gestattet.
-2. **Weitergabe:** Die Software darf unverändert kostenlos weitergegeben werden. Kommerzieller Vertrieb ist untersagt.
-3. **Quellcode:** Der Quellcode ist auf GitHub einsehbar. Die .exe darf nicht dekompiliert oder manipuliert werden.
-4. **Drittkomponenten:** Dieses Programm nutzt Open-Source-Bibliotheken (Python, CustomTkinter, ReportLab, pypdf, qrcode).
-
-## 3. Programmbeschreibung & Aufruf (CLI / GUI)
-SokoIur eRechnung ist ein Rechnungstool zur Erstellung elektronischer Rechnungen. Es kann komplett über die grafische Oberfläche (GUI) gesteuert werden oder als "Druck-Engine" für externe Programme fungieren.
-
-### Aufruf über Kommandozeile (CLI):
-*   `SokoIur_eRechnung.exe --auto [Parameter]` -> Generiert direkt unsichtbar im Hintergrund
-*   `SokoIur_eRechnung.exe --edit [Parameter]` -> Öffnet die GUI (Manuelle Eingabe) mit vorgefüllten Daten.
-
-## 3.1 Die Benutzeroberfläche (Tabs) im Detail
-*   **📝 ERSTELLEN (Ausgangsrechnungen):** Erfassen und Generieren eigener Ausgangsrechnungen.
-*   **📥 ERFASSEN (Eingangsrechnungen):** Prüfung und Archivierung von Lieferantenrechnungen.
-*   **📊 AUSGANG (Ausgangsjournal):** Auswertung geschriebener Rechnungen als PDF, CSV oder DATEV-Export.
-*   **📊 EINGANG (Eingangsjournal):** Verwalten, Durchsuchen und Stornieren von Eingangsrechnungen.
-*   **⚙️ Einst. (Einstellungen):** Konfiguration von Firmen, DATEV-Konten und Stammdaten.
-*   **ℹ️ Info:** Dokumentation, Statistiken und Update-Suche.
-
-## 3.2 Die Kommandozeilenparameter (CLI) im Detail
-*   `--auto`: Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.
-*   `--edit`: Startet die grafische Oberfläche zur manuellen Nachbearbeitung (inkl. Schutz vor versehentlichem Beenden).
-*   `--profil "Name"`: Wählt das Firmenprofil aus (bricht mit Fehler ab, falls Profil unbekannt).
-*   `--renr "RE-Nummer"`: Überschreibt die in der CSV enthaltene Rechnungsnummer.
-*   `--kunde-az "Aktenzeichen"`: Überschreibt das Aktenzeichen des Kunden.
-*   `--rechnung "Pfad"`: Pfad zur einzulesenden `rechnung.csv`.
-*   `--kopie "Pfad"`: Zusätzliches Zielverzeichnis für eine Kopie.
-
-## 3.3 Programmfunktionen, Verwendungsszenarien & Anwendungsfälle
-*   **Stand-alone vs. Druck-Engine:** Ideal als alleiniges Rechnungswerkzeug für Handwerker oder als CLI-Tool zur Ergänzung von Branchensoftware.
-*   **B2G (Behörden):** Pflicht zur XRechnung. E-Mail/Leitweg-ID sowie Schema `0204` eintragen und XRechnung erzeugen.
-*   **B2B (Geschäftskunden):** Erfüllt die E-Rechnungspflicht durch die ZUGFeRD-Funktion. Eine Hybrid-PDF enthält das geforderte XML.
-*   **Storno & Girocode:** Minusbeträge erzeugen automatische Stornotexte. Der Girocode generiert scannbare EPC-QR-Codes.
-
-## 4. Ordnerstruktur und Dateien
-Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Einstellungen (AppData) und Ihren Firmendaten (Daten-Grundpfad). In den Firmendaten werden automatisch Ordner für Journale (`aausw`, `eausw`) und Archive angelegt.
-
-## 5. Jahreswechsel
-Ändern Sie in den "Einstellungen" einfach das "Aktuelle Rechnungsjahr" im Dropdown oder legen Sie ein neues Firmenprofil an.
-
-## 6. Mandanten & Datenbanken
-Sie können im Reiter "Einst." verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad.
-
-## 7. Rechnungspositionen, Leistungszeitraum & Duplikate
-Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum zwingend innerhalb des Kopf-Zeitraums liegen.
-
-## 8. Rechnungsformate, Papierrechnung & elektronische Empfängeradresse
-Das Programm unterstützt ZUGFeRD (Hybrid-PDF mit XML), reine XRechnung (XML + Begleit-PDF) und Papierrechnungen (nur als Übergangslösung).
-
-## 9. Datumseingaben
-Zulässige Formate: `TTMMJJ`, `TT,MM,JJ`, `TT.MM.JJJJ`, `TT,MM,JJJJ` oder `JJJJ-MM-TT`.
-
-## 10. Standardtexte & Formatierungen
-Über "Texte bearbeiten" (`Alt+T`) legen Sie Zahlungsbedingungen (BT-20) und Rechnungsvermerke (BT-22) fest. 
-Formatierungs-Kürzel: Zeilenumbruch `~cr`, Fett `~f Text f~`, Kursiv `~k Text k~`.
-
-## 11. Eingangsrechnungen erfassen und auswerten
-Legen Sie neue Eingangsrechnungen in den Ordner `reneu`. Das Programm prüft diese automatisiert. Fehlerhafte Belege werden abgewiesen. Nach der erfolgreichen Erfassung wird der Beleg im Archiv (`rchn`) gespeichert und im Journal (`eausw`) vermerkt.
-
-## 11.8 Hinweise zur revisionssicheren Archivierung (Ausblick)
-Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (`rchn` und `are`) automatisch in einen **WORM-Onlinespeicher** (z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung technisch ausschließt.
-
-## 12. DATEV-Export & Buchhaltung
-SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung (Stapelverarbeitung im ASCII-CSV / EXTF-Format). 
-
-> **WICHTIGER HINWEIS (BETA-FUNKTION):** 
-> Bitte übergeben Sie diese Daten zunächst zwingend nur probeweise und mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import sicherzustellen.
-
-### 12.1 Konfiguration (SKR03 / SKR04)
-Unter **⚙️ Einst. -> Firmendaten** finden Sie die DATEV-Konten. Es können Standardkonten (SKR03/SKR04) geladen werden. Erlöse werden für Ausgangsrechnungen, Aufwände für Eingangsrechnungen genutzt.
-
-### 12.2 DATEV-Export erzeugen
-In den Reitern **📊 AUSGANG** und **📊 EINGANG** erzeugt der Button **„📈 DATEV-Export erzeugen“** eine DATEV-konforme ASCII-CSV-Datei für den gewählten Monat oder das gesamte Jahr. Rechnungen mit unterschiedlichen Steuersätzen werden automatisch centgenau zerlegt.
-
-## 13. GitHub & Updates
-Quellcode und Releases sind auf GitHub einsehbar. Über die Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.
-
-## 14. Import-Formate (CSV)
-SokoIur eRechnung bietet den Import von Kunden- und Produktdaten sowie das Einlesen von Rechnungsentwürfen an. Alle CSV-Dateien müssen durch ein Semikolon (`;`) getrennt sein.
-
-### 14.1 Kundendaten Importieren
-Wenn die Spalte `KundeNr` in der Import-Datei identisch mit einem bestehenden Kunden in der Datenbank ist, werden dessen Daten überschrieben (Update). Ansonsten wird der Kunde neu angelegt. Die CSV muss folgende Kopfzeile aufweisen:
-`Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme`
-
-### 14.2 Produktdaten Importieren
-Importierte Produkte werden an die bestehende Liste angehängt. Die CSV muss folgende Kopfzeile aufweisen:
-`Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz`
-
-### 14.3 Rechnungsentwürfe (rechnung.csv)
-Die `rechnung.csv` für den externen CLI-Aufruf benötigt feste Spalten. Die Kopfdaten werden in jeder Zeile wiederholt, lediglich die Positionsdaten ändern sich je Zeile.
-
-## 15. Lizenzen & Drittparty-Module
-Dieses Programm wurde in Python geschrieben und nutzt folgende Open-Source-Bibliotheken. Wir danken den Entwicklern für ihre Arbeit:
-
-* **Python:** [Python Software Foundation License (PSFL)](https://docs.python.org/3/license.html)
-* **CustomTkinter:** [MIT License](https://github.com/TomSchimansky/CustomTkinter/blob/master/LICENSE)
-* **ReportLab:** [BSD License](https://www.reportlab.com/open_source/license/)
-* **pypdf:** [BSD-3-Clause License](https://github.com/py-pdf/pypdf/blob/main/LICENSE)
-* **qrcode:** [BSD-3-Clause License](https://github.com/lincolnloop/python-qrcode/blob/master/LICENSE)
-
----
-© Joachim Sokolowski, Offenbacher Str. 99, 63263 Neu-Isenburg
-"""
+    return html_to_md(get_doku_html(version_string))
 
 def get_changelog_md(version_string):
-    return f"""# Changelog – SokoIur eRechnung
-**Aktuelle Version: {version_string}**
-
-## Version 2.000150
-### ✨ Kommandozeile (CLI) & Fremdprogramm-Integration
-*   **Strikte Profil-Validierung:** Sicherer Abbruch mit Fehlermeldung, falls per `--auto` oder `--edit` ein unbekanntes `--profil` übergeben wird.
-*   **Sicherheitswarnung bei Abbruch:** Spezifischer Warnhinweis beim Schließen im `--edit`-Modus, um verwaiste Rechnungsnummern im aufrufenden Fremdsystem zu vermeiden.
-*   **Saubere Textfelder:** Temporäre CLI-Rechnungen importieren keine alten Anmerkungen (Zusatztexte) der Firma mehr.
-
-## Version 2.000146
-### ✨ Neue Funktionen & Datenverwaltung
-*   **Firma leeren:** Eine neue Funktion in den Einstellungen ermöglicht das vollständige Zurücksetzen aller Journale und Rechnungen einer Firma, bei Erhalt der Stammdaten.
-*   **CSV-Import für Kunden:** Kundendaten können importiert werden. Anhand der Kundennummer erfolgt ein Update bestehender Kunden, ansonsten werden sie angehängt.
-*   **CSV-Import für Produkte:** Produktdaten können aus CSV importiert und angehängt werden.
-*   **Dokumentation:** Genaue Import-Strukturen ins Handbuch aufgenommen.
-
-### 📚 Dokumentation
-*   **Markdown-Support:** Handbuch und Changelog werden im AppData-Ordner nun zusätzlich im standardisierten Markdown-Format (`.md`) generiert.
-*   **Ressourcenschonend:** Die Hilfedateien werden nur noch dann neu auf die Festplatte geschrieben, wenn das Programm einen tatsächlichen Versionssprung (erstmaliger Start nach einem Update) registriert.
-
-## Version 2.000134
-### ✨ DATEV-Export & Buchhaltung
-*   **Automatischer DATEV-Export:** In den Reitern „Ausgang“ und „Eingang“ können nun vollautomatisch DATEV-konforme ASCII-CSV-Dateien (Stapelverarbeitung) für den Steuerberater erzeugt werden.
-*   **Steuer-Splitting:** Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt.
-
-### ✨ Journale & Auswertungen
-*   **Neue Export-Möglichkeiten:** In den Reitern „Ausgang“ und „Eingang“ wurden Buttons für den direkten CSV-Export hinzugefügt.
-*   **Klarere Ordnerstruktur:** Die systemseitigen Journal-Ordner wurden von `ausw` auf `aausw` und von `einj` auf `eausw` umbenannt.
-
-### ✨ Bugfixes & CLI-Verbesserungen
-*   **Firmendaten (Falzmarken):** Ein Fehler beim Speichern der Firmendaten wurde behoben.
-*   **CLI-Parameter --renr:** Übergebene Rechnungsnummern aus Fremdprogrammen überschreiben in der GUI nun korrekt den alten Wert aus der CSV-Datei.
-
-## 10.11.2026
-### ✨ Neue Funktionen & XML-Korrekturen
-*   **Automatische UTF-8-Konvertierung:** Fehlerhaft codierte Rechnungs-CSVs (z. B. ANSI/Excel) werden repariert und in UTF-8 konvertiert.
-*   **Kommandozeilen-Erweiterung:** Das Kunden-Aktenzeichen kann nun per Parameter `--kunde-az` gesetzt werden.
-"""
+    return html_to_md(get_changelog_html(version_string))
