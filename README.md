@@ -9,4 +9,5 @@ Kompilieren mit
 
 [Hier geht es zum Changelog](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/blob/main/changelog.md)
 
-[Hier geht es zum Handbuch](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/blob/main/SokoIur_hilfe.md)
+[Hier geht es zum Handbuch](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/blob/main/SokoIur_Hilfe.md)
+
