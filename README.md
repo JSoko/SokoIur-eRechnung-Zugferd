@@ -2,6 +2,7 @@
 Programm zur Erstellung von Rechnungen im Zugpferd-Format. Auch zum Aufruf durch Drittprogramme
 
 [Hier geht es zum Changelog](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/blob/main/changelog.md) - [Hier geht es zum Handbuch](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/blob/main/SokoIur_Hilfe.md)
+
 Kompilieren mit
 
 `pyinstaller  --noconfirm --onefile --windowed --icon "SokoIur.ico" --add-data "SokoIur.ico;." --name "SokoIur_eRechnung" main.py`
