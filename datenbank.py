@@ -97,7 +97,7 @@ def get_default_profile(suffix=""):
         "ausgabe_ordner": f"Rechnungen_PDF{s}",
         "kunden_csv": f"kunden{s}.csv",
         "produkte_csv": f"produkte{s}.csv",
-        "auswertungen_ordner": f"Auswertungen{s}",
+        "auswertungen_ordner": f"aausw{s}",
         "faelligkeit_tage": "29",
         "letzte_rechnungsnummer": "",
         "aktuelles_rechnungsjahr": str(datetime.now().year),
@@ -115,7 +115,17 @@ def get_default_profile(suffix=""):
         "eingangsordner": f"reneu{s}",
         "bearbeitete_eingangsrechnungen_ordner": f"rebearb{s}",
         "eingangsrechnungen_ordner": f"rchn{s}",
-        "eingangsjournal_ordner": f"einj{s}"
+        "eingangsjournal_ordner": f"eausw{s}",
+        # DATEV FELDER ---
+        "datev_kontenrahmen": "SKR03",
+        "datev_erloese_19": "8400",
+        "datev_erloese_7": "8300",
+        "datev_erloese_0": "8200",
+        "datev_debitor": "10000",
+        "datev_aufwand_19": "3400",
+        "datev_aufwand_7": "3300",
+        "datev_aufwand_0": "3200",
+        "datev_kreditor": "70000"
     }
 
 def init_config():
@@ -153,7 +163,8 @@ def speichere_config(config):
         "active_profile_index": config.get("active_profile_index", 0),
         "cli_open_pdf": config.get("cli_open_pdf", False),
         "cli_keep_open": config.get("cli_keep_open", False),
-        "cli_no_open": config.get("cli_no_open", False)
+        "cli_no_open": config.get("cli_no_open", False),
+        "last_run_version": config.get("last_run_version", "")
     }
     with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(local_data, f, indent=4)
@@ -163,6 +174,21 @@ def speichere_config(config):
         shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")
         with open(shared_config_path, 'w', encoding='utf-8') as f:
             json.dump(config["profiles"], f, indent=4)
+
+def ensure_utf8_csv(pfad):
+    """Prüft ob eine CSV UTF-8 ist, falls nicht (z.B. ANSI/Excel), wird sie konvertiert."""
+    if not pfad or not os.path.exists(pfad):
+        return
+    try:
+        # Testweise als UTF-8 lesen
+        with open(pfad, 'r', encoding='utf-8-sig') as f:
+            f.read()
+    except UnicodeDecodeError:
+        # Wenn es knallt, als Windows-1252 (Standard Excel/ANSI) lesen und überschreiben
+        with open(pfad, 'r', encoding='windows-1252') as f:
+            inhalt = f.read()
+        with open(pfad, 'w', encoding='utf-8-sig') as f:
+            f.write(inhalt)
 
 def berechne_naechste_rechnungsnummer(letzte_nr):
     if not letzte_nr: return f"RE-{datetime.now().year}-001"
@@ -182,7 +208,7 @@ def lade_firma(pfad):
     return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': '', 'Kontoinhaber': '', 'Girocode': '1'}
 
 def speichere_firma(pfad, daten):
-    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Kontoinhaber', 'Girocode', 'Email', 'Telefon']
+    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Kontoinhaber', 'Girocode', 'Falzmarken', 'Email', 'Telefon']
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
