@@ -1,5 +1,11 @@
 # Changelog – SokoIur eRechnung
-**Aktuelle Version: 2.000148**
+**Aktuelle Version: 2.000149**
+
+## Version 2.000150
+### ✨ Kommandozeile (CLI) & Fremdprogramm-Integration
+*   **Strikte Profil-Validierung:** Sicherer Abbruch mit Fehlermeldung, falls per `--auto` oder `--edit` ein unbekanntes `--profil` übergeben wird.
+*   **Sicherheitswarnung bei Abbruch:** Spezifischer Warnhinweis beim Schließen im `--edit`-Modus, um verwaiste Rechnungsnummern im aufrufenden Fremdsystem zu vermeiden.
+*   **Saubere Textfelder:** Temporäre CLI-Rechnungen importieren keine alten Anmerkungen (Zusatztexte) der Firma mehr.
 
 ## Version 2.000146
 ### ✨ Neue Funktionen & Datenverwaltung

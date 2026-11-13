@@ -316,7 +316,15 @@ class TabManuellMixin:
                 self.positionen_liste = reader
             
             self.zusatz_dict = {}
-            if os.path.exists(self.p_config.get('zusatz_csv', '')):
+            
+            # NEU: Anmerkungen nur laden, wenn die reguläre Firmen-Rechnung geladen wird
+            # ODER wenn das Fremdprogramm explizit eine Zusatzdatei per CLI übergeben hat.
+            # Bei --edit mit einer temporären Rechnung (custom_path) bleiben die alten Anmerkungen leer.
+            load_zusatz = True
+            if custom_path and not self.config.get("cli_override_zusatz_csv"):
+                load_zusatz = False
+                
+            if load_zusatz and os.path.exists(self.p_config.get('zusatz_csv', '')):
                 with open(self.p_config.get('zusatz_csv', ''), mode='r', encoding='utf-8-sig') as f:
                     for line in f:
                         line = line.strip()

@@ -164,6 +164,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
     def __init__(self, config, start_in_edit=False):
         super().__init__()
         self.config = config
+        self.start_in_edit = start_in_edit
         self._initializing = True  # Verhindert zu frühes Auslösen beim Start
         self.title("SokoIur eRechnung")
         
@@ -513,17 +514,32 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
 
     def on_closing(self, skip_warning=False):
-        # 1. Sicherheitsabfrage: Prüft, ob Positionen da sind UND ob keine Ausnahme gilt
-        if not skip_warning and hasattr(self, 'positionen_liste') and len(self.positionen_liste) > 0:
+        # 1. Sicherheitsabfragen (nur wenn das Beenden nicht durch erfolgreiches Generieren ausgelöst wurde)
+        if not skip_warning:
             import tkinter.messagebox as messagebox
-            antwort = messagebox.askyesno(
-                "Programm beenden?",
-                "Es befinden sich aktuell Rechnungspositionen in der Bearbeitungsmaske.\n\n"
-                "Nicht gespeicherte Daten gehen beim Beenden unwiderruflich verloren.\n\n"
-                "Möchten Sie das Programm wirklich schließen?"
-            )
-            if not antwort:
-                return 
+            
+            # 1a. Spezielle Warnung bei Aufruf über Fremdprogramm (--edit)
+            if getattr(self, 'start_in_edit', False):
+                antwort = messagebox.askyesno(
+                    "Vorgang abbrechen?",
+                    "Das Programm wurde von einer externen Anwendung zur Rechnungserstellung aufgerufen.\n\n"
+                    "Möglicherweise hat das aufrufende Programm bereits eine Rechnungsnummer reserviert, aber es wurde noch keine finale Rechnung generiert.\n\n"
+                    "Möchten Sie wirklich abbrechen und das Fenster schließen?"
+                )
+                if not antwort:
+                    return
+                    
+            # 1b. Normale Warnung, falls Positionen erfasst wurden (Standardbetrieb)
+            elif hasattr(self, 'positionen_liste') and len(self.positionen_liste) > 0:
+                antwort = messagebox.askyesno(
+                    "Programm beenden?",
+                    "Es befinden sich aktuell Rechnungspositionen in der Bearbeitungsmaske.\n\n"
+                    "Nicht gespeicherte Daten gehen beim Beenden unwiderruflich verloren.\n\n"
+                    "Möchten Sie das Programm wirklich schließen?"
+                )
+                if not antwort:
+                    return 
+                    
         self.config["window_geometry"] = self.geometry()
         from datenbank import speichere_config
         speichere_config(self.config)

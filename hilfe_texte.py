@@ -110,8 +110,8 @@ def get_doku_html(version_string):
     <h2 id="kap3_2">3.2 Die Kommandozeilenparameter (CLI) im Detail</h2>
     <ul>
         <li><code>--auto</code>: Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.</li>
-        <li><code>--edit</code>: Startet die grafische Oberfläche, füllt die Maske mit übergebenen Daten vor.</li>
-        <li><code>--profil "Name"</code>: Wählt das Firmenprofil aus.</li>
+        <li><code>--edit</code>: Startet die grafische Oberfläche zur manuellen Nachbearbeitung (enthält einen Schutz vor versehentlichem Beenden ohne Rechnungserstellung).</li>
+        <li><code>--profil "Name"</code>: Wählt das Firmenprofil aus (Programm bricht sicherheitshalber mit einer Fehlermeldung ab, falls das Profil nicht existiert).</li>
         <li><code>--renr "RE-Nummer"</code>: Überschreibt die in der CSV enthaltene Rechnungsnummer.</li>
         <li><code>--rechnung "Pfad"</code>: Pfad zur einzulesenden <code>rechnung.csv</code> (z.B. Export-Datei).</li>
         <li><code>--kopie "Pfad"</code>: Zusätzliches Zielverzeichnis für eine Kopie der generierten Rechnung.</li>
@@ -262,6 +262,13 @@ def get_changelog_html(version_string):
     <h1>Changelog – SokoIur eRechnung</h1>
     <p><strong>Aktuelle Version: {version_string}</strong></p>
 
+    <h2>Version 2.000150</h2>
+    <h3>✨ Kommandozeile (CLI) & Fremdprogramm-Integration</h3>
+    <ul>
+        <li><strong>Strikte Profil-Validierung:</strong> Wird das Programm über <code>--auto</code> oder <code>--edit</code> mit einem nicht existierenden Firmennamen aufgerufen, bricht es nun mit einer klaren Fehlermeldung ab. Zuvor wurde fälschlicherweise das Standardprofil herangezogen.</li>
+        <li><strong>Sicherheitswarnung bei Abbruch:</strong> Wird die GUI über den Parameter <code>--edit</code> von einem Drittsystem aufgerufen, erscheint nun ein spezifischer Warnhinweis, wenn der Nutzer das Fenster ohne Rechnungserstellung (Beenden / X) schließen möchte. Dies beugt verwaisten Rechnungsnummern im Drittsystem vor.</li>
+        <li><strong>Saubere Textfelder:</strong> Beim CLI-gesteuerten Einlesen einer temporären Rechnungs-CSV werden alte Anmerkungen (Zusatztexte) aus dem regulären Firmenbetrieb nun korrekt ignoriert, sodass eine saubere Maske zur Verfügung steht.</li>
+    </ul>
     <h2>Version 2.000146</h2>
     <h3>✨ Neue Funktionen & Datenverwaltung</h3>
     <ul>
@@ -410,8 +417,8 @@ SokoIur eRechnung ist ein Rechnungstool zur Erstellung elektronischer Rechnungen
 
 ## 3.2 Die Kommandozeilenparameter (CLI) im Detail
 *   `--auto`: Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.
-*   `--edit`: Startet die grafische Oberfläche, füllt die Maske mit übergebenen Daten vor.
-*   `--profil "Name"`: Wählt das Firmenprofil aus.
+*   `--edit`: Startet die grafische Oberfläche zur manuellen Nachbearbeitung (inkl. Schutz vor versehentlichem Beenden).
+*   `--profil "Name"`: Wählt das Firmenprofil aus (bricht mit Fehler ab, falls Profil unbekannt).
 *   `--renr "RE-Nummer"`: Überschreibt die in der CSV enthaltene Rechnungsnummer.
 *   `--kunde-az "Aktenzeichen"`: Überschreibt das Aktenzeichen des Kunden.
 *   `--rechnung "Pfad"`: Pfad zur einzulesenden `rechnung.csv`.
@@ -496,6 +503,12 @@ Dieses Programm wurde in Python geschrieben und nutzt folgende Open-Source-Bibli
 def get_changelog_md(version_string):
     return f"""# Changelog – SokoIur eRechnung
 **Aktuelle Version: {version_string}**
+
+## Version 2.000150
+### ✨ Kommandozeile (CLI) & Fremdprogramm-Integration
+*   **Strikte Profil-Validierung:** Sicherer Abbruch mit Fehlermeldung, falls per `--auto` oder `--edit` ein unbekanntes `--profil` übergeben wird.
+*   **Sicherheitswarnung bei Abbruch:** Spezifischer Warnhinweis beim Schließen im `--edit`-Modus, um verwaiste Rechnungsnummern im aufrufenden Fremdsystem zu vermeiden.
+*   **Saubere Textfelder:** Temporäre CLI-Rechnungen importieren keine alten Anmerkungen (Zusatztexte) der Firma mehr.
 
 ## Version 2.000146
 ### ✨ Neue Funktionen & Datenverwaltung

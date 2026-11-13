@@ -111,10 +111,28 @@ def main():
 
     # 4. Profil wechseln, falls per Kommandozeile gefordert
     if args.profil:
+        profil_gefunden = False
         for i, p in enumerate(config["profiles"]):
             if p["profil_name"].lower() == args.profil.lower():
                 config["active_profile_index"] = i
+                profil_gefunden = True
                 break
+                
+        # NEU: Abbruch, wenn die übergebene Firma nicht existiert
+        if not profil_gefunden:
+            err_msg = f"Fehler: Das übergebene Firmenprofil '{args.profil}' wurde in der Datenbank nicht gefunden!"
+            print(err_msg)
+            
+            # Wenn nicht vollautomatisch im Hintergrund generiert wird, zeige eine Fehlermeldung
+            if not args.auto:
+                import tkinter as tk
+                import tkinter.messagebox as messagebox
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror("Profil nicht gefunden", err_msg)
+                root.destroy()
+                
+            sys.exit(1)
     
     # 5. Haftungsausschluss beim allerersten Start prüfen
     if not config.get("terms_accepted", False):
