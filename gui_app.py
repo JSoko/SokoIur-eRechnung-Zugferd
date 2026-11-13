@@ -16,6 +16,7 @@ import tkinter.messagebox as messagebox
 from tkinter import filedialog  # <--- Diese Zeile muss hinzugefügt werden
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 import webbrowser
 
@@ -288,8 +289,9 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.tabview.configure(command=self.on_tab_change)
 
         if start_in_edit:
-            self.after(200, lambda: self.load_manual_invoice(is_button_click=False, silent=True))
-            
+            import_pfad = self.config.get("cli_override_rechnung_csv")
+            self.after(200, lambda: self.load_manual_invoice(is_button_click=False, silent=True, custom_path=import_pfad))
+                
         # 7. Footer aufbauen
         f_footer = ctk.CTkFrame(self, fg_color="transparent")
         f_footer.pack(side="bottom", fill="x", padx=20, pady=5)
@@ -349,12 +351,12 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             
         firm_folder = p_dict["profil_name"].replace(" ", "_")
         firm_dir = os.path.join(base_path, firm_folder)
-        ausw_dir = os.path.join(firm_dir, "ausw")
+        ausw_dir = os.path.join(firm_dir, "aausw")
         are_dir = os.path.join(firm_dir, "are")
         reneu_dir = os.path.join(firm_dir, "reneu")
         rebearb_dir = os.path.join(firm_dir, "rebearb")
         rchn_dir = os.path.join(firm_dir, "rchn")
-        einj_dir = os.path.join(firm_dir, "einj")
+        einj_dir = os.path.join(firm_dir, "eausw")
         
         already_exists = os.path.exists(firm_dir) and os.path.exists(os.path.join(firm_dir, "firma.csv"))
         
@@ -373,7 +375,12 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         for datei in dateien:
             key_name = datei.replace(".", "_")
             p_dict[key_name] = os.path.join(firm_dir, datei)
-            
+        override_keys = ["ausgabe_ordner", "auswertungen_ordner", "firma_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]
+        for key in override_keys:
+            cli_val = self.config.get(f"cli_override_{key}")
+            if cli_val:
+                p_dict[key] = cli_val
+                
         if already_exists:
             if show_message:
                 messagebox.showinfo("Netzwerk-Daten gefunden", f"Es wurden bestehende Daten für '{p_dict['profil_name']}' gefunden und erfolgreich verknüpft!")

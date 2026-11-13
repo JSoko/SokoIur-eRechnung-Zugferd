@@ -14,12 +14,15 @@ import argparse
 from datetime import datetime
 import tkinter as tk
 import tkinter.messagebox as messagebox
+from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
+
 if getattr(sys, 'frozen', False):
     sys.path.append(sys._MEIPASS)
 else:
     sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-# Importieren der Funktionen aus unseren eigenen 3 Modulen
-from datenbank import init_config, speichere_config, LOCK_FILE
+
+# Importieren der Funktionen aus unseren eigenen 3 Modulen (ERST HIER!)
+from datenbank import init_config, speichere_config, LOCK_FILE, ensure_utf8_csv
 from pdf_zugferd import run_auto_generation
 from gui_app import App
 
@@ -56,30 +59,42 @@ def main():
     
     # --- HTML-Hilfsdatei & Snippet beim Programmstart automatisch im AppData-Ordner aktualisieren ---
     try:
-        from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html
-        from datenbank import get_appdata_dir
+        from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
+        from datenbank import get_appdata_dir, get_app_version
         
-        app_dir = get_appdata_dir()
-        
-        hilfe_pfad = os.path.join(app_dir, "SokoIur_Hilfe.html")
-        snippet_pfad = os.path.join(app_dir, "html.txt")
-        changelog_pfad = os.path.join(app_dir, "changelog.html")
-        clg_pfad = os.path.join(app_dir, "clg.txt")
-        
-        # Versionsstring aus der .exe ermitteln
-        from datenbank import get_app_version
         v_string = get_app_version()
+        last_version = config.get("last_run_version", "")
         
-        with open(hilfe_pfad, "w", encoding="utf-8") as f_html:
-            f_html.write(get_doku_html(v_string))
-        with open(snippet_pfad, "w", encoding="utf-8") as f_snippet:
-            f_snippet.write(get_doku_body_html(v_string))
+        if v_string != last_version:
+            app_dir = get_appdata_dir()
             
-        with open(changelog_pfad, "w", encoding="utf-8") as f_clg_html:
-            f_clg_html.write(get_changelog_html(v_string))
-        with open(clg_pfad, "w", encoding="utf-8") as f_clg_txt:
-            f_clg_txt.write(get_changelog_body_html(v_string))
+            hilfe_pfad = os.path.join(app_dir, "SokoIur_Hilfe.html")
+            snippet_pfad = os.path.join(app_dir, "html.txt")
+            changelog_pfad = os.path.join(app_dir, "changelog.html")
+            clg_pfad = os.path.join(app_dir, "clg.txt")
             
+            hilfe_md_pfad = os.path.join(app_dir, "SokoIur_Hilfe.md")
+            changelog_md_pfad = os.path.join(app_dir, "changelog.md")
+            
+            with open(hilfe_pfad, "w", encoding="utf-8") as f_html:
+                f_html.write(get_doku_html(v_string))
+            with open(snippet_pfad, "w", encoding="utf-8") as f_snippet:
+                f_snippet.write(get_doku_body_html(v_string))
+                
+            with open(changelog_pfad, "w", encoding="utf-8") as f_clg_html:
+                f_clg_html.write(get_changelog_html(v_string))
+            with open(clg_pfad, "w", encoding="utf-8") as f_clg_txt:
+                f_clg_txt.write(get_changelog_body_html(v_string))
+                
+            with open(hilfe_md_pfad, "w", encoding="utf-8") as f_md:
+                f_md.write(get_doku_md(v_string))
+            with open(changelog_md_pfad, "w", encoding="utf-8") as f_clg_md:
+                f_clg_md.write(get_changelog_md(v_string))
+                
+            # Nach erfolgreicher Erstellung die Version in der Config vermerken und speichern
+            config["last_run_version"] = v_string
+            speichere_config(config)
+                
     except Exception as e:
         print(f"Konnte Hilfsdateien beim Start nicht erstellen: {e}")
     
@@ -127,21 +142,28 @@ def main():
         else:
             root.destroy()
             sys.exit(0)
-
+   
     # 6. Etwaige Kommandozeilenpfade temporär in das aktive Profil überschreiben
     idx = config["active_profile_index"]
-    if args.firma: config["profiles"][idx]['firma_csv'] = args.firma
-    if args.rechnung: config["profiles"][idx]['rechnung_csv'] = args.rechnung
-    if args.briefbogen: config["profiles"][idx]['briefbogen_pdf'] = args.briefbogen
-    if args.zusatz: config["profiles"][idx]['zusatz_csv'] = args.zusatz
-    if args.gruss: config["profiles"][idx]['gruss_csv'] = args.gruss
-    if args.header: config["profiles"][idx]['header_csv'] = args.header
-    if args.einleitung: config["profiles"][idx]['einleitung_csv'] = args.einleitung
-    if args.ausgabe: config["profiles"][idx]['ausgabe_ordner'] = args.ausgabe
-    if args.auswertungen: config["profiles"][idx]['auswertungen_ordner'] = args.auswertungen
-    if args.jahr: config["profiles"][idx]['aktuelles_rechnungsjahr'] = args.jahr
-    if args.zahlungsbedingungen: config["profiles"][idx]['zahlungsbedingungen_default'] = args.zahlungsbedingungen
-    if args.rechnungsvermerk: config["profiles"][idx]['rechnungsvermerk_default'] = args.rechnungsvermerk
+    
+    def apply_cli(key, val):
+        if val:
+            config["profiles"][idx][key] = val
+            config[f"cli_override_{key}"] = val # Sicherung für gui_app.py
+
+    if args.firma: apply_cli('firma_csv', args.firma)
+    if args.rechnung: 
+        if config["profiles"][idx].get("auto_convert_utf8", True):
+            ensure_utf8_csv(args.rechnung)
+        apply_cli('rechnung_csv', args.rechnung)
+        
+    if args.briefbogen: apply_cli('briefbogen_pdf', args.briefbogen)
+    if args.zusatz: apply_cli('zusatz_csv', args.zusatz)
+    if args.gruss: apply_cli('gruss_csv', args.gruss)
+    if args.header: apply_cli('header_csv', args.header)
+    if args.einleitung: apply_cli('einleitung_csv', args.einleitung)
+    if args.ausgabe: apply_cli('ausgabe_ordner', args.ausgabe)
+    if args.auswertungen: apply_cli('auswertungen_ordner', args.auswertungen)
     
     # 7. Start-Weiche: GUI oder Auto-Generierung (CLI)
     if args.auto:
@@ -174,11 +196,28 @@ def main():
                     os.remove(lock_file)
                 except Exception:
                     pass
-
     else:
         app = App(config, start_in_edit=args.edit)
+        
+        # --- TESTVERSION: Parameter-Anzeige bei --edit ---
+#        if args.edit:
+#            import tkinter.messagebox as messagebox
+            
+            # Sammle alle Parameter aus dem args-Objekt
+#            debug_info = "Aktuell übergebene CLI-Parameter:\n\n"
+            #for arg, value in vars(args).items():
+                #if value:  # Zeige der Übersichtlichkeit halber nur Parameter an, die auch gesetzt wurden
+#                    debug_info += f"--{arg.replace('_', '-')}: {value}\n"
+            
+            # Messagebox mit 500ms Verzögerung aufrufen, damit das Hauptfenster zuerst fertig lädt
+#            app.after(500, lambda: messagebox.showinfo("Testversion: CLI-Übergabe", debug_info))
+        # -------------------------------------------------
+
         app.mainloop()
+        
+    #else:
+    #    app = App(config, start_in_edit=args.edit)
+    #    app.mainloop()
     
 if __name__ == "__main__":
     main()
-

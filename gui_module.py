@@ -87,13 +87,16 @@ class TabManuellMixin:
             start_dir = os.path.dirname(self.p_config.get('rechnung_csv', ''))
             if not os.path.exists(start_dir):
                 start_dir = os.getcwd()
-            
+        
         pfad = filedialog.askopenfilename(
             title="Rechnungs-CSV wählen", 
             initialdir=start_dir, 
             filetypes=[("CSV-Dateien", "*.csv*"), ("Alle Dateien", "*.*")]
         )
-        if pfad: self.load_manual_invoice(is_button_click=True, custom_path=pfad)
+        if pfad: 
+            ensure_utf8_csv(pfad)  # <--- HIER: Konvertierung durchführen, falls nötig
+            self.load_manual_invoice(is_button_click=True, custom_path=pfad)        
+        
 
 
     def open_kunde_search(self, entry_widget=None, mode="name"):
@@ -192,19 +195,7 @@ class TabManuellMixin:
                     break
         e_search.bind('<Down>', focus_first_result)
         
-                # Enter: Wenn es exakt 1 Treffer gibt, wird dieser sofort übernommen!
-        def on_enter_search(event):
-            if len(current_results) == 1:
-                select_kunde(current_results[0])
-                
-        e_search.bind('<Return>', on_enter_search)
-        dialog.bind('<Return>', on_enter_search)  # NEU: Funktioniert jetzt auch, wenn das Fenster selbst den Fokus hat
-
-        # Initiale Liste laden
-        update_list()
-        
-        # NEU: 50 Millisekunden warten, bis das Fenster gezeichnet ist, dann erst Fokus setzen
-        dialog.after(50, e_search.focus_set)# Enter: Wenn es exakt 1 Treffer gibt, wird dieser sofort übernommen!
+        # Enter: Wenn es exakt 1 Treffer gibt, wird dieser sofort übernommen!
         def on_enter_search(event):
             if len(current_results) == 1:
                 select_kunde(current_results[0])
@@ -217,7 +208,7 @@ class TabManuellMixin:
         
         # NEU: 50 Millisekunden warten, bis das Fenster gezeichnet ist, dann erst Fokus setzen
         dialog.after(50, e_search.focus_set)
-
+        
     def update_totals_ui(self):
         g_netto = g_steuer = 0.0
         steuern = {}
@@ -291,9 +282,17 @@ class TabManuellMixin:
                 if not reader: 
                     if not silent: messagebox.showwarning("Fehler", "Die CSV-Datei ist leer.")
                     return
+                
                 kopf = reader[0]
                 geladene_nr = kopf.get('Rechnungsnummer', '')
+
+                # Überschreibt die Nummer aus der CSV mit dem CLI-Parameter (--renr), falls vorhanden
+                if not is_button_click and self.config.get("cli_renr"):
+                    geladene_nr = self.config.get("cli_renr")
+
                 ziel_nr = geladene_nr
+                
+                
                 if is_button_click and geladene_nr:
                     if messagebox.askyesno("Rechnungsnummer", f"Die Rechnungsnummer {geladene_nr} wurde geladen.\nUm eins erhöhen (Ja) oder beibehalten (Nein)?"):
                         ziel_nr = berechne_naechste_rechnungsnummer(geladene_nr)
@@ -390,9 +389,7 @@ class TabManuellMixin:
         self.create_button(f_btn, text="Übernehmen", command=save_texte).pack(pady=10)
     
     def open_pos_popup(self, edit_index=None):
-        rechnung_pfad = self.p_config.get('rechnung_csv', '')
-        firmen_ordner = os.path.dirname(rechnung_pfad) if rechnung_pfad else os.getcwd()
-        briefbogen_pfad = os.path.join(firmen_ordner, "briefbogen.pdf")
+        briefbogen_pfad = self.p_config.get('briefbogen_pdf', '')
         
         if not os.path.exists(briefbogen_pfad):
             messagebox.showwarning(
@@ -775,6 +772,10 @@ class TabManuellMixin:
             self.on_closing(skip_warning=True)  # <--- NEU: Hier übergeben wir den Freifahrtschein!
 
 class TabAuswertungenMixin:
+    
+    def generate_eingang_auswertung(self):
+        messagebox.showinfo("Hinweis", "Diese Funktion ist noch nicht implementiert.")
+    
     def build_ausgang_tab(self):
         f = ctk.CTkFrame(self.tab_ausgang)
         f.pack(pady=30, padx=20, fill="x")
@@ -787,7 +788,7 @@ class TabAuswertungenMixin:
         
         self.entry_ausw_ordner = ctk.CTkEntry(f_ord, width=300)
         self.entry_ausw_ordner.pack(side="left", padx=10, expand=True, fill="x")
-        self.entry_ausw_ordner.insert(0, self.p_config.get("auswertungen_ordner", "Auswertungen"))
+        self.entry_ausw_ordner.insert(0, self.p_config.get("auswertungen_ordner", "aausw"))
         
         self.create_button(f_ord, text="📂", width=40, command=lambda: self.browse_path_for_entry(self.entry_ausw_ordner, is_dir=True, on_change=self.update_ausw_jahre)).pack(side="left")
         self.entry_ausw_ordner.bind('<FocusOut>', lambda e: self.update_ausw_jahre())
@@ -803,9 +804,14 @@ class TabAuswertungenMixin:
         self.combo_ausw_jahr = ctk.CTkComboBox(f_zeit, values=[], width=120)
         self.combo_ausw_jahr.pack(side="left", padx=5)
         
-        self.create_button(f, text="Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700").pack(pady=20)
+        f_btns = ctk.CTkFrame(f, fg_color="transparent")
+        f_btns.pack(pady=20)
+        self.create_button(f_btns, text="📄 Journal als PDF erzeugen & öffnen", command=self.generate_auswertung, fg_color="#b85c00", hover_color="#8f4700").pack(side="left", padx=10)
+        self.create_button(f_btns, text="📊 Journal als CSV exportieren & öffnen", command=self.generate_auswertung_csv, fg_color="#1f538d", hover_color="#14375d").pack(side="left", padx=10)
+        self.create_button(f_btns, text="📈 DATEV-Export erzeugen", command=self.generate_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30").pack(side="left", padx=10)
+        
         self.update_ausw_jahre()
-
+    
     def build_eingang_tab(self):
         f = ctk.CTkFrame(self.tab_eingang)
         f.pack(pady=(15, 8), padx=20, fill="x")
@@ -835,10 +841,20 @@ class TabAuswertungenMixin:
         self.combo_eingang_jahr.set(years[0])
         self.combo_eingang_jahr.pack(side="left", padx=8)
 
+        f_btns_e = ctk.CTkFrame(z, fg_color="transparent")
+        f_btns_e.pack(side="left", padx=10)
         self.create_button(
-            z, text="📄 Eingangsjournal als PDF erzeugen & öffnen",
+            f_btns_e, text="📄 Eingangsjournal als PDF",
             command=self.generate_eingang_auswertung, fg_color="#b85c00", hover_color="#8f4700"
-        ).pack(side="left", padx=10)
+        ).pack(side="left", padx=5)
+        self.create_button(
+            f_btns_e, text="📊 Eingangsjournal als CSV",
+            command=self.generate_eingang_auswertung_csv, fg_color="#1f538d", hover_color="#14375d"
+        ).pack(side="left", padx=5)
+        self.create_button(
+            f_btns_e, text="📈 DATEV-Export erzeugen",
+            command=self.generate_eingang_auswertung_datev, fg_color="#107C41", hover_color="#0b5c30"
+        ).pack(side="left", padx=5)
 
         ctk.CTkLabel(
             f,
@@ -989,19 +1005,6 @@ class TabAuswertungenMixin:
         else:
             messagebox.showerror("Fehler", res_msg)
 
-    def generate_eingang_auswertung(self):
-        from eingangsrechnung import create_journal_pdf
-        folder = self.p_config.get("eingangsjournal_ordner", "")
-        year = self.combo_eingang_jahr.get()
-        month = self.combo_eingang_monat.get()
-        out = create_journal_pdf(folder, year, month, lade_firma(self.p_config.get("firma_csv", "")).get("FirmaName", ""))
-        if not out:
-            return messagebox.showinfo("Info", f"Für {year if month == 'Alle Monate' else month + '.' + year} wurden keine Eingangsrechnungen gefunden.")
-        try:
-            os.startfile(out)
-        except Exception:
-            messagebox.showinfo("Fertig", f"Eingangsjournal erstellt: {out}")
-
     def update_ausw_jahre(self):
         if not hasattr(self, 'entry_ausw_ordner'): return
         ordner = self.entry_ausw_ordner.get().strip(); jahre = set()
@@ -1020,9 +1023,10 @@ class TabAuswertungenMixin:
         if path:
             entry_widget.delete(0, "end"); entry_widget.insert(0, path)
             if on_change: on_change()
-
     def generate_auswertung(self):
-        ordner = self.entry_ausw_ordner.get().strip(); jahr = self.combo_ausw_jahr.get(); monat = self.combo_ausw_monat.get()
+        ordner = self.entry_ausw_ordner.get().strip()
+        jahr = self.combo_ausw_jahr.get()
+        monat = self.combo_ausw_monat.get()
         if not os.path.exists(ordner): return messagebox.showwarning("Fehler", "Der Auswertungs-Ordner existiert nicht.")
             
         such_muster = [f"re{jahr}{m:02d}.csv" for m in range(1, 13)] if monat == "Alle Monate" else [f"re{jahr}{monat}.csv"]
@@ -1038,23 +1042,28 @@ class TabAuswertungenMixin:
         if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
         
         firma_name = lade_firma(self.p_config.get('firma_csv', 'firma.csv')).get('FirmaName', 'Unbekannte Firma')
-        jahr_ordner = os.path.join(ordner, jahr); os.makedirs(jahr_ordner, exist_ok=True)
+        jahr_ordner = os.path.join(ordner, jahr)
+        os.makedirs(jahr_ordner, exist_ok=True)
         pdf_pfad = os.path.join(jahr_ordner, f"Journal_{zeit_str.replace('.','_')}.pdf")
         
-        c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4)); breite, hoehe = landscape(A4)
+        c_dummy = canvas.Canvas(BytesIO(), pagesize=landscape(A4))
+        breite, hoehe = landscape(A4)
         
         def render_journal(c_obj, is_final=False, total_pages=1):
             page_num = 1
             def draw_header():
-                c_obj.setFont("Helvetica-Bold", 16); c_obj.drawString(40, hoehe - 50, f"Rechnungsjournal - {zeit_str} - {firma_name}")
+                c_obj.setFont("Helvetica-Bold", 16)
+                c_obj.drawString(40, hoehe - 50, f"Rechnungsjournal - {zeit_str} - {firma_name}")
                 c_obj.setFont("Helvetica-Bold", 10)
                 c_obj.drawString(40, hoehe - 80, "Datum"); c_obj.drawString(100, hoehe - 80, "Rechnungs-Nr."); c_obj.drawString(220, hoehe - 80, "Empfänger")
                 c_obj.drawRightString(500, hoehe - 80, "Netto"); c_obj.drawRightString(580, hoehe - 80, "19% USt."); c_obj.drawRightString(660, hoehe - 80, "7% USt.")
                 c_obj.drawRightString(740, hoehe - 80, "0% USt."); c_obj.drawRightString(820, hoehe - 80, "Brutto")
-                c_obj.line(40, hoehe - 85, 820, hoehe - 85); return hoehe - 105
+                c_obj.line(40, hoehe - 85, 820, hoehe - 85)
+                return hoehe - 105
             
             def draw_footer():
-                c_obj.setFont("Helvetica", 9); c_obj.drawString(40, 20, f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr")
+                c_obj.setFont("Helvetica", 9)
+                c_obj.drawString(40, 20, f"Erstellt am {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr")
                 if total_pages > 1: c_obj.drawRightString(820, 20, f"Seite {page_num} / {total_pages}")
             
             y = draw_header()
@@ -1064,15 +1073,17 @@ class TabAuswertungenMixin:
             sum_n = sum_19 = sum_7 = sum_0 = sum_b = 0.0
             for r in gefundene:
                 if y < 60:
-                    c_obj.showPage(); page_num += 1; y = draw_header()
+                    c_obj.showPage()
+                    page_num += 1
+                    y = draw_header()
                     if is_final: draw_footer()
                     c_obj.setFont("Helvetica", 10)
                     
                 n = safe_float(r.get('Netto', 0)); m19 = safe_float(r.get('MwSt_19', 0)); m7 = safe_float(r.get('MwSt_7', 0)); m0 = safe_float(r.get('MwSt_0', 0)); b = safe_float(r.get('Brutto', 0))
                 sum_n += n; sum_19 += m19; sum_7 += m7; sum_0 += m0; sum_b += b
                 
-                c_obj.drawString(40, y, r.get('Datum', '')); c_obj.drawString(100, y, r.get('Rechnungsnummer', ''))
-                empf = r.get('Empfaenger', '')
+                c_obj.drawString(40, y, str(r.get('Datum', ''))); c_obj.drawString(100, y, str(r.get('Rechnungsnummer', '')))
+                empf = str(r.get('Empfaenger', ''))
                 c_obj.drawString(220, y, empf[:22] + "..." if len(empf) > 25 else empf)
                 c_obj.drawRightString(500, y, f_curr(n)); c_obj.drawRightString(580, y, f_curr(m19)); c_obj.drawRightString(660, y, f_curr(m7))
                 c_obj.drawRightString(740, y, f_curr(m0)); c_obj.drawRightString(820, y, f_curr(b))
@@ -1085,10 +1096,200 @@ class TabAuswertungenMixin:
             return page_num
         
         t_pages = render_journal(c_dummy)
-        c = canvas.Canvas(pdf_pfad, pagesize=landscape(A4)); render_journal(c, is_final=True, total_pages=t_pages); c.save()
+        c = canvas.Canvas(pdf_pfad, pagesize=landscape(A4))
+        render_journal(c, is_final=True, total_pages=t_pages)
+        c.save()
+        
         try: os.startfile(pdf_pfad)
         except: messagebox.showinfo("Fertig", f"Journal erstellt: {pdf_pfad}")
 
+    def generate_auswertung_csv(self):
+        ordner = self.entry_ausw_ordner.get().strip()
+        jahr = self.combo_ausw_jahr.get()
+        monat = self.combo_ausw_monat.get()
+        if not os.path.exists(ordner): return messagebox.showwarning("Fehler", "Der Auswertungs-Ordner existiert nicht.")
+        
+        such_muster = [f"re{jahr}{m:02d}.csv" for m in range(1, 13)] if monat == "Alle Monate" else [f"re{jahr}{monat}.csv"]
+        zeit_str = f"{jahr}" if monat == "Alle Monate" else f"{monat}.{jahr}"
+        
+        gefundene = []
+        header = ["Rechnungsnummer", "Datum", "Empfaenger", "Netto", "MwSt_19", "MwSt_7", "MwSt_0", "Brutto"]
+        
+        for datei in such_muster:
+            pfad = os.path.join(ordner, jahr, datei) if os.path.exists(os.path.join(ordner, jahr, datei)) else os.path.join(ordner, datei)
+            if os.path.exists(pfad):
+                with open(pfad, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f, delimiter=';')
+                    if reader.fieldnames: header = reader.fieldnames
+                    for row in reader: gefundene.append(row)
+                    
+        if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
+        
+        jahr_ordner = os.path.join(ordner, jahr)
+        os.makedirs(jahr_ordner, exist_ok=True)
+        csv_export_pfad = os.path.join(jahr_ordner, f"Journal_Export_{zeit_str.replace('.','_')}.csv")
+        
+        with open(csv_export_pfad, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=header, delimiter=';')
+            writer.writeheader()
+            writer.writerows(gefundene)
+            
+        try: os.startfile(csv_export_pfad)
+        except: messagebox.showinfo("Fertig", f"CSV erstellt: {csv_export_pfad}")
+
+    def generate_eingang_auswertung_csv(self):
+        folder = self.p_config.get("eingangsjournal_ordner", "")
+        year = self.combo_eingang_jahr.get()
+        month = self.combo_eingang_monat.get()
+        
+        targets = [f"er{year}{m:02d}.csv" for m in range(1, 13)] if month == "Alle Monate" else [f"er{year}{month}.csv"]
+        zeit_str = year if month == "Alle Monate" else f"{month}.{year}"
+        
+        gefundene = []
+        header = []
+        for fname in targets:
+            p1 = os.path.join(folder, year, fname)
+            p2 = os.path.join(folder, fname)
+            pfad = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else None)
+            if pfad:
+                with open(pfad, 'r', encoding='utf-8-sig') as f:
+                    reader = csv.DictReader(f, delimiter=';')
+                    if reader.fieldnames and not header: header = reader.fieldnames
+                    for row in reader: gefundene.append(row)
+                    
+        if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
+        
+        jahr_ordner = os.path.join(folder, year)
+        os.makedirs(jahr_ordner, exist_ok=True)
+        csv_export_pfad = os.path.join(jahr_ordner, f"Eingangsjournal_Export_{zeit_str.replace('.','_')}.csv")
+        
+        with open(csv_export_pfad, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=header, delimiter=';')
+            writer.writeheader()
+            writer.writerows(gefundene)
+            
+        try: os.startfile(csv_export_pfad)
+        except: messagebox.showinfo("Fertig", f"CSV erstellt: {csv_export_pfad}")
+    def generate_auswertung_datev(self):
+        ordner = self.entry_ausw_ordner.get().strip()
+        jahr = self.combo_ausw_jahr.get()
+        monat = self.combo_ausw_monat.get()
+        if not os.path.exists(ordner): return messagebox.showwarning("Fehler", "Der Auswertungs-Ordner existiert nicht.")
+        
+        such_muster = [f"re{jahr}{m:02d}.csv" for m in range(1, 13)] if monat == "Alle Monate" else [f"re{jahr}{monat}.csv"]
+        zeit_str = f"{jahr}" if monat == "Alle Monate" else f"{monat}.{jahr}"
+        
+        gefundene = []
+        for datei in such_muster:
+            pfad = os.path.join(ordner, jahr, datei) if os.path.exists(os.path.join(ordner, jahr, datei)) else os.path.join(ordner, datei)
+            if os.path.exists(pfad):
+                with open(pfad, 'r', encoding='utf-8-sig') as f:
+                    for row in csv.DictReader(f, delimiter=';'): gefundene.append(row)
+                    
+        if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
+        
+        jahr_ordner = os.path.join(ordner, jahr)
+        os.makedirs(jahr_ordner, exist_ok=True)
+        csv_export_pfad = os.path.join(jahr_ordner, f"DATEV_Ausgang_{zeit_str.replace('.','_')}.csv")
+        
+        # DATEV ASCII Header
+        header = ["Umsatz (ohne Soll/Haben-Kz)", "Soll/Haben-Kennzeichen", "Konto", "Gegenkonto (BU-Schlüssel)", "Belegdatum", "Belegfeld 1", "Buchungstext"]
+        
+        with open(csv_export_pfad, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';')
+            writer.writerow(header)
+            
+            for r in gefundene:
+                netto = safe_float(r.get('Netto', 0))
+                mwst19 = safe_float(r.get('MwSt_19', 0))
+                mwst7 = safe_float(r.get('MwSt_7', 0))
+                
+                # Rückrechnung der Einzel-Bruttobeträge pro Steuersatz
+                netto_19 = round(mwst19 / 0.19, 2) if mwst19 else 0.0
+                brutto_19 = netto_19 + mwst19
+                
+                netto_7 = round(mwst7 / 0.07, 2) if mwst7 else 0.0
+                brutto_7 = netto_7 + mwst7
+                
+                netto_0 = round(netto - netto_19 - netto_7, 2)
+                brutto_0 = netto_0
+                
+                date_str = r.get('Datum', '')
+                date_datev = date_str[:2] + date_str[3:5] if len(date_str) >= 5 else ""
+                beleg_nr = r.get('Rechnungsnummer', '')[:36]
+                buchungstext = r.get('Empfaenger', '')[:60]
+                debitor = self.p_config.get("datev_debitor", "10000")
+                
+                # Zeilen schreiben (S/H = H, da Erlöskonto im Haben bebucht wird)
+                if brutto_19 > 0:
+                    writer.writerow([f"{brutto_19:.2f}".replace('.', ','), "H", self.p_config.get("datev_erloese_19", "8400"), debitor, date_datev, beleg_nr, buchungstext])
+                if brutto_7 > 0:
+                    writer.writerow([f"{brutto_7:.2f}".replace('.', ','), "H", self.p_config.get("datev_erloese_7", "8300"), debitor, date_datev, beleg_nr, buchungstext])
+                if brutto_0 > 0:
+                    writer.writerow([f"{brutto_0:.2f}".replace('.', ','), "H", self.p_config.get("datev_erloese_0", "8200"), debitor, date_datev, beleg_nr, buchungstext])
+                    
+        try: os.startfile(csv_export_pfad)
+        except: messagebox.showinfo("Fertig", f"DATEV-Export erstellt: {csv_export_pfad}")
+
+    def generate_eingang_auswertung_datev(self):
+        folder = self.p_config.get("eingangsjournal_ordner", "")
+        year = self.combo_eingang_jahr.get()
+        month = self.combo_eingang_monat.get()
+        
+        targets = [f"er{year}{m:02d}.csv" for m in range(1, 13)] if month == "Alle Monate" else [f"er{year}{month}.csv"]
+        zeit_str = year if month == "Alle Monate" else f"{month}.{year}"
+        
+        gefundene = []
+        for fname in targets:
+            p1 = os.path.join(folder, year, fname)
+            p2 = os.path.join(folder, fname)
+            pfad = p1 if os.path.exists(p1) else (p2 if os.path.exists(p2) else None)
+            if pfad:
+                with open(pfad, 'r', encoding='utf-8-sig') as f:
+                    for row in csv.DictReader(f, delimiter=';'): gefundene.append(row)
+                    
+        if not gefundene: return messagebox.showinfo("Info", f"Für {zeit_str} wurden keine Daten gefunden.")
+        
+        jahr_ordner = os.path.join(folder, year)
+        os.makedirs(jahr_ordner, exist_ok=True)
+        csv_export_pfad = os.path.join(jahr_ordner, f"DATEV_Eingang_{zeit_str.replace('.','_')}.csv")
+        
+        header = ["Umsatz (ohne Soll/Haben-Kz)", "Soll/Haben-Kennzeichen", "Konto", "Gegenkonto (BU-Schlüssel)", "Belegdatum", "Belegfeld 1", "Buchungstext"]
+        
+        with open(csv_export_pfad, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.writer(f, delimiter=';')
+            writer.writerow(header)
+            
+            for r in gefundene:
+                netto = safe_float(r.get('Netto', 0))
+                mwst19 = safe_float(r.get('MwSt_19', 0))
+                mwst7 = safe_float(r.get('MwSt_7', 0))
+                
+                netto_19 = round(mwst19 / 0.19, 2) if mwst19 else 0.0
+                brutto_19 = netto_19 + mwst19
+                
+                netto_7 = round(mwst7 / 0.07, 2) if mwst7 else 0.0
+                brutto_7 = netto_7 + mwst7
+                
+                netto_0 = round(netto - netto_19 - netto_7, 2)
+                brutto_0 = netto_0
+                
+                date_str = r.get('Rechnungsdatum', '')
+                date_datev = date_str[:2] + date_str[3:5] if len(date_str) >= 5 else ""
+                beleg_nr = r.get('Externe Rechnungsnummer', '')[:36]
+                buchungstext = r.get('Lieferant', '')[:60]
+                kreditor = self.p_config.get("datev_kreditor", "70000")
+                
+                # Zeilen schreiben (S/H = S, da Aufwandskonto im Soll bebucht wird)
+                if brutto_19 > 0:
+                    writer.writerow([f"{brutto_19:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_19", "3400"), kreditor, date_datev, beleg_nr, buchungstext])
+                if brutto_7 > 0:
+                    writer.writerow([f"{brutto_7:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_7", "3300"), kreditor, date_datev, beleg_nr, buchungstext])
+                if brutto_0 > 0:
+                    writer.writerow([f"{brutto_0:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_0", "3200"), kreditor, date_datev, beleg_nr, buchungstext])
+                    
+        try: os.startfile(csv_export_pfad)
+        except: messagebox.showinfo("Fertig", f"DATEV-Export erstellt: {csv_export_pfad}") 
 
 class TabEinstellungenMixin:
     def get_available_years(self):
@@ -1119,9 +1320,23 @@ class TabEinstellungenMixin:
         d = ctk.CTkInputDialog(text="Neue Rechnungsnummer eingeben:", title="Rechnungsnummer korrigieren")
         val = d.get_input()
         if val and val.strip():
-            self.p_config["letzte_rechnungsnummer"] = val.strip(); speichere_config(self.config)
-            self.lbl_letzte_nr.configure(text=val.strip())
-            self.entry_r_nr.delete(0, 'end'); self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(val.strip()))
+            neue_nr = val.strip()
+            self.p_config["letzte_rechnungsnummer"] = neue_nr
+            speichere_config(self.config)
+            self.lbl_letzte_nr.configure(text=neue_nr)
+            
+            naechste = berechne_naechste_rechnungsnummer(neue_nr)
+            self.entry_r_nr.delete(0, 'end')
+            self.entry_r_nr.insert(0, naechste)
+            
+            # NEU: CLI-Beispiel unten im Fenster dynamisch aktualisieren
+            if hasattr(self, 'entry_cli'):
+                prof_name = self.p_config.get("profil_name", "")
+                cmd = f'SokoIur_eRechnung.exe --auto --profil "{prof_name}" --renr "{naechste}" --rechnung "%TEMP%\\rechnung.csv" --kopie "%USERPROFILE%\\Documents"'
+                self.entry_cli.configure(state="normal")
+                self.entry_cli.delete(0, 'end')
+                self.entry_cli.insert(0, cmd)
+                self.entry_cli.configure(state="readonly")
 
     def edit_letzte_eingangs_nr(self):
         d=ctk.CTkInputDialog(text="Neue letzte Eingangsrechnungsnummer eingeben (z. B. ER260001):", title="Eingangsrechnungsnummer korrigieren")
@@ -1177,6 +1392,10 @@ class TabEinstellungenMixin:
         f_prof_btns = ctk.CTkFrame(f_prof, fg_color="transparent"); f_prof_btns.pack(pady=10)
         self.create_button(f_prof_btns, text="+ Neu", width=100, command=self.add_profile).pack(side="left", padx=5)
         self.create_button(f_prof_btns, text="✎ Umbenennen", width=100, command=self.rename_profile).pack(side="left", padx=5)
+        
+        # NEUER BUTTON: Ruft die Funktion clear_profile_data auf
+        self.create_button(f_prof_btns, text="🧹 Daten leeren", width=110, fg_color="#b85c00", hover_color="#8f4700", command=self.clear_profile_data).pack(side="left", padx=5)
+        
         if len(self.config["profiles"]) > 1:
             self.create_button(f_prof_btns, text="🗑 Löschen", width=100, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=5)
         
@@ -1185,7 +1404,10 @@ class TabEinstellungenMixin:
         self.create_button(f_btns, text="👥 Kundendaten verwalten", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         self.create_button(f_btns, text="📦 Produktdaten verwalten", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         self.create_button(f_btns, text="📄 Briefbogen hinterlegen", command=self.choose_briefbogen, fg_color="#1f538d", hover_color="#14375d").pack(side="left", padx=10)
-        
+        # Rahmen und Buttons für den Import
+        f_import_btns = ctk.CTkFrame(f_stammdaten, fg_color="transparent"); f_import_btns.pack(pady=(0, 10))
+        self.create_button(f_import_btns, text="⬇️ Kunden importieren (CSV)", command=self.import_kunden_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
+        self.create_button(f_import_btns, text="⬇️ Produkte importieren (CSV)", command=self.import_produkte_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         f_num_jahr = ctk.CTkFrame(scroll_main); f_num_jahr.pack(fill="x", pady=10, padx=20)
         ctk.CTkLabel(f_num_jahr, text="Nummernkreise & Rechnungsjahr", font=("Helvetica", 14, "bold")).pack(pady=5)
         
@@ -1235,7 +1457,7 @@ class TabEinstellungenMixin:
         f_pfade = ctk.CTkScrollableFrame(scroll_main, height=130)
         f_pfade.pack(fill="x", padx=20, pady=5)
         
-        # --- NEU: Lokale Programmdaten (App-Data) als erster Eintrag ---
+        # Lokale Programmdaten (App-Data) als erster Eintrag ---
         from datenbank import get_appdata_dir
         row_app = ctk.CTkFrame(f_pfade, fg_color="transparent")
         row_app.pack(fill="x", pady=2)
@@ -1275,34 +1497,34 @@ class TabEinstellungenMixin:
         ctk.CTkLabel(f_cli, text="Beispielaufruf für Kommandozeile (CLI) / Fremdprogramme", font=("Helvetica", 14, "bold")).pack(pady=(10, 5))
         
         prof_name = self.p_config.get("profil_name", "")
-        letzte_nr = self.p_config.get("letzte_rechnungsnummer", "RE-1000")
+        letzte_nr = self.p_config.get("letzte_rechnungsnummer") or "RE-1000"
         naechste_nr = berechne_naechste_rechnungsnummer(letzte_nr)
         
         cmd = f'SokoIur_eRechnung.exe --auto --profil "{prof_name}" --renr "{naechste_nr}" --rechnung "%TEMP%\\rechnung.csv" --kopie "%USERPROFILE%\\Documents"'
         
-        t_cli = ctk.CTkTextbox(f_cli, height=60)
-        t_cli.pack(fill="x", padx=15, pady=(5, 15))
-        t_cli.insert("0.0", cmd)
-        t_cli.configure(state="disabled")  # Read-only
+        # CTkEntry erlaubt das Markieren und Kopieren (readonly statt disabled)
+        self.entry_cli = ctk.CTkEntry(f_cli, font=("Consolas", 12))
+        self.entry_cli.pack(fill="x", padx=15, pady=(5, 15))
+        self.entry_cli.insert(0, cmd)
+        self.entry_cli.configure(state="readonly")
     
     def save_settings(self):
         base_path = self.entry_base_path.get().strip()
         if not base_path:
             return messagebox.showwarning("Fehler", "Bitte einen Grundpfad angeben.")
             
-        # GEÄNDERT: Legt den Pfad in der globalen Konfiguration ab
         self.config["base_data_path"] = base_path
         
         firm_folder = self.p_config["profil_name"].replace(" ", "_")
         firm_dir = os.path.join(base_path, firm_folder)
-        ausw_dir = os.path.join(firm_dir, "ausw")
+        ausw_dir = os.path.join(firm_dir, "aausw")
         are_dir = os.path.join(firm_dir, "are")
-        arecsv_dir = os.path.join(firm_dir, "arecsv")  # NEU
+        arecsv_dir = os.path.join(firm_dir, "arecsv")  
         
         os.makedirs(ausw_dir, exist_ok=True)
         os.makedirs(are_dir, exist_ok=True)
-        os.makedirs(arecsv_dir, exist_ok=True)  # NEU
-        reneu_dir=os.path.join(firm_dir,"reneu"); rebearb_dir=os.path.join(firm_dir,"rebearb"); rchn_dir=os.path.join(firm_dir,"rchn"); einj_dir=os.path.join(firm_dir,"einj")
+        os.makedirs(arecsv_dir, exist_ok=True)  
+        reneu_dir=os.path.join(firm_dir,"reneu"); rebearb_dir=os.path.join(firm_dir,"rebearb"); rchn_dir=os.path.join(firm_dir,"rchn"); einj_dir=os.path.join(firm_dir,"eausw")
         for incoming_dir in (reneu_dir,rebearb_dir,rchn_dir,einj_dir): os.makedirs(incoming_dir,exist_ok=True)
         
         self.p_config["auswertungen_ordner"] = ausw_dir
@@ -1318,15 +1540,7 @@ class TabEinstellungenMixin:
             
         speichere_config(self.config)
         messagebox.showinfo("Gespeichert", f"Die Ordnerstruktur wurde in\n{firm_dir}\nangelegt und gespeichert!")
-       
-        def save():
-            name, plz, ort, iban = e_name.get().strip(), e_plz.get().strip(), e_ort.get().strip(), e_iban.get().strip()
-            ustid, stnr = e_ustid.get().strip(), e_stnr.get().strip()
-            if not name or not plz or not ort or not iban or (not ustid and not stnr):
-                return messagebox.showwarning("Fehler", "Zwingend: Name, PLZ, Ort, IBAN, USt-Id ODER Steuernummer", parent=d_edit)
-            speichere_firma(pfad_firma, {'FirmaName': name, 'Strasse': e_str.get().strip(), 'PLZ': plz, 'Ort': ort, 'Land': e_land.get().strip(), 'UStId': ustid, 'Steuernummer': stnr, 'BankName': e_bank.get().strip(), 'IBAN': iban, 'BIC': e_bic.get().strip(), 'Kontoinhaber': e_inhaber.get().strip(), 'Email': e_mail.get().strip(), 'Telefon': e_tel.get().strip()})
-            messagebox.showinfo("Gespeichert", "Firmendaten wurden aktualisiert!", parent=d_edit); d_edit.destroy()
-    
+
     
     def open_firma_manager(self):
         d_edit = ctk.CTkToplevel(self); d_edit.title("Firmendaten bearbeiten")
@@ -1380,7 +1594,79 @@ class TabEinstellungenMixin:
             messagebox.showinfo("Gespeichert", "Firmendaten wurden aktualisiert!", parent=d_edit); d_edit.destroy()
             
         self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
-             
+    
+    def open_datev_manager(self):
+        d_edit = ctk.CTkToplevel(self)
+        d_edit.title("DATEV & Buchhaltung konfigurieren")
+        self.center_window(d_edit, 500, 520)
+        d_edit.transient(self)
+        d_edit.grab_set()
+        
+        f_skr = ctk.CTkFrame(d_edit, fg_color="transparent")
+        f_skr.pack(fill="x", padx=10, pady=(10, 20))
+        ctk.CTkLabel(f_skr, text="Kontenrahmen:", width=120, anchor="w").pack(side="left")
+        
+        def on_skr_change(wahl):
+            if messagebox.askyesno("Standardkonten laden", f"Möchten Sie die typischen DATEV-Standardkonten für {wahl} laden?\n\n(Ihre manuellen Eingaben werden überschrieben)"):
+                if wahl == "SKR03":
+                    e_e19.delete(0, 'end'); e_e19.insert(0, "8400")
+                    e_e7.delete(0, 'end'); e_e7.insert(0, "8300")
+                    e_e0.delete(0, 'end'); e_e0.insert(0, "8200")
+                    e_deb.delete(0, 'end'); e_deb.insert(0, "10000")
+                    e_a19.delete(0, 'end'); e_a19.insert(0, "3400")
+                    e_a7.delete(0, 'end'); e_a7.insert(0, "3300")
+                    e_a0.delete(0, 'end'); e_a0.insert(0, "3200")
+                    e_kred.delete(0, 'end'); e_kred.insert(0, "70000")
+                elif wahl == "SKR04":
+                    e_e19.delete(0, 'end'); e_e19.insert(0, "4400")
+                    e_e7.delete(0, 'end'); e_e7.insert(0, "4300")
+                    e_e0.delete(0, 'end'); e_e0.insert(0, "4120")
+                    e_deb.delete(0, 'end'); e_deb.insert(0, "10000")
+                    e_a19.delete(0, 'end'); e_a19.insert(0, "5400")
+                    e_a7.delete(0, 'end'); e_a7.insert(0, "5300")
+                    e_a0.delete(0, 'end'); e_a0.insert(0, "5200")
+                    e_kred.delete(0, 'end'); e_kred.insert(0, "70000")
+
+        combo_skr = ctk.CTkComboBox(f_skr, values=["SKR03", "SKR04"], command=on_skr_change)
+        combo_skr.set(self.p_config.get("datev_kontenrahmen", "SKR03"))
+        combo_skr.pack(side="left", fill="x", expand=True, padx=(10, 0))
+
+        ctk.CTkLabel(d_edit, text="Ausgangsrechnungen (Erlöse)", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=15, pady=(5, 0))
+        e_e19 = self.create_input(d_edit, "Erlöskonto 19%:")
+        e_e19.insert(0, self.p_config.get("datev_erloese_19", "8400"))
+        e_e7 = self.create_input(d_edit, "Erlöskonto 7%:")
+        e_e7.insert(0, self.p_config.get("datev_erloese_7", "8300"))
+        e_e0 = self.create_input(d_edit, "Erlöskonto 0%:")
+        e_e0.insert(0, self.p_config.get("datev_erloese_0", "8200"))
+        e_deb = self.create_input(d_edit, "Sammel-Debitor:")
+        e_deb.insert(0, self.p_config.get("datev_debitor", "10000"))
+        
+        ctk.CTkLabel(d_edit, text="Eingangsrechnungen (Aufwand)", font=("Helvetica", 12, "bold")).pack(anchor="w", padx=15, pady=(15, 0))
+        e_a19 = self.create_input(d_edit, "Aufwandskonto 19%:")
+        e_a19.insert(0, self.p_config.get("datev_aufwand_19", "3400"))
+        e_a7 = self.create_input(d_edit, "Aufwandskonto 7%:")
+        e_a7.insert(0, self.p_config.get("datev_aufwand_7", "3300"))
+        e_a0 = self.create_input(d_edit, "Aufwandskonto 0%:")
+        e_a0.insert(0, self.p_config.get("datev_aufwand_0", "3200"))
+        e_kred = self.create_input(d_edit, "Sammel-Kreditor:")
+        e_kred.insert(0, self.p_config.get("datev_kreditor", "70000"))
+
+        def save():
+            self.p_config["datev_kontenrahmen"] = combo_skr.get()
+            self.p_config["datev_erloese_19"] = e_e19.get().strip()
+            self.p_config["datev_erloese_7"] = e_e7.get().strip()
+            self.p_config["datev_erloese_0"] = e_e0.get().strip()
+            self.p_config["datev_debitor"] = e_deb.get().strip()
+            self.p_config["datev_aufwand_19"] = e_a19.get().strip()
+            self.p_config["datev_aufwand_7"] = e_a7.get().strip()
+            self.p_config["datev_aufwand_0"] = e_a0.get().strip()
+            self.p_config["datev_kreditor"] = e_kred.get().strip()
+            speichere_config(self.config)
+            d_edit.destroy()
+            messagebox.showinfo("Gespeichert", "DATEV-Kontenrahmen aktualisiert!")
+            
+        self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
+    
     def open_kunden_manager(self):
         dialog = ctk.CTkToplevel(self); dialog.title("Kundendaten verwalten")
         self.center_window(dialog, 700, 500); dialog.transient(self); dialog.grab_set()
@@ -1481,7 +1767,124 @@ class TabEinstellungenMixin:
                 refresh(); d_edit.destroy()
                 
             self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
+            
         self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10); refresh()
+
+    def clear_profile_data(self):
+        warnung = (
+            "ACHTUNG: Dies löscht unwiderruflich ALLE erfassten Rechnungen, Journale und PDFs der aktiven Firma!\n"
+            "Stammdaten (Firmendaten, Kunden, Produkte, Briefbogen) bleiben erhalten.\n\n"
+            "Bitte geben Sie 'LEEREN' ein, um fortzufahren:"
+        )
+        pwd = ctk.CTkInputDialog(text=warnung, title="Sicherheitsabfrage").get_input()
+        if pwd == "LEEREN":
+            try:
+                # 1. rechnung.csv leeren (nur Kopfzeile behalten)
+                rechnung_pfad = self.p_config.get("rechnung_csv", "")
+                if os.path.exists(rechnung_pfad):
+                    header = "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeEmail;KundeEndpoint;KundeEndpointScheme;KundeNr;Aktenzeichen;KundeAktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos"
+                    with open(rechnung_pfad, 'w', encoding='utf-8-sig') as f:
+                        f.write(header + "\n")
+                
+                # 2. Zähler zurücksetzen
+                self.p_config["letzte_rechnungsnummer"] = ""
+                self.p_config["letzte_eingangsrechnungsnummer"] = ""
+                speichere_config(self.config)
+                
+                # 3. Ordnerinhalte löschen (Journale, Archiv, Auswertungen)
+                ordner_keys = ["ausgabe_ordner", "auswertungen_ordner", "eingangsordner", "bearbeitete_eingangsrechnungen_ordner", "eingangsrechnungen_ordner", "eingangsjournal_ordner"]
+                for key in ordner_keys:
+                    ordner = self.p_config.get(key, "")
+                    if ordner and os.path.exists(ordner):
+                        for filename in os.listdir(ordner):
+                            file_path = os.path.join(ordner, filename)
+                            try:
+                                if os.path.isdir(file_path): shutil.rmtree(file_path)
+                                else: os.unlink(file_path)
+                            except: pass
+                
+                # Zusatz: arecsv Ordner leeren
+                are_dir = self.p_config.get("ausgabe_ordner", "")
+                if are_dir:
+                    arecsv_dir = os.path.join(os.path.dirname(are_dir), "arecsv")
+                    if os.path.exists(arecsv_dir):
+                        for filename in os.listdir(arecsv_dir):
+                            file_path = os.path.join(arecsv_dir, filename)
+                            try:
+                                if os.path.isdir(file_path): shutil.rmtree(file_path)
+                                else: os.unlink(file_path)
+                            except: pass
+
+                self.refresh_all_ui()
+                messagebox.showinfo("Erfolg", "Alle Rechnungsdaten und Journale der Firma wurden erfolgreich geleert.")
+            except Exception as e:
+                messagebox.showerror("Fehler", f"Fehler beim Leeren der Daten: {e}")
+        elif pwd is not None:
+            messagebox.showerror("Fehler", "Falsche Eingabe! Vorgang abgebrochen.")
+
+    def import_kunden_csv(self):
+        pfad = filedialog.askopenfilename(title="Kunden CSV wählen", filetypes=[("CSV-Dateien", "*.csv*")])
+        if not pfad: return
+        ensure_utf8_csv(pfad)
+        
+        try:
+            importierte_kunden = []
+            with open(pfad, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f, delimiter=';')
+                if not set(['Name', 'Strasse', 'PLZ_Ort', 'Land']).issubset(reader.fieldnames or []):
+                    return messagebox.showwarning("Falsches Format", "Die Kopfzeile der CSV-Datei entspricht nicht dem geforderten Format.")
+                for row in reader:
+                    importierte_kunden.append(row)
+                    
+            if not importierte_kunden:
+                return messagebox.showwarning("Fehler", "Die Datei ist leer oder ungültig.")
+
+            bestehende_kunden = self.kunden_liste
+            aktualisiert = 0
+            neu = 0
+            
+            for imp_k in importierte_kunden:
+                k_nr = imp_k.get('KundeNr', '').strip()
+                matched = False
+                if k_nr: # Überschreiben nur prüfen, wenn eine Kundennummer vorhanden ist
+                    for i, best_k in enumerate(bestehende_kunden):
+                        if best_k.get('KundeNr', '').strip() == k_nr:
+                            bestehende_kunden[i].update(imp_k)
+                            aktualisiert += 1
+                            matched = True
+                            break
+                if not matched:
+                    bestehende_kunden.append(imp_k)
+                    neu += 1
+                    
+            speichere_alle_kunden(self.p_config.get("kunden_csv", "kunden.csv"), bestehende_kunden)
+            self.kunden_liste = bestehende_kunden
+            messagebox.showinfo("Import erfolgreich", f"Kunden importiert!\n\nNeu angelegt: {neu}\nAktualisiert (überschrieben): {aktualisiert}")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Import: {e}")
+
+    def import_produkte_csv(self):
+        pfad = filedialog.askopenfilename(title="Produkte CSV wählen", filetypes=[("CSV-Dateien", "*.csv*")])
+        if not pfad: return
+        ensure_utf8_csv(pfad)
+        
+        try:
+            importierte_produkte = []
+            with open(pfad, mode='r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f, delimiter=';')
+                if not set(['Bezeichnung', 'EinzelpreisNetto', 'Steuersatz']).issubset(reader.fieldnames or []):
+                    return messagebox.showwarning("Falsches Format", "Die Kopfzeile der CSV-Datei entspricht nicht dem geforderten Format.")
+                for row in reader:
+                    importierte_produkte.append(row)
+                    
+            if not importierte_produkte:
+                return messagebox.showwarning("Fehler", "Die Datei ist leer oder ungültig.")
+
+            self.produkte_liste.extend(importierte_produkte)
+            speichere_alle_produkte(self.p_config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
+            messagebox.showinfo("Import erfolgreich", f"{len(importierte_produkte)} Produkte wurden erfolgreich angehängt!")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Import: {e}")
 
 class TabHilfeMixin:
     def build_hilfe_tab(self):
@@ -1623,10 +2026,18 @@ class UpdaterMixin:
                     stored_version = f.read().strip()
             except: pass
             
+        # NEU: Wenn wir im Entwicklermodus sind, prüfen wir nichts und schreiben nichts ins Netzwerk!
+        if self.current_version == "Entwickler-Version":
+            return True
+            
         def parse_v(v):
             if not v: return 0.0
-            p = v.split('.')
-            return float(p[0] + '.' + ''.join(p[1:]))
+            try:
+                p = v.split('.')
+                return float(p[0] + '.' + ''.join(p[1:]))
+            except ValueError:
+                # Falls noch "Entwickler-Version" in der Datei steht, werten wir das als Version 0.0
+                return 0.0
             
         c_v = parse_v(self.current_version)
         s_v = parse_v(stored_version)
@@ -1638,6 +2049,7 @@ class UpdaterMixin:
             return False
         elif c_v > s_v:
             try:
+                # Überschreibt die fehlerhafte "Entwickler-Version" im Netzwerk wieder mit der echten Versionsnummer
                 with open(version_file, "w") as f:
                     f.write(self.current_version)
             except: pass
