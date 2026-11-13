@@ -7,6 +7,5 @@ Kompilieren mit
 
 <img width="1200" height="1096" alt="image" src="https://github.com/user-attachments/assets/1744e5fb-d7f8-4827-8114-61c516adb296" />
 
-## [Changelog](/SokoIur-eRechnung-Zugferd/edit/main/README.md)
-
-## Hilfe: https://github.com/JSoko/SokoIur-eRechnung-Zugferd/edit/main/README.md
+## [Changelog](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/changelog.md)
+## [Handbuch](https://github.com/JSoko/SokoIur-eRechnung-Zugferd/SokoIur_hilfe.md)
