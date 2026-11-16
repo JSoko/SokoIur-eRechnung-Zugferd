@@ -40,6 +40,8 @@ def main():
     parser.add_argument("--briefbogen", type=str)
     parser.add_argument("--zusatz", type=str)
     parser.add_argument("--gruss", type=str)
+    parser.add_argument("--vor-gruss", type=str)
+    parser.add_argument("--textvorlage", type=str, help="Lädt eine gespeicherte Textkombination (z.B. 'Vorschussrechnung')")
     parser.add_argument("--header", type=str)
     parser.add_argument("--einleitung", type=str)
     parser.add_argument("--ausgabe", type=str)
@@ -182,6 +184,16 @@ def main():
     if args.einleitung: apply_cli('einleitung_csv', args.einleitung)
     if args.ausgabe: apply_cli('ausgabe_ordner', args.ausgabe)
     if args.auswertungen: apply_cli('auswertungen_ordner', args.auswertungen)
+    if args.vor_gruss: apply_cli('vor_gruss_csv', args.vor_gruss)
+    if args.textvorlage:
+        vorlagen = config["profiles"][idx].get("text_vorlagen", {})
+        if args.textvorlage in vorlagen:
+            from datenbank import speichere_textdatei
+            v = vorlagen[args.textvorlage]
+            speichere_textdatei(config["profiles"][idx].get('header_csv'), v.get("header", ""))
+            speichere_textdatei(config["profiles"][idx].get('einleitung_csv'), v.get("einleitung", ""))
+            speichere_textdatei(config["profiles"][idx].get('vor_gruss_csv'), v.get("vor_gruss", ""))
+            speichere_textdatei(config["profiles"][idx].get('gruss_csv'), v.get("gruss", ""))
     
     # 7. Start-Weiche: GUI oder Auto-Generierung (CLI)
     if args.auto:

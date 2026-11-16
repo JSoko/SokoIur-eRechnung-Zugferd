@@ -178,8 +178,20 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             try: self.iconbitmap(icon_path)
             except Exception: pass
                 
-        self.geometry(self.config.get("window_geometry", "950x850"))
-        self.minsize(650, 850)  # <-- NEU: Verhindert, dass das Fenster kleiner als 950x750 Pixel gezogen wird
+        # Mindestgröße festlegen
+        self.minsize(650, 550)  
+        
+        # Gespeicherte Geometrie anwenden (nur wenn nicht maximiert)
+        saved_geometry = self.config.get("window_geometry", "950x700")
+        win_state = self.config.get("window_state", "normal")
+        
+        if win_state != "zoomed":
+            self.geometry(saved_geometry)
+        
+        # Zoom-Status verzögert anwenden, falls es maximiert war
+        if win_state == "zoomed":
+            self.after(50, lambda: self.state('zoomed'))
+        
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.bind('<plus>', self.handle_plus_key)
@@ -209,11 +221,34 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         
         self.build_profile_header()
         
+        # --- NEU: Den Footer VOR dem Tabview platzieren (packen) ---
+        f_footer = ctk.CTkFrame(self, fg_color="transparent")
+        f_footer.pack(side="bottom", fill="x", padx=20, pady=5)
+        
+        lbl_footer_l = ctk.CTkLabel(f_footer, text="(C) Joachim Sokolowski", text_color="#1f538d", cursor="hand2")
+        lbl_footer_l.pack(side="left")
+        lbl_footer_l.bind("<Button-1>", lambda e: webbrowser.open("https://sokolowski.org"))
+        
+        lbl_footer_c = ctk.CTkLabel(f_footer, text=f"| Version: {self.current_version}")
+        lbl_footer_c.pack(side="left", padx=10)
+        
+        self.btn_footer_exit = ctk.CTkButton(f_footer, text="Beenden", width=80, fg_color="#b30000", hover_color="#800000", command=self.on_closing)
+        self.btn_footer_exit.pack(side="right", padx=(5, 0))
+
+        self.btn_footer_hilfe = ctk.CTkButton(f_footer, text="Hilfe", width=80, fg_color="#1f538d", hover_color="#14375d", command=self.open_html_help)
+        self.btn_footer_hilfe.pack(side="right", padx=5)
+
+        self.btn_footer_update = ctk.CTkButton(f_footer, text="Update?", width=80, fg_color="#555", hover_color="#777", command=self.check_for_updates)
+        self.btn_footer_update.pack(side="right")
+        # ----------------------------------------------------------
+        
+        # ERST JETZT den großen Tab-Bereich packen
         self.tabview = ctk.CTkTabview(self) 
         self.tabview.pack(padx=20, pady=(10, 5), fill="both", expand=True)
         
         # Spezielle Unicode-Zeichen für fette Buchstaben (Sans-Serif Bold)
         self.name_manuell = "📝 [E]RSTELLEN"
+        # ... ab hier geht der Code wie gewohnt weiter ...
         self.name_erfassen = "📥 ER[F]ASSEN"
         self.name_ausgang = "📊 [A]USGANG"
         self.name_eingang = "📊 E[I]NGANG"
@@ -302,24 +337,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             import_pfad = self.config.get("cli_override_rechnung_csv")
             self.after(200, lambda: self.load_manual_invoice(is_button_click=False, silent=True, custom_path=import_pfad))
                 
-        # 7. Footer aufbauen
-        f_footer = ctk.CTkFrame(self, fg_color="transparent")
-        f_footer.pack(side="bottom", fill="x", padx=20, pady=5)
         
-        lbl_footer_l = ctk.CTkLabel(f_footer, text="(C) Joachim Sokolowski", text_color="#1f538d", cursor="hand2")
-        lbl_footer_l.pack(side="left")
-        lbl_footer_l.bind("<Button-1>", lambda e: webbrowser.open("https://sokolowski.org"))
-        
-        lbl_footer_c = ctk.CTkLabel(f_footer, text=f"| Version: {self.current_version}")
-        lbl_footer_c.pack(side="left", padx=10)
-        self.btn_footer_exit = ctk.CTkButton(f_footer, text="Beenden", width=80, fg_color="#b30000", hover_color="#800000", command=self.on_closing)
-        self.btn_footer_exit.pack(side="right", padx=(5, 0))
-
-        self.btn_footer_hilfe = ctk.CTkButton(f_footer, text="Hilfe", width=80, fg_color="#1f538d", hover_color="#14375d", command=self.open_html_help)
-        self.btn_footer_hilfe.pack(side="right", padx=5)
-
-        self.btn_footer_update = ctk.CTkButton(f_footer, text="Update?", width=80, fg_color="#555", hover_color="#777", command=self.check_for_updates)
-        self.btn_footer_update.pack(side="right")
     
     @property
     def p_config(self):
@@ -381,11 +399,11 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         p_dict["eingangsrechnungen_ordner"] = rchn_dir
         p_dict["eingangsjournal_ordner"] = einj_dir
         
-        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
+        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "vor_gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
         for datei in dateien:
             key_name = datei.replace(".", "_")
             p_dict[key_name] = os.path.join(firm_dir, datei)
-        override_keys = ["ausgabe_ordner", "auswertungen_ordner", "firma_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]
+        override_keys = ["ausgabe_ordner", "auswertungen_ordner", "firma_csv", "briefbogen_pdf", "zusatz_csv", "gruss_csv", "vor_gruss_csv", "header_csv", "einleitung_csv"]
         for key in override_keys:
             cli_val = self.config.get(f"cli_override_{key}")
             if cli_val:
@@ -400,7 +418,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             create_csv_if_missing(p_dict["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeEmail;KundeEndpoint;KundeEndpointScheme;KundeNr;Aktenzeichen;KundeAktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
             create_csv_if_missing(p_dict["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme")
             create_csv_if_missing(p_dict["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
-            for f in ["zusatz_csv", "gruss_csv", "header_csv", "einleitung_csv"]: create_csv_if_missing(p_dict[f], "")
+            for f in ["zusatz_csv", "gruss_csv", "vor_gruss_csv", "header_csv", "einleitung_csv"]: create_csv_if_missing(p_dict[f], "")
     
     def build_profile_header(self):
         for w in self.header_container.winfo_children(): w.destroy()
@@ -477,15 +495,37 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             messagebox.showinfo("Gelöscht", "Die Firma wurde entfernt.")
         elif pwd is not None: messagebox.showerror("Fehler", "Falsches Passwort!")
 
+    
     def refresh_all_ui(self):
         from datenbank import lade_kunden, lade_produkte, lade_textdatei
         self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
         self.produkte_liste = lade_produkte(self.p_config.get("produkte_csv", "produkte.csv"))
         self.header_text = lade_textdatei(self.p_config.get('header_csv', ''))
         self.einleitung_text = lade_textdatei(self.p_config.get('einleitung_csv', ''))
+        self.vor_gruss_text = lade_textdatei(self.p_config.get('vor_gruss_csv', ''))
         self.gruss_text = lade_textdatei(self.p_config.get('gruss_csv', ''))
+        
+        # Textvorlagen-Verwaltung initialisieren ---
+        if "text_vorlagen" not in self.p_config or not isinstance(self.p_config["text_vorlagen"], dict):
+            self.p_config["text_vorlagen"] = {}
+        if "Standard" not in self.p_config["text_vorlagen"]:
+            self.p_config["text_vorlagen"]["Standard"] = {
+                "header": self.header_text,
+                "einleitung": self.einleitung_text,
+                "vor_gruss": self.vor_gruss_text,
+                "gruss": self.gruss_text,
+                "zahlungsbedingungen": self.p_config.get("zahlungsbedingungen_default", ""),
+                "rechnungsvermerk": self.p_config.get("rechnungsvermerk_default", "")
+            }
+        self.aktive_text_vorlage = self.p_config.get("aktive_text_vorlage", "Standard")
+        if self.aktive_text_vorlage not in self.p_config["text_vorlagen"]:
+            self.aktive_text_vorlage = "Standard"
+            self.p_config["aktive_text_vorlage"] = "Standard"
+
         self.positionen_liste = []
         self.zusatz_dict = {}
+        self.has_unsaved_changes = False
+        # ... (Rest von refresh_all_ui bleibt unverändert)
         self.has_unsaved_changes = False
 
         # Alte Inhalte in allen Reitern löschen
@@ -523,11 +563,8 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
 
     def on_closing(self, skip_warning=False):
-        # 1. Sicherheitsabfragen (nur wenn das Beenden nicht durch erfolgreiches Generieren ausgelöst wurde)
+        # 1. Sicherheitsabfragen (bestehender Code...)
         if not skip_warning:
-            import tkinter.messagebox as messagebox
-            
-            # 1a. Spezielle Warnung bei Aufruf über Fremdprogramm (--edit)
             if getattr(self, 'start_in_edit', False):
                 antwort = messagebox.askyesno(
                     "Vorgang abbrechen?",
@@ -537,8 +574,6 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                 )
                 if not antwort:
                     return
-                    
-            # 1b. Normale Warnung, falls Positionen erfasst wurden (Standardbetrieb)
             elif hasattr(self, 'positionen_liste') and len(self.positionen_liste) > 0:
                 antwort = messagebox.askyesno(
                     "Programm beenden?",
@@ -549,11 +584,24 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                 if not antwort:
                     return 
                     
-        self.config["window_geometry"] = self.geometry()
-        from datenbank import speichere_config
-        speichere_config(self.config)
+        # --- FIX: Exakte Geometrie ohne Rahmen-Aufblähung ermitteln ---
+        self.update_idletasks()  
         
-        # 2. Lock-Dateien sicher über die interne Funktion entfernen
+        if self.state() == 'zoomed':
+            self.config["window_state"] = "zoomed"
+        else:
+            self.config["window_state"] = "normal"
+            # Wir nutzen die reinen Widget-Maße statt winfo_geometry()
+            w = self.winfo_width()
+            h = self.winfo_height()
+            x = self.winfo_x()
+            y = self.winfo_y()
+            
+            # Nur speichern, wenn das Fenster nicht minimiert oder fehlerhaft ist
+            if w > 100 and h > 100:
+                self.config["window_geometry"] = f"{w}x{h}+{x}+{y}"
+        
+        # 2. Lock-Dateien sicher entfernen und beenden
         try:
             self.unlock_firm()
         except:

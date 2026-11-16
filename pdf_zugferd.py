@@ -75,7 +75,7 @@ def split_text_to_lines(text, width_limit, c, font="Helvetica", size=10):
     if current_line: lines.append(current_line)
     return lines
 
-def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text):
+def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text=""):
     packet = BytesIO()
     c = canvas.Canvas(packet, pagesize=A4)
     breite, hoehe = A4
@@ -217,9 +217,10 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     
     if einleitung_text:
         for zeile in einleitung_text.split('\n'):
-            y_tabelle = check_page_break(y_tabelle, 15, False)
-            zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10, align="left")
-            y_tabelle -= 12
+            for wrap_line in split_text_to_lines(zeile, 470, c, "Helvetica", 10):
+                y_tabelle = check_page_break(y_tabelle, 15, False)
+                zeichne_formatierten_text(c, 60, y_tabelle, wrap_line, 10, align="left")
+                y_tabelle -= 12
         y_tabelle -= 10
     else: y_tabelle -= 10
 
@@ -415,34 +416,40 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     
     if zusatztexte:
         for z in zusatztexte:
-            lines = z['text'].split('\n')
-            req_h = len(lines) * 13 + (12 if z['pos'] != '0' else 0)
+            raw_lines = z['text'].split('\n')
+            wrapped_lines = []
+            for rl in raw_lines:
+                wrapped_lines.extend(split_text_to_lines(rl, 470, c, "Helvetica", 8.5))
+                
+            req_h = len(wrapped_lines) * 12 + (12 if z['pos'] != '0' else 0)
             y_tabelle = check_page_break(y_tabelle, req_h, False)
             
             if z['pos'] != '0': 
                 pos_str = z['pos'].strip()
-                # Unterscheidung ob eine oder mehrere Positionen
                 if "," in pos_str:
                     ueberschrift = f"Anmerkungen zu Positionen {pos_str}:"
                 else:
                     ueberschrift = f"Anmerkung zu Position {pos_str}:"
                 
-                # Kleinere Schriftgröße für die Überschrift (8.5 pt fett)
                 c.setFont("Helvetica-Bold", 8.5)
                 c.drawString(60, y_tabelle, ueberschrift)
                 y_tabelle -= 12
                 
-            for zeile in lines:
-                # Kleinere Schriftgröße für den Text (8.5 pt normal) und etwas engerer Zeilenabstand (12 statt 15)
+            for zeile in wrapped_lines:
+                y_tabelle = check_page_break(y_tabelle, 12, False)
                 zeichne_formatierten_text(c, 60, y_tabelle, zeile, 8.5)
                 y_tabelle -= 12
             y_tabelle -= 5
 
     z_csv = kopf.get('Zusatztext', '').strip()
     if z_csv:
-        lines = z_csv.split('\\n')
-        y_tabelle = check_page_break(y_tabelle, len(lines) * 15, False)
-        for zeile in lines:
+        raw_lines = z_csv.split('\\n')
+        wrapped_lines = []
+        for rl in raw_lines:
+            wrapped_lines.extend(split_text_to_lines(rl, 470, c, "Helvetica", 10))
+            
+        y_tabelle = check_page_break(y_tabelle, len(wrapped_lines) * 15, False)
+        for zeile in wrapped_lines:
             zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
             y_tabelle -= 12
         y_tabelle -= 10 
@@ -510,18 +517,35 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     
     y_vor_gruss = y_tabelle
     
+    if vor_gruss_text:
+        raw_lines = vor_gruss_text.split('\n')
+        wrapped_lines = []
+        for rl in raw_lines:
+            wrapped_lines.extend(split_text_to_lines(rl, 470, c, "Helvetica", 10))
+            
+        y_tabelle = check_page_break(y_tabelle, len(wrapped_lines) * 15, False)
+        for zeile in wrapped_lines:
+            zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
+            y_tabelle -= 12
+        y_tabelle -= 10
+    
+    y_vor_gruss = y_tabelle
+    
     if gruss_text:
-        lines = gruss_text.split('\n')
-        y_tabelle = check_page_break(y_tabelle, len(lines) * 15, False)
+        raw_lines = gruss_text.split('\n')
+        wrapped_lines = []
+        for rl in raw_lines:
+            wrapped_lines.extend(split_text_to_lines(rl, 470, c, "Helvetica", 10))
+            
+        y_tabelle = check_page_break(y_tabelle, len(wrapped_lines) * 15, False)
         y_vor_gruss = y_tabelle
-        for zeile in lines:
+        for zeile in wrapped_lines:
             zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
             y_tabelle -= 12
     c.save()
     packet.seek(0)
     return packet
-
-def generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text):
+def generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text=""):
     """Zentrale, gemeinsame Hilfsfunktion für die EN 16931 konforme CII-XML-Erstellung."""
     r_nr = kopf.get('Rechnungsnummer', '')
     kunde_name_xml = esc_xml(kopf.get('KundeName', '').strip())
@@ -655,6 +679,7 @@ def generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, head
         xml_notes_str += f"<ram:IncludedNote><ram:Content>{pre}{clean_xml_text(z['text'])}</ram:Content></ram:IncludedNote>\n"
     z_csv = kopf.get('Zusatztext', '').strip()
     if z_csv: xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(z_csv.replace('\\n', '\n'))}</ram:Content></ram:IncludedNote>\n"
+    if vor_gruss_text: xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(vor_gruss_text)}</ram:Content></ram:IncludedNote>\n"
     if gruss_text: xml_notes_str += f"<ram:IncludedNote><ram:Content>{clean_xml_text(gruss_text)}</ram:Content></ram:IncludedNote>\n"
     
     z_bed = kopf.get('Zahlungsbedingungen', '').strip()
@@ -744,23 +769,22 @@ def generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, head
     </rsm:SupplyChainTradeTransaction>
 </rsm:CrossIndustryInvoice>"""
 
-def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr):
+def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     
     # 1. XML über die gemeinsame Funktion generieren
-    xml_content = generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text)
+    xml_content = generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text)
     
     # 2. Begleit-PDF mit rechtlichem Hinweis generieren
     hinweis_text = "~kHinweis: Dies ist eine Begleitdatei zur XRechnungsdatei und maßgeblich ist die X-Rechnungsdatei.k~"
     gruss_erweitert = f"{gruss_text}\n\n{hinweis_text}" if gruss_text else hinweis_text
 
-    # Summen für den PDF-Aufbau ermitteln
     netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
     steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0)/100.0) for p in positionen)
     brutto = netto + steuer
 
-    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_erweitert, header_text, einleitung_text)
+    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_erweitert, header_text, einleitung_text, vor_gruss_text)
     text_pdf = PdfReader(text_pdf_stream)
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
@@ -796,14 +820,14 @@ def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_tex
         
     return xml_datei, pdf_datei
     
-def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr):
+def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
     """Erstellt ausschließlich eine visuelle PDF-Rechnung ohne XML-Anhang."""
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
     steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0) / 100.0) for p in positionen)
     brutto = netto + steuer
-    text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text))
+    text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
     try:
@@ -831,12 +855,57 @@ def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, grus
         writer.write(out_pdf)
     return ausgabe_datei
 
-def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr):
+def erstelle_testrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text=""):
+    """Erstellt eine Vorschau-PDF ohne Rechnungsnummer im Temp-Verzeichnis. Es erfolgt kein Journaleintrag."""
+    import tempfile
+    
+    kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
+    
+    # Rechnungsnummer für die visuelle Ausgabe unterdrücken
+    kopf['Rechnungsnummer'] = ""
+    
+    netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
+    steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0) / 100.0) for p in positionen)
+    brutto = netto + steuer
+    
+    text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
+    writer = PdfWriter()
+    writer._header = b"%PDF-1.7"
+    
+    try:
+        briefbogen_pfad = brief_pfad if os.path.exists(brief_pfad) else None
+        if briefbogen_pfad:
+            brief_reader = PdfReader(briefbogen_pfad)
+            erste_seite = brief_reader.pages[0]
+            erste_seite.merge_page(text_pdf.pages[0])
+            writer.add_page(erste_seite)
+            for i in range(1, len(text_pdf.pages)):
+                brief_reader_neu = PdfReader(briefbogen_pfad)
+                weitere_seite = brief_reader_neu.pages[1] if len(brief_reader_neu.pages) > 1 else brief_reader_neu.pages[0]
+                weitere_seite.merge_page(text_pdf.pages[i])
+                writer.add_page(weitere_seite)
+        else:
+            for page in text_pdf.pages:
+                writer.add_page(page)
+    except Exception:
+        for page in text_pdf.pages:
+            writer.add_page(page)
+            
+    # Im Temp-Ordner speichern
+    temp_dir = tempfile.gettempdir()
+    ausgabe_datei = os.path.join(temp_dir, "Testrechnung_Vorschau.pdf")
+    
+    with open(ausgabe_datei, "wb") as out_pdf:
+        writer.write(out_pdf)
+        
+    return ausgabe_datei
+
+def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     
     # 1. XML über die gemeinsame Funktion generieren
-    xml_content = generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text)
+    xml_content = generiere_en16931_xml(firma, kopf, positionen, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text)
     
     r_datum, f_datum = formatiere_datum(kopf.get('Rechnungsdatum', '')), formatiere_datum(kopf.get('Faelligkeitsdatum', ''))
     
@@ -844,7 +913,7 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     gesamt_steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0)/100.0) for p in positionen)
     gesamt_brutto = gesamt_netto + gesamt_steuer
 
-    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text)
+    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text)
     text_pdf = PdfReader(text_pdf_stream)
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
@@ -964,13 +1033,13 @@ def run_auto_generation(config):
         rechnungen = lade_rechnungen(act_prof['rechnung_csv'])
         zusatztexte = lade_zusatz_csv(act_prof['zusatz_csv'])
         gruss = lade_textdatei(act_prof['gruss_csv'])
+        vor_gruss = lade_textdatei(act_prof.get('vor_gruss_csv', ''))
         header = lade_textdatei(act_prof['header_csv'])
         einleitung = lade_textdatei(act_prof['einleitung_csv'])
         
         akt_jahr = act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year))
         
         for r_nr, daten in rechnungen.items():
-            # NEU: Wenn eine Nummer übergeben wurde, überschreibe die aus der CSV
             if config.get("cli_renr"):
                 r_nr = config.get("cli_renr")
                 daten['kopf']['Rechnungsnummer'] = r_nr
@@ -981,7 +1050,7 @@ def run_auto_generation(config):
             if not valid:
                 print(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
                 continue
-            pdf_pfad = erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr)
+            pdf_pfad = erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr, vor_gruss)
             print(f"✅ Erstellt: RE {r_nr}")
             kopie_dir = config.get("cli_kopie")
             if kopie_dir:

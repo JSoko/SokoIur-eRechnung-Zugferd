@@ -92,6 +92,7 @@ def get_default_profile(suffix=""):
         "briefbogen_pdf": f"briefbogen{s}.pdf",
         "zusatz_csv": f"zusatz{s}.csv",
         "gruss_csv": f"gruss{s}.csv",
+        "vor_gruss_csv": f"vor_gruss{s}.csv",
         "header_csv": f"header{s}.csv",
         "einleitung_csv": f"einleitung{s}.csv",
         "ausgabe_ordner": f"Rechnungen_PDF{s}",
@@ -102,9 +103,8 @@ def get_default_profile(suffix=""):
         "letzte_rechnungsnummer": "",
         "aktuelles_rechnungsjahr": str(datetime.now().year),
         "letzte_einheit": "Stück (C62)",
-        "keep_header": True,
-        "keep_einleitung": True,
-        "keep_gruss": True,
+        "text_vorlagen": {},
+        "aktive_text_vorlage": "Standard",
         "keep_raten": False,
         "keep_kunde_speichern": False,
         "zahlungsbedingungen_default": "",
@@ -157,7 +157,8 @@ def init_config():
 def speichere_config(config):
     # 1. Lokale Config speichern (Programmordner)
     local_data = {
-        "window_geometry": config.get("window_geometry", "950x850"),
+        "window_geometry": config.get("window_geometry", "950x700"),
+        "window_state": config.get("window_state", "normal"),  # <--- Muss hier vorhanden sein!
         "terms_accepted": config.get("terms_accepted", False),
         "base_data_path": config.get("base_data_path", ""),
         "active_profile_index": config.get("active_profile_index", 0),
@@ -168,7 +169,7 @@ def speichere_config(config):
     }
     with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(local_data, f, indent=4)
-
+        
     # 2. Globale Profile im Netzwerk speichern (Firmenübergreifend)
     if config.get("base_data_path") and os.path.exists(config["base_data_path"]):
         shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")

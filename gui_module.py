@@ -75,6 +75,24 @@ from pdf_zugferd import check_lz_logic, run_auto_generation
 
 
 class TabManuellMixin:
+    def on_main_text_vorlage_change(self, wahl):
+        vorlagen = self.p_config.get("text_vorlagen", {})
+        if wahl in vorlagen:
+            v = vorlagen[wahl]
+            self.header_text = v.get("header", "")
+            self.einleitung_text = v.get("einleitung", "")
+            self.vor_gruss_text = v.get("vor_gruss", "")
+            self.gruss_text = v.get("gruss", "")
+            self.p_config["zahlungsbedingungen_default"] = v.get("zahlungsbedingungen", "")
+            self.p_config["rechnungsvermerk_default"] = v.get("rechnungsvermerk", "")
+            self.p_config["aktive_text_vorlage"] = wahl
+            self.aktive_text_vorlage = wahl
+            
+            speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
+            speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
+            speichere_textdatei(self.p_config.get('vor_gruss_csv'), getattr(self, 'vor_gruss_text', ''))
+            speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)            
+            speichere_config(self.config)
     def open_date_picker(self, entry_widget):
         dialog = ctk.CTkToplevel(self)
         dialog.title("Leistungszeitraum wählen")
@@ -268,7 +286,7 @@ class TabManuellMixin:
         self.lbl_totals.configure(text=t)
 
     def build_manuell_tab(self):
-        left_frame = ctk.CTkFrame(self.tab_manuell, width=350); left_frame.pack(side="left", fill="y", padx=10, pady=10)
+        left_frame = ctk.CTkScrollableFrame(self.tab_manuell, width=350); left_frame.pack(side="left", fill="y", padx=10, pady=10)
         right_frame = ctk.CTkFrame(self.tab_manuell); right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
         
         btn_load = self.create_button(left_frame, text="📥 Letzte Rechnungs-CSV laden (Alt+L)", command=lambda: self.load_manual_invoice(is_button_click=True), fg_color="#444", hover_color="#666")
@@ -302,7 +320,16 @@ class TabManuellMixin:
         self.chk_kunde_speichern = ctk.CTkCheckBox(left_frame, text="Kunde speichern/updaten"); self.chk_kunde_speichern.pack(pady=3, padx=10, anchor="w")
         if self.p_config.get("keep_kunde_speichern", False): self.chk_kunde_speichern.select()
         
-        self.create_button(left_frame, text="📝 Texte bearbeiten (Alt+T)", command=self.open_texte_popup).pack(pady=15, padx=10, fill="x")
+        # --- NEU: Vorlagen-Schnellauswahl & Texte-Button ---
+        f_txt_vorlage = ctk.CTkFrame(left_frame, fg_color="transparent")
+        f_txt_vorlage.pack(fill="x", padx=10, pady=(10, 2))
+        ctk.CTkLabel(f_txt_vorlage, text="Textvorlage:", width=120, anchor="w").pack(side="left")
+        vorlagen_namen = list(self.p_config.get("text_vorlagen", {"Standard": {}}).keys())
+        self.combo_text_vorlage_main = ctk.CTkComboBox(f_txt_vorlage, values=vorlagen_namen, command=self.on_main_text_vorlage_change)
+        self.combo_text_vorlage_main.set(self.p_config.get("aktive_text_vorlage", "Standard"))
+        self.combo_text_vorlage_main.pack(side="left", fill="x", expand=True, padx=(10, 0))
+
+        self.create_button(left_frame, text="📝 Texte & Vorlagen bearbeiten (Alt+T)", command=self.open_texte_popup).pack(pady=(5, 12), padx=10, fill="x")
         ctk.CTkFrame(left_frame, height=2, fg_color="#555").pack(fill="x", pady=10, padx=10)
         self.lbl_totals = ctk.CTkLabel(left_frame, text="Netto Gesamt: 0,00 €\nBrutto Gesamt: 0,00 €", justify="left", font=("Helvetica", 14, "bold"))
         self.lbl_totals.pack(pady=5, padx=15, anchor="w")
@@ -311,16 +338,22 @@ class TabManuellMixin:
         self.pos_scroll = ctk.CTkScrollableFrame(right_frame); self.pos_scroll.pack(fill="both", expand=True, padx=10, pady=5)
         
         self.create_button(right_frame, text="+ Position hinzufügen (+)", command=self.open_pos_popup).pack(pady=10)
-        # Frame für geteilte Buttons (Papier & XRechnung) ---
+        # Frame für geteilte Buttons (Test, Papier & XRechnung) ---
         f_split_btns = ctk.CTkFrame(right_frame, fg_color="transparent")
         f_split_btns.pack(pady=5, fill="x", padx=20)
-        btn_papier = self.create_button(f_split_btns, text="Papierrechnung erstellen", fg_color="#FFF2A8", text_color="#3D3200", hover_color="#E6D77A", command=self.save_generate_papierrechnung_exit)
-        btn_papier.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        btn_test = self.create_button(f_split_btns, text="Testrechnung", fg_color="#6c757d", hover_color="#5a6268", command=self.generate_testrechnung)
+        btn_test.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        create_tooltip(btn_test, "Erstellt eine Vorschau (PDF) im Temp-Ordner.\nVergibt keine Rechnungsnummer, erzeugt kein Journal und schließt das Programm nicht.")
+        
+        btn_papier = self.create_button(f_split_btns, text="Papier-PDF", fg_color="#FFF2A8", text_color="#3D3200", hover_color="#E6D77A", command=self.save_generate_papierrechnung_exit)
+        btn_papier.pack(side="left", fill="x", expand=True, padx=(5, 5))
         create_tooltip(btn_papier, "Erstellt ein reines Sicht-PDF ohne elektronische XML-Daten.\n(Nur als Übergangslösung empfohlen)")
         
-        btn_xrech = self.create_button(f_split_btns, text="XRechnung & Begleit-PDF erstellen", fg_color="#cccccc", hover_color="#14375d", command=self.save_generate_xrechnung_exit)
+        btn_xrech = self.create_button(f_split_btns, text="XRechnung", fg_color="#cccccc", hover_color="#14375d", command=self.save_generate_xrechnung_exit)
         btn_xrech.pack(side="left", fill="x", expand=True, padx=(5, 0))
         create_tooltip(btn_xrech, "Erzeugt eine XML-Datei für Behördenportale (Leitweg-ID erforderlich)\nund zusätzlich eine lesbare Leseabschrift (PDF) für Ihre Akten.")
+        
         btn_zugferd = self.create_button(right_frame, text="Zugpferdrechnung erstellen & öffnen (Alt+P)", fg_color="#289102", hover_color="#5dc21c", command=self.save_generate_open_exit)
         btn_zugferd.pack(pady=5, fill="x", padx=20)
         create_tooltip(btn_zugferd, "Erzeugt eine ZUGFeRD Hybrid-PDF (PDF inkl. unsichtbarem XML).\nIdeal für Geschäftskunden (B2B) per E-Mail.")
@@ -388,6 +421,7 @@ class TabManuellMixin:
             
             self.header_text = lade_textdatei(self.p_config.get('header_csv', ''))
             self.einleitung_text = lade_textdatei(self.p_config.get('einleitung_csv', ''))
+            self.vor_gruss_text = lade_textdatei(self.p_config.get('vor_gruss_csv', ''))
             self.gruss_text = lade_textdatei(self.p_config.get('gruss_csv', ''))
             self.refresh_pos_list()
         except Exception as e:
@@ -395,60 +429,185 @@ class TabManuellMixin:
 
     def open_texte_popup(self):
         dialog = ctk.CTkToplevel(self)
-        dialog.title("Texte bearbeiten")
-        # Fenster etwas höher machen (700 statt 600)
-        self.center_window(dialog, 600, 700)
+        dialog.title("Texte & Textvorlagen bearbeiten")
+        self.center_window(dialog, 680, 720)
         dialog.transient(self)
         dialog.grab_set() 
         
-        # 1. Feststehender Bereich unten für den Button
+        if "text_vorlagen" not in self.p_config or not isinstance(self.p_config["text_vorlagen"], dict):
+            self.p_config["text_vorlagen"] = {}
+        if "Standard" not in self.p_config["text_vorlagen"]:
+            self.p_config["text_vorlagen"]["Standard"] = {
+                "header": self.header_text,
+                "einleitung": self.einleitung_text,
+                "vor_gruss": getattr(self, "vor_gruss_text", ""),
+                "gruss": self.gruss_text,
+                "zahlungsbedingungen": self.p_config.get("zahlungsbedingungen_default", ""),
+                "rechnungsvermerk": self.p_config.get("rechnungsvermerk_default", "")
+            }
+
+        # 1. Kopfbereich für die Vorlagenverwaltung (Dropdown + Buttons)
+        f_top = ctk.CTkFrame(dialog, corner_radius=8)
+        f_top.pack(side="top", fill="x", padx=15, pady=(12, 5))
+        
+        f_vorlage_row1 = ctk.CTkFrame(f_top, fg_color="transparent")
+        f_vorlage_row1.pack(fill="x", padx=10, pady=(8, 4))
+        ctk.CTkLabel(f_vorlage_row1, text="Textkombination / Vorlage:", font=("Helvetica", 13, "bold")).pack(side="left")
+        
+        def get_vorlagen_liste():
+            keys = list(self.p_config["text_vorlagen"].keys())
+            if "Standard" in keys:
+                keys.remove("Standard")
+                keys.insert(0, "Standard")
+            return keys
+
+        def load_vorlage_into_fields(name):
+            v = self.p_config["text_vorlagen"].get(name)
+            if not v:
+                return
+            t_head.delete("0.0", "end"); t_head.insert("0.0", v.get("header", ""))
+            t_einl.delete("0.0", "end"); t_einl.insert("0.0", v.get("einleitung", ""))
+            t_vor_gruss.delete("0.0", "end"); t_vor_gruss.insert("0.0", v.get("vor_gruss", ""))
+            t_gruss.delete("0.0", "end"); t_gruss.insert("0.0", v.get("gruss", ""))
+            t_zahl.delete("0.0", "end"); t_zahl.insert("0.0", v.get("zahlungsbedingungen", ""))
+            t_verm.delete("0.0", "end"); t_verm.insert("0.0", v.get("rechnungsvermerk", ""))
+            self.p_config["aktive_text_vorlage"] = name
+            self.aktive_text_vorlage = name
+
+        combo_vorlage = ctk.CTkComboBox(f_vorlage_row1, values=get_vorlagen_liste(), width=260, command=load_vorlage_into_fields)
+        akt_v = self.p_config.get("aktive_text_vorlage", "Standard")
+        combo_vorlage.set(akt_v if akt_v in self.p_config["text_vorlagen"] else "Standard")
+        combo_vorlage.pack(side="left", padx=10, fill="x", expand=True)
+
+        f_vorlage_row2 = ctk.CTkFrame(f_top, fg_color="transparent")
+        f_vorlage_row2.pack(fill="x", padx=10, pady=(4, 8))
+
+        def get_current_fields_dict():
+            return {
+                "header": t_head.get("0.0", "end").strip(),
+                "einleitung": t_einl.get("0.0", "end").strip(),
+                "vor_gruss": t_vor_gruss.get("0.0", "end").strip(),
+                "gruss": t_gruss.get("0.0", "end").strip(),
+                "zahlungsbedingungen": t_zahl.get("0.0", "end").strip(),
+                "rechnungsvermerk": t_verm.get("0.0", "end").strip()
+            }
+
+        def save_current_vorlage():
+            name = combo_vorlage.get().strip() or "Standard"
+            self.p_config["text_vorlagen"][name] = get_current_fields_dict()
+            self.p_config["aktive_text_vorlage"] = name
+            speichere_config(self.config)
+            if hasattr(self, "combo_text_vorlage_main"):
+                self.combo_text_vorlage_main.configure(values=get_vorlagen_liste())
+                self.combo_text_vorlage_main.set(name)
+            messagebox.showinfo("Vorlage gespeichert", f"Die Textkombination wurde in der Vorlage '{name}' dauerhaft gespeichert.", parent=dialog)
+
+        def save_as_standard():
+            self.p_config["text_vorlagen"]["Standard"] = get_current_fields_dict()
+            self.p_config["aktive_text_vorlage"] = "Standard"
+            combo_vorlage.configure(values=get_vorlagen_liste())
+            combo_vorlage.set("Standard")
+            speichere_config(self.config)
+            if hasattr(self, "combo_text_vorlage_main"):
+                self.combo_text_vorlage_main.configure(values=get_vorlagen_liste())
+                self.combo_text_vorlage_main.set("Standard")
+            messagebox.showinfo("Standard gespeichert", "Die aktuellen Texte wurden als 'Standard' gespeichert.", parent=dialog)
+
+        def save_new_vorlage():
+            inp = ctk.CTkInputDialog(
+                text="Name der neuen Textkombination\n(z. B. Vorschussrechnung, Kostenfestsetzungsantrag):",
+                title="Neue Textvorlage speichern"
+            )
+            new_name = inp.get_input()
+            if new_name and new_name.strip():
+                new_name = new_name.strip()
+                self.p_config["text_vorlagen"][new_name] = get_current_fields_dict()
+                self.p_config["aktive_text_vorlage"] = new_name
+                combo_vorlage.configure(values=get_vorlagen_liste())
+                combo_vorlage.set(new_name)
+                speichere_config(self.config)
+                if hasattr(self, "combo_text_vorlage_main"):
+                    self.combo_text_vorlage_main.configure(values=get_vorlagen_liste())
+                    self.combo_text_vorlage_main.set(new_name)
+                messagebox.showinfo("Vorlage angelegt", f"Die Vorlage '{new_name}' wurde gespeichert und ausgewählt.", parent=dialog)
+
+        def delete_vorlage():
+            name = combo_vorlage.get().strip()
+            if name == "Standard":
+                return messagebox.showwarning("Nicht möglich", "Die Vorlage 'Standard' kann nicht gelöscht werden.", parent=dialog)
+            if name in self.p_config["text_vorlagen"]:
+                if messagebox.askyesno("Vorlage löschen", f"Möchten Sie die Vorlage '{name}' wirklich löschen?", parent=dialog):
+                    del self.p_config["text_vorlagen"][name]
+                    combo_vorlage.configure(values=get_vorlagen_liste())
+                    combo_vorlage.set("Standard")
+                    load_vorlage_into_fields("Standard")
+                    speichere_config(self.config)
+                    if hasattr(self, "combo_text_vorlage_main"):
+                        self.combo_text_vorlage_main.configure(values=get_vorlagen_liste())
+                        self.combo_text_vorlage_main.set("Standard")
+
+        self.create_button(f_vorlage_row2, text="💾 Vorlage aktualisieren", width=150, command=save_current_vorlage).pack(side="left", padx=(0, 5))
+        self.create_button(f_vorlage_row2, text="⭐ Als Standard speichern", width=165, fg_color="#1f538d", hover_color="#14375d", command=save_as_standard).pack(side="left", padx=5)
+        self.create_button(f_vorlage_row2, text="➕ Als neue Vorlage...", width=155, fg_color="#289102", hover_color="#1e6e01", command=save_new_vorlage).pack(side="left", padx=5)
+        self.create_button(f_vorlage_row2, text="🗑 Löschen", width=90, fg_color="#b30000", hover_color="#800000", command=delete_vorlage).pack(side="right", padx=(5, 0))
+
+        # 2. Feststehender Bereich unten für den Übernehmen-Button
         f_btn = ctk.CTkFrame(dialog, fg_color="transparent")
         f_btn.pack(side="bottom", fill="x", pady=10)
         
-        # 2. Scrollbarer Bereich für die Inhalte
+        # 3. Scrollbarer Bereich für die Textfelder (ohne "Merken"-Checkboxen)
         scroll = ctk.CTkScrollableFrame(dialog)
-        scroll.pack(fill="both", expand=True, padx=10, pady=10)
+        scroll.pack(fill="both", expand=True, padx=15, pady=5)
         
-        # Alle Textfelder werden nun in 'scroll' statt 'dialog' gepackt
-        ctk.CTkLabel(scroll, text="Zentrierter Header (über Rechnungs-Nr.):").pack(anchor="w", padx=20, pady=(10, 0))
-        t_head = ctk.CTkTextbox(scroll, height=60); t_head.pack(fill="x", padx=20, pady=2); t_head.insert("0.0", self.header_text)
-        chk_head = ctk.CTkCheckBox(scroll, text="Merken"); chk_head.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.p_config.get("keep_header", True): chk_head.select()
+        ctk.CTkLabel(scroll, text="Zentrierter Header (über Rechnungs-Nr.):").pack(anchor="w", padx=20, pady=(8, 0))
+        t_head = ctk.CTkTextbox(scroll, height=55); t_head.pack(fill="x", padx=20, pady=(2, 8)); t_head.insert("0.0", self.header_text)
         
-        ctk.CTkLabel(scroll, text="Einleitung (vor Positionen):").pack(anchor="w", padx=20, pady=(5, 0))
-        t_einl = ctk.CTkTextbox(scroll, height=80); t_einl.pack(fill="x", padx=20, pady=2); t_einl.insert("0.0", self.einleitung_text)
-        chk_einl = ctk.CTkCheckBox(scroll, text="Merken"); chk_einl.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.p_config.get("keep_einleitung", True): chk_einl.select()
-        
-        ctk.CTkLabel(scroll, text="Gruß (unten):").pack(anchor="w", padx=20, pady=(5, 0))
-        t_gruss = ctk.CTkTextbox(scroll, height=80); t_gruss.pack(fill="x", padx=20, pady=2); t_gruss.insert("0.0", self.gruss_text)
-        chk_gruss = ctk.CTkCheckBox(scroll, text="Merken"); chk_gruss.pack(anchor="w", padx=20, pady=(0, 10))
-        if self.p_config.get("keep_gruss", True): chk_gruss.select()
-        
-        ctk.CTkLabel(scroll, text="ℹ️ Offizielle Hinweise zur Nutzung von BT-20 und BT-22 nach EN 16931 finden Sie im Handbuch (Kapitel 9).", text_color="#1f538d", font=("Helvetica", 11, "italic")).pack(anchor="w", padx=20, pady=(15, 0))
+        ctk.CTkLabel(scroll, text="Einleitung (vor Positionen):").pack(anchor="w", padx=20, pady=(4, 0))
+        t_einl = ctk.CTkTextbox(scroll, height=70); t_einl.pack(fill="x", padx=20, pady=(2, 8)); t_einl.insert("0.0", self.einleitung_text)
 
-        ctk.CTkLabel(scroll, text="Zahlungsbedingungen (BT-20 - Fälligkeitshinweis):").pack(anchor="w", padx=20, pady=(5, 0))
-        t_zahl = ctk.CTkTextbox(scroll, height=50); t_zahl.pack(fill="x", padx=20, pady=2)
+        ctk.CTkLabel(scroll, text="Vor Gruß (nach Zahlungshinweis / vor Gruß):").pack(anchor="w", padx=20, pady=(4, 0))
+        t_vor_gruss = ctk.CTkTextbox(scroll, height=70); t_vor_gruss.pack(fill="x", padx=20, pady=(2, 8)); t_vor_gruss.insert("0.0", getattr(self, "vor_gruss_text", ""))
+        
+        ctk.CTkLabel(scroll, text="Gruß (unten):").pack(anchor="w", padx=20, pady=(4, 0))
+        t_gruss = ctk.CTkTextbox(scroll, height=70); t_gruss.pack(fill="x", padx=20, pady=(2, 8)); t_gruss.insert("0.0", self.gruss_text)
+        
+        ctk.CTkLabel(scroll, text="ℹ️ Offizielle Hinweise zur Nutzung von BT-20 und BT-22 nach EN 16931 finden Sie im Handbuch (Kapitel 9).", text_color="#1f538d", font=("Helvetica", 11, "italic")).pack(anchor="w", padx=20, pady=(10, 0))
+
+        ctk.CTkLabel(scroll, text="Zahlungsbedingungen (BT-20 - Fälligkeitshinweis):").pack(anchor="w", padx=20, pady=(4, 0))
+        t_zahl = ctk.CTkTextbox(scroll, height=45); t_zahl.pack(fill="x", padx=20, pady=(2, 8))
         t_zahl.insert("0.0", self.p_config.get("zahlungsbedingungen_default", ""))
 
-        ctk.CTkLabel(scroll, text="Rechnungsvermerk / Dauerrechnung (BT-22):").pack(anchor="w", padx=20, pady=(10, 0))
-        t_verm = ctk.CTkTextbox(scroll, height=50); t_verm.pack(fill="x", padx=20, pady=2)
+        ctk.CTkLabel(scroll, text="Rechnungsvermerk / Dauerrechnung (BT-22):").pack(anchor="w", padx=20, pady=(4, 0))
+        t_verm = ctk.CTkTextbox(scroll, height=45); t_verm.pack(fill="x", padx=20, pady=(2, 8))
         t_verm.insert("0.0", self.p_config.get("rechnungsvermerk_default", ""))
 
         def save_texte():
-            self.header_text, self.einleitung_text, self.gruss_text = t_head.get("0.0", "end").strip(), t_einl.get("0.0", "end").strip(), t_gruss.get("0.0", "end").strip()
-            self.p_config["keep_header"], self.p_config["keep_einleitung"], self.p_config["keep_gruss"] = bool(chk_head.get()), bool(chk_einl.get()), bool(chk_gruss.get())
+            self.header_text = t_head.get("0.0", "end").strip()
+            self.einleitung_text = t_einl.get("0.0", "end").strip()
+            self.vor_gruss_text = t_vor_gruss.get("0.0", "end").strip()
+            self.gruss_text = t_gruss.get("0.0", "end").strip()
+            
             self.p_config["zahlungsbedingungen_default"] = t_zahl.get("0.0", "end").strip()
             self.p_config["rechnungsvermerk_default"] = t_verm.get("0.0", "end").strip()
-            if self.p_config["keep_header"]: speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
-            if self.p_config["keep_einleitung"]: speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
-            if self.p_config["keep_gruss"]: speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
             
+            akt_name = combo_vorlage.get().strip() or "Standard"
+            self.p_config["aktive_text_vorlage"] = akt_name
+            self.aktive_text_vorlage = akt_name
+
+            # Arbeitsdateien für die aktuelle PDF-Erstellung schreiben
+            speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
+            speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
+            speichere_textdatei(self.p_config.get('vor_gruss_csv'), self.vor_gruss_text)
+            speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
+            
+            if hasattr(self, "combo_text_vorlage_main"):
+                self.combo_text_vorlage_main.configure(values=get_vorlagen_liste())
+                self.combo_text_vorlage_main.set(akt_name)
+
             speichere_config(self.config)
             dialog.destroy()
                     
-        # Button wird in den festen Rahmen (f_btn) unten gepackt
-        self.create_button(f_btn, text="Übernehmen", command=save_texte).pack(pady=10)
+        self.create_button(f_btn, text="Übernehmen & Schließen", width=220, command=save_texte).pack(pady=5)
     
     def open_pos_popup(self, edit_index=None):
         briefbogen_pfad = self.p_config.get('briefbogen_pdf', '')
@@ -682,9 +841,10 @@ class TabManuellMixin:
                 for text, pos_list in text_to_pos.items():
                     f.write(f"{','.join(map(str, sorted(pos_list)))};{text}\n")
 
-            if self.p_config.get("keep_header", True): speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
-            if self.p_config.get("keep_einleitung", True): speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
-            if self.p_config.get("keep_gruss", True): speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
+            speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
+            speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
+            speichere_textdatei(self.p_config.get('vor_gruss_csv'), getattr(self, 'vor_gruss_text', ''))
+            speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
             
             if self.chk_kunde_speichern.get() and self.entry_k_name.get().strip():
                 speichere_kunde(self.p_config.get("kunden_csv", "kunden.csv"), {'Name': self.entry_k_name.get().strip(), 'Strasse': self.entry_k_strasse.get().strip(), 'PLZ_Ort': self.entry_k_plz_ort.get().strip(), 'Land': 'DE', 'KundeNr': self.entry_k_nr.get().strip(), 'Aktenzeichen': self.entry_az.get().strip(), 'KundeAktenzeichen': self.entry_k_az.get().strip(), 'Endpoint': buyer_endpoint, 'EndpointScheme': buyer_scheme})
@@ -697,6 +857,64 @@ class TabManuellMixin:
             return True
         except Exception as e:
             messagebox.showerror("Fehler", str(e)); return False
+
+    def generate_testrechnung(self):
+        if not self.positionen_liste:
+            return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+        
+        valid, lz_msg = check_lz_logic(
+            {'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())},
+            [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste]
+        )
+        if not valid:
+            return messagebox.showwarning("Prüfung fehlgeschlagen", lz_msg)
+
+        r_datum = parse_flexible_date(self.entry_r_datum.get())
+        f_datum = parse_flexible_date(self.entry_f_datum.get())
+        lz_kopf = parse_flexible_date_span(self.entry_lz_kopf.get())
+        plz_ort = self.entry_k_plz_ort.get().split(' ', 1)
+        plz = plz_ort[0] if len(plz_ort) > 0 else ""
+        ort = plz_ort[1] if len(plz_ort) > 1 else ""
+
+        # Dummy-Kopfdaten für die Testrechnung bauen (ohne echtes Speichern der Nummer)
+        kopf = {
+            'Rechnungsnummer': '',
+            'Rechnungsdatum': r_datum,
+            'Faelligkeitsdatum': f_datum,
+            'KundeName': self.entry_k_name.get(),
+            'KundeStrasse': self.entry_k_strasse.get(),
+            'KundePLZ': plz,
+            'KundeOrt': ort,
+            'KundeLand': 'DE',
+            'KundeEmail': self.entry_k_endpoint.get() if '@' in self.entry_k_endpoint.get() else '',
+            'KundeEndpoint': self.entry_k_endpoint.get(),
+            'KundeEndpointScheme': self.entry_k_endpoint_scheme.get(),
+            'Zusatztext': '',
+            'KundeNr': self.entry_k_nr.get().strip(),
+            'Aktenzeichen': self.entry_az.get().strip(),
+            'KundeAktenzeichen': self.entry_k_az.get().strip(),
+            'LeistungszeitraumKopf': lz_kopf,
+            'Ratenzahlung': str(bool(self.chk_raten.get()))
+        }
+        rechnung_daten = {'kopf': kopf, 'positionen': self.positionen_liste}
+        
+        # Zusatztexte aus dem Dictionary für den PDF-Generator als Liste aufbereiten
+        zusatztexte = [{'pos': k, 'text': v.replace('~cr', '\n')} for k, v in self.zusatz_dict.items()]
+
+        from pdf_zugferd import erstelle_testrechnung
+        act_prof = self.p_config
+        firma = lade_firma(act_prof['firma_csv'])
+
+        try:
+            pdf_pfad = erstelle_testrechnung(
+                firma, rechnung_daten, act_prof['briefbogen_pdf'],
+                zusatztexte, self.gruss_text, self.header_text, self.einleitung_text,
+                getattr(self, 'vor_gruss_text', '')
+            )
+            import os
+            os.startfile(pdf_pfad) # Öffnet die PDF, schließt das Programm aber NICHT.
+        except Exception as e:
+            messagebox.showerror("Fehler bei der Testrechnung", str(e))
 
     def save_generate_papierrechnung_exit(self):
         """Erstellt eine reine Sicht-PDF als vorübergehende Übergangsfunktion."""
@@ -724,11 +942,13 @@ class TabManuellMixin:
         try:
             pdf_pfad = erstelle_papierrechnung(
                 firma, daten, act_prof['briefbogen_pdf'],
-                lade_zusatz_csv(act_prof['zusatz_csv']), lade_textdatei(act_prof['gruss_csv']),
-                lade_textdatei(act_prof['header_csv']), lade_textdatei(act_prof['einleitung_csv']),
+                lade_zusatz_csv(act_prof['zusatz_csv']), self.gruss_text,
+                self.header_text, self.einleitung_text,
                 act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'],
-                act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+                act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year)),
+                getattr(self, 'vor_gruss_text', '')
             )
+            
         except Exception as e:
             messagebox.showerror("Papierrechnung konnte nicht erstellt werden", str(e))
             return
@@ -775,7 +995,12 @@ class TabManuellMixin:
             messagebox.showerror("XRechnung konnte nicht erstellt werden", f"Die gespeicherte Rechnung '{r_nr}' wurde nicht gefunden.")
             return
         try:
-            xml_p, pdf_p = erstelle_xrechnung(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr)
+            xml_p, pdf_p = erstelle_xrechnung(
+                firma, daten, act_prof['briefbogen_pdf'],
+                zusatztexte, self.gruss_text, self.header_text, self.einleitung_text,
+                act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr,
+                getattr(self, 'vor_gruss_text', '')
+            )
         except Exception as e:
             messagebox.showerror("XRechnung konnte nicht erstellt werden", str(e))
             return
@@ -1447,6 +1672,153 @@ class TabAuswertungenMixin:
         except: messagebox.showinfo("Fertig", f"DATEV-Export erstellt: {csv_export_pfad}") 
 
 class TabEinstellungenMixin:
+    def backup_profile_data(self):
+        import zipfile
+        
+        # 1. Backup-Verzeichnis abfragen beim ersten Mal
+        backup_dir = self.config.get("backup_dir", "")
+        if not backup_dir or not os.path.exists(backup_dir):
+            messagebox.showinfo("Sicherung", "Bitte wählen Sie ein Verzeichnis aus, in dem Ihre Backups dauerhaft gespeichert werden sollen.")
+            backup_dir = filedialog.askdirectory(title="Backup-Verzeichnis wählen")
+            if not backup_dir: return
+            self.config["backup_dir"] = backup_dir
+            speichere_config(self.config)
+            
+        prof_name = self.p_config["profil_name"]
+        safe_prof_name = prof_name.replace(" ", "_")
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+        base_name = f"{safe_prof_name}_{date_str}"
+        
+        # 2. Dateinamen mit Schema und Zähler generieren
+        counter = 0
+        while True:
+            suffix = f"_{counter:02d}" if counter > 0 else ""
+            zip_name = f"{base_name}{suffix}.zip"
+            zip_path = os.path.join(backup_dir, zip_name)
+            if not os.path.exists(zip_path):
+                break
+            counter += 1
+            
+        base_data_path = self.config.get("base_data_path", "")
+        if not base_data_path: return
+        firm_dir = os.path.join(base_data_path, safe_prof_name)
+        
+        if not os.path.exists(firm_dir):
+            return messagebox.showerror("Fehler", "Firmenverzeichnis nicht gefunden!")
+            
+        try:
+            # 3. ZIP-Archiv erstellen (Lock-Dateien ausschließen)
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(firm_dir):
+                    for file in files:
+                        if file.endswith(".lock"): continue
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, firm_dir)
+                        zipf.write(file_path, arcname)
+                        
+            messagebox.showinfo("Erfolg", f"Backup erfolgreich erstellt:\n{zip_path}")
+        except Exception as e:
+            messagebox.showerror("Fehler", f"Fehler beim Erstellen des Backups:\n{e}")
+
+    def restore_profile_data(self):
+        import zipfile
+        import shutil
+        from datenbank import get_default_profile
+        
+        backup_dir = self.config.get("backup_dir", os.path.expanduser("~"))
+        zip_path = filedialog.askopenfilename(
+            title="Backup-Archiv (ZIP) auswählen",
+            initialdir=backup_dir,
+            filetypes=[("ZIP-Archive", "*.zip")]
+        )
+        if not zip_path: return
+        
+        # 1. Auswahlfenster: Geöffnete oder neue Firma?
+        d_choice = ctk.CTkToplevel(self)
+        d_choice.title("Restore Ziel")
+        self.center_window(d_choice, 480, 200)
+        d_choice.transient(self)
+        d_choice.grab_set()
+        
+        ctk.CTkLabel(d_choice, text="Wohin sollen die Backup-Daten importiert werden?", font=("Helvetica", 14, "bold")).pack(pady=20)
+        result = {"choice": None}
+        
+        def choose_current():
+            if messagebox.askyesno("Warnung", "ACHTUNG: Alle bestehenden Daten der GEÖFFNETEN Firma werden überschrieben!\nFortfahren?"):
+                result["choice"] = "current"
+                d_choice.destroy()
+                
+        def choose_new():
+            result["choice"] = "new"
+            d_choice.destroy()
+            
+        f_btn = ctk.CTkFrame(d_choice, fg_color="transparent")
+        f_btn.pack(pady=10)
+        self.create_button(f_btn, text="In GEÖFFNETE Firma", fg_color="#b30000", hover_color="#800000", command=choose_current).pack(side="left", padx=10)
+        self.create_button(f_btn, text="In NEUE Firma (anlegen)", command=choose_new).pack(side="left", padx=10)
+        
+        self.wait_window(d_choice)
+        if not result["choice"]: return
+        
+        base_data_path = self.config.get("base_data_path", "")
+        if not base_data_path: return
+        
+        if result["choice"] == "current":
+            firm_dir = os.path.join(base_data_path, self.p_config["profil_name"].replace(" ", "_"))
+            try:
+                # Verzeichnis leeren (außer Locks)
+                for item in os.listdir(firm_dir):
+                    if item.endswith(".lock"): continue
+                    item_path = os.path.join(firm_dir, item)
+                    if os.path.isdir(item_path): shutil.rmtree(item_path)
+                    else: os.remove(item_path)
+                        
+                with zipfile.ZipFile(zip_path, 'r') as zipf:
+                    zipf.extractall(firm_dir)
+                    
+                self.refresh_all_ui()
+                messagebox.showinfo("Restore", "Daten wurden erfolgreich in die geöffnete Firma importiert.")
+            except Exception as e:
+                messagebox.showerror("Fehler", f"Fehler beim Restore: {e}")
+                
+        elif result["choice"] == "new":
+            d_name = ctk.CTkInputDialog(text="Name der NEUEN Firma für den Import:", title="Neue Firma")
+            new_name = d_name.get_input()
+            if not new_name: return
+            
+            for p in self.config["profiles"]:
+                if p["profil_name"].lower() == new_name.lower():
+                    return messagebox.showerror("Fehler", "Eine Firma mit diesem Namen existiert bereits!")
+                    
+            safe_new_name = new_name.replace(" ", "_")
+            new_firm_dir = os.path.join(base_data_path, safe_new_name)
+            
+            if os.path.exists(new_firm_dir):
+                return messagebox.showerror("Fehler", "Der Ordner existiert bereits im Dateisystem!")
+                
+            try:
+                os.makedirs(new_firm_dir)
+                with zipfile.ZipFile(zip_path, 'r') as zipf:
+                    zipf.extractall(new_firm_dir)
+                    
+                import time
+                new_p = get_default_profile(str(int(time.time()))[-5:])
+                new_p["profil_name"] = new_name
+                self.setup_firm_folders(new_p, show_message=False)
+                
+                self.config["profiles"].append(new_p)
+                self.config["active_profile_index"] = len(self.config["profiles"]) - 1
+                speichere_config(self.config)
+                
+                self.build_profile_header()
+                self.unlock_firm()
+                self.lock_firm(new_p)
+                self.refresh_all_ui()
+                messagebox.showinfo("Restore", f"Daten wurden erfolgreich in die neue Firma '{new_name}' importiert.")
+            except Exception as e:
+                messagebox.showerror("Fehler", f"Fehler beim Erstellen der Firma: {e}")
+    
     def get_available_years(self):
         ausg_ordner = self.p_config.get("ausgabe_ordner", "Rechnungen_PDF"); jahre = set()
         if os.path.exists(ausg_ordner):
@@ -1560,6 +1932,16 @@ class TabEinstellungenMixin:
         
         if len(self.config["profiles"]) > 1:
             self.create_button(f_prof_btns, text="🗑 Löschen", width=100, fg_color="#b30000", hover_color="#800000", command=self.delete_profile).pack(side="left", padx=10)
+
+        # NEU: Zweite Zeile für Backup/Restore
+        f_prof_btns2 = ctk.CTkFrame(f_prof_card, fg_color="transparent")
+        f_prof_btns2.pack(fill="x", padx=15, pady=(0, 15))
+        
+        btn_backup = self.create_button(f_prof_btns2, text="💾 Firmendaten backup", width=150, command=self.backup_profile_data, fg_color="#1f538d", hover_color="#14375d")
+        btn_backup.pack(side="left", padx=(0, 10))
+        
+        btn_restore = self.create_button(f_prof_btns2, text="📂 Firmendaten restore", width=150, command=self.restore_profile_data, fg_color="#444", hover_color="#666")
+        btn_restore.pack(side="left", padx=10)
 
         # --- KARTE 2: Stammdaten & Datenbanken ---
         f_stamm_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
@@ -1696,8 +2078,8 @@ class TabEinstellungenMixin:
         self.p_config["eingangsordner"]=reneu_dir; self.p_config["bearbeitete_eingangsrechnungen_ordner"]=rebearb_dir
         self.p_config["eingangsrechnungen_ordner"]=rchn_dir; self.p_config["eingangsjournal_ordner"]=einj_dir
         self.p_config["xrechnung_leseabschrift"]=bool(self.chk_xrechnung_leseabschrift.get())
+        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "vor_gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
         
-        dateien = ["firma.csv", "rechnung.csv", "briefbogen.pdf", "zusatz.csv", "gruss.csv", "header.csv", "einleitung.csv", "kunden.csv", "produkte.csv"]
         for datei in dateien:
             key_name = datei.replace(".", "_")
             self.p_config[key_name] = os.path.join(firm_dir, datei)
@@ -1937,7 +2319,7 @@ class TabEinstellungenMixin:
     def clear_profile_data(self):
         warnung = (
             "ACHTUNG: Dies löscht unwiderruflich ALLE erfassten Rechnungen, Journale und PDFs der aktiven Firma!\n"
-            "Stammdaten (Firmendaten, Kunden, Produkte, Briefbogen) bleiben erhalten.\n\n"
+            "Stammdaten (Firmendaten, Kunden, Produkte, Briefbogen) und Textvorlagen bleiben erhalten.\n\n"
             "Bitte geben Sie 'LEEREN' ein, um fortzufahren:"
         )
         pwd = ctk.CTkInputDialog(text=warnung, title="Sicherheitsabfrage").get_input()
@@ -1950,6 +2332,9 @@ class TabEinstellungenMixin:
                     with open(rechnung_pfad, 'w', encoding='utf-8-sig') as f:
                         f.write(header + "\n")
                 
+                # HINWEIS: Die zusatz_csv (Texte nach Zahlungshinweis / vor Gruß) 
+                # wird hier bewusst NICHT mehr gelöscht, damit Ihre Vorlagen erhalten bleiben!
+
                 # 2. Zähler zurücksetzen
                 self.p_config["letzte_rechnungsnummer"] = ""
                 self.p_config["letzte_eingangsrechnungsnummer"] = ""
