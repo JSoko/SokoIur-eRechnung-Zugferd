@@ -1,17 +1,69 @@
 ## Inhaltsverzeichnis
 
         
-    
-    
-    
-        # SokoIur eRechnung - Handbuch
+            
+                * [1. Zielgruppe, Zweck & Schnellstart](#kap1)
 
-        **Version: 2.000181**
+                * [2. Haftungsausschluss & Lizenzen](#kap2)
 
-    ## 1. Zielgruppe, Zweck & Schnellstart 🟢
+                * [3. Verwendungsszenarien & Use Cases](#kap3)
+
+                * [4. Mini-Glossar](#kap4)
+
+                * [5. FAQ – Häufige Fragen](#kap5)
+
+            
+            TEIL 2: Anwenderhandbuch
+            
+                * [6. Die Benutzeroberfläche (Tabs)](#kap6)
+
+                * [7. Schritt-für-Schritt: ZUGFeRD-Rechnung](#kap7)
+
+                * [8. Auswertungen & Einstellungen (Warnung)](#kap8)
+
+                * [9. Rechnungsformate (ZUGFeRD/XML)](#kap9)
+
+                * [10. Eingangsrechnungen erfassen](#kap10)
+
+                * [11. Jahreswechsel](#kap11)
+
+            
+            TEIL 3: Administration & IT
+            
+                * [12. Ordnerstruktur & File-Locking](#kap12)
+
+                * [13. Mandanten & Datenbanken](#kap13)
+
+                * [14. DATEV-Export & Buchhaltung](#kap14)
+
+                * [15. Import-Formate (CSV)](#kap15)
+
+                * [16. Programmaufruf & CLI](#kap16)
+
+                * [17. Revisionssicheres Archiv](#kap17)
+
+                * [18. GitHub & Updates](#kap18)
+
+                * [19. Schlagwortverzeichnis (Index)](#kap19)
+
+            
+        
+    
+    
+    
+        # SokoIur eRechnung
+
+        ## Das Handbuch
+
+        **Version: 2.000206**
 
     
-    ### Für wen und what ist das Programm gedacht?
+    # TEIL 1: Allgemeiner Teil
+
+    ## 1. Zielgruppe, Zweck & Schnellstart
+
+    
+    ### Für wen und was ist das Programm gedacht?
 
     Das Programm **SokoIur eRechnung** richtet sich an Freiberufler, Selbstständige, Handwerker sowie kleine bis mittlere Unternehmen, die rechtssichere elektronische Rechnungen im modernen **ZUGFeRD-** und **XRechnung-Standard** erstellen, empfangen und verwalten möchten. Es fungiert entweder als eigenständige Standalone-Lösung für den Arbeitsplatz oder als unsichtbare „Druck-Engine“ im Hintergrund, die von externen Branchenprogrammen via Kommandozeile ferngesteuert werden kann.
 
@@ -30,7 +82,7 @@
 
     ### Installation & Ersteinrichtung
 
-    Die Anwendung (`.exe`) kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden – auch in systemgeschützten Verzeichnissen wie `C:\Programme`. Lokale Geräteeinstellungen speichert das Programm automatisch sicher in Ihrem Windows-Benutzerverzeichnis (`%LOCALAPPDATA%\SokoIur_eRechnung`), sodass keine Administratorrechte für den täglichen Betrieb nötig sind.
+    Die Anwendung (`.exe`) kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden – auch in systemgeschützten Verzeichnissen wie `C:\Programme`.
 
     
     
@@ -45,8 +97,6 @@
 
     **WICHTIGER HINWEIS ZUM DATENSPEICHERORT:** Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden! Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.
 
-    Anschließend legt das Programm dort alle benötigten Unterordner und leeren Konfigurations-Dateien (`.csv`) automatisch für Ihre erste Firma an.
-
     
     ### Briefbogen hinterlegen:
 
@@ -55,7 +105,7 @@
     *Tipp:* Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab.
 
     
-    ## 2. Haftungsausschluss, Support & Datenschutz
+    ## 2. Haftungsausschluss, Support & Lizenzen
 
     ### Haftungsausschluss
 
@@ -69,20 +119,317 @@
         **Kontakt:** Webseite: [https://erech.6078.de](https://erech.6078.de) | E-Mail: [SokoIur@6078.de](mailto:SokoIur@6078.de)
     
 
-    ## 2.1 Lizenzerklärung (Freeware / Donationware)
+    ### Lizenzerklärung (Freeware / Donationware)
 
     **1. Nutzungsrechte:** Das Programm (ausführbare Datei) wird als Freeware/Donationware bereitgestellt. Die private und gewerbliche Nutzung ist kostenfrei gestattet.
 
     **2. Weitergabe:** Die Software darf unverändert kostenlos weitergegeben werden. Kommerzieller Vertrieb ist untersagt.
 
-    **3. Quellcode:** Der Quellcode ist auf GitHub einsehbar. Die .exe darf nicht dekompiliert oder manipuliert werden.
+    **3. Quellcode:** Der Quellcode ist auf [GitHub](https://github.com/JSoko/SokoIur-eRechnung-Zugferd) einsehbar. Die .exe darf nicht dekompiliert oder manipuliert werden.
 
-    **4. Drittkomponenten:** Dieses Programm nutzt Open-Source-Bibliotheken (Python, CustomTkinter, ReportLab, pypdf, qrcode).
+    **4. Drittkomponenten & Lizenzen:** Dieses Programm wurde in [Python (PSF License)](https://docs.python.org/3/license.html) geschrieben und nutzt folgende Open-Source-Bibliotheken:
 
     
-    ## 3. Programmaufruf & CLI (Power-User Cheat-Sheet) 🔵
+        * **CustomTkinter:** [MIT License](https://github.com/TomSchimansky/CustomTkinter/blob/master/LICENSE)
 
-    SokoIur eRechnung is ein Rechnungstool zur Erstellung elektronischer Rechnungen. Es kann komplett über die grafische Oberfläche (GUI) gesteuert werden oder als "Druck-Engine" für externe Branchensoftware fungieren.
+        * **ReportLab:** [BSD License](https://www.reportlab.com/open_source/license/)
+
+        * **pypdf:** [BSD 3-Clause License](https://github.com/py-pdf/pypdf/blob/main/LICENSE)
+
+        * **qrcode:** [BSD 3-Clause License](https://github.com/lincolnloop/python-qrcode/blob/master/LICENSE)
+
+    
+    
+    ## 3. Verwendungsszenarien & Use Cases
+
+    ### Typische Szenarien
+
+    **Szenario A (Standalone):** Freiberufler nutzen das Tool als alleiniges Abrechnungswerkzeug für Kunden, Artikel und DATEV-Export.
+
+    **Szenario B (Druck-Engine):** Mittelständische Branchensoftware übergibt CSV-Daten per CLI, das Tool bettet sie in den Briefbogen ein und versendet ZUGFeRD-PDFs ohne dass die GUI sichtbar wird.
+
+    ### Spezifische Anwendungsfälle (Use Cases)
+
+    
+        * **Behörden (B2G - XRechnung):** Leitweg-ID im Feld "E-Mail / Leitweg-ID" eintragen, Endpoint-Schema auf `0204` setzen. Generiert reine XML-Dateien für Upload-Portale (ZRE/OZG-RE) und Begleit-PDFs.
+
+        * **Geschäftskunden (B2B - E-Rechnungspflicht):** ZUGFeRD-Button nutzen. Enthält Menschen-lesbare PDF-Ansicht und unsichtbare EN 16931 XML-Daten.
+
+        * **Stornorechnung:** Alte Rechnung via CSV laden, Beträge ins Minus setzen, Hinweistexte anpassen.
+
+        * **Girocode:** EPC-QR-Code aufdrucken für schnelles Scannen und Bezahlen per Banking-App.
+
+    
+
+    ## 4. Mini-Glossar
+
+    
+        * **ZUGFeRD:** Ein Hybrid-Format, das eine normale PDF-Ansicht für Menschen mit einer unsichtbaren XML-Datei für Computer/Buchhaltung kombiniert.
+
+        * **XRechnung:** Ein reines XML-Datenformat, das vor allem von öffentlichen Auftraggebern (Behörden) vorgeschrieben wird.
+
+        * **Leitweg-ID:** Die digitale Postanschrift für Rechnungen an Behörden (erscheint anstelle einer normalen E-Mail-Adresse).
+
+        * **WORM-Speicher:** (Write Once, Read Many) Ein Speichersystem, bei dem Dateien nach dem Schreiben nicht mehr verändert oder gelöscht werden können (wichtig für GoBD-Konformität).
+
+        * **DATEV EXTF:** Ein standardisiertes ASCII-CSV-Format zum verlustfreien Import von Buchungsstapeln in die Kanzlei-Software des Steuerberaters.
+
+    
+
+    ## 5. FAQ – Häufige Fragen
+
+    
+    
+        **Wie kann ich mein eigenes Logo auf die Rechnung drucken?**
+        Das Programm nutzt eine PDF-Vorlage als Hintergrund. Erstellen Sie z. B. in Word Ihr Briefpapier mit Logo, speichern Sie es als PDF und hinterlegen Sie es im Reiter *Konfig.* unter „Briefbogen hinterlegen“.
+
+    
+    
+    
+        **Wie setze ich die Rechnungsnummern für das neue Jahr zurück?**
+        Wechseln Sie im Reiter *Konfig.* einfach das „Aktuelle Rechnungsjahr“ und korrigieren Sie darunter die „Letzte Rechnungs-Nr.“ einmalig händisch auf den Startwert (z.B. RE-27-000).
+
+    
+    
+    
+        **Wie erstelle ich eine XRechnung für Behörden?**
+        Tragen Sie bei der Rechnungserstellung in das Feld „E-Mail / Leitweg-ID“ die Leitweg-ID ein und setzen Sie das „Endpoint-Schema“ auf `0204`.
+
+    
+    
+    
+        **Das Programm startet nicht mehr oder ist gesperrt. Was tun?**
+        Wenn eine Firma gesperrt ist (Lock), wurde das Programm evtl. unsanft beendet oder ein anderer Arbeitsplatz greift darauf zu. Beim Versuch, den Reiter zu wechseln, erscheint ein Hinweisfenster, in dem Sie den „Lock entfernen“ können.
+
+    
+
+    
+    # TEIL 2: Anwenderhandbuch
+
+    ## 6. Die Benutzeroberfläche (Tabs) im Detail
+
+    *Tipp: Sie können zwischen allen Reitern schnell über die Tastatur wechseln. Halten Sie dazu die **Alt-Taste** gedrückt und tippen Sie den in eckigen Klammern markierten Buchstaben der Tab-Überschrift (z. B. [E]).*
+
+    
+    ### 📝 [E]RSTELLEN (Ausgangsrechnungen schreiben)
+
+    Hier erfassen und generieren Sie Ihre eigenen Ausgangsrechnungen an Kunden inkl. automatischer Steuerberechnung.
+
+    
+    ### 📥 ER[F]ASSEN (Eingangsrechnungen prüfen)
+
+    Haltautomatisierte Prüfung, Erfassung und Archivierung von Rechnungen Ihrer Lieferanten (Prüfung nach EN 16931 / § 14 UStG).
+
+    
+    ### 📊 [A]USGANG (Ausgangsjournal)
+
+    Auswertung der geschriebenen Rechnungen als PDF, CSV oder DATEV-Export.
+
+    
+    ### 📊 E[I]NGANG (Eingangsjournal & Verwaltung)
+
+    Durchsuchen, Verwalten und Auswerten der erfassten Eingangsrechnungen (Storno-Funktion inklusive).
+
+    
+    ### ⚙️ [K]onfig. (Einstellungen & Stammdaten)
+
+    Zentrale Konfiguration Ihrer Firmen, Nummernkreise, DATEV-Konten und Stammdaten mit hilfreichen Tooltips.
+
+    
+    ### ℹ️ Info (Hilfe & Statistik)
+
+    Dokumentation, Version, Statistiken und Update-Suche.
+
+    ## 7. Schritt-für-Schritt: ZUGFeRD-Rechnung erstellen
+
+    Der Reiter **📝 [E]RSTELLEN** führt Sie komfortabel durch die Erfassung einer gesetzlich konformen E-Rechnung.
+
+    ### Schritt 1: Kopf- und Kundendaten (Eingabefelder)
+
+    Im linken Bereich füllen Sie die Stammdaten der Rechnung aus. Das Programm vergibt Datum und Rechnungsnummer automatisch (diese lassen sich aber überschreiben).
+
+    
+        * **Pflichtfelder:** *Rechnungs-Nr.*, *Rechnungsdatum*, *Fälligkeit*, *Kunde Name*, *Straße*, *PLZ Ort* und die *E-Mail / Leitweg-ID*. Ohne diese Kerninformationen ist das Erzeugen einer gültigen strukturierten e-Rechnung unzulässig.
+
+        * **Optionale Felder:** *Kunden-Nr.*, *Unser Zeichen* (Ihr Aktenzeichen), *Ihr Zeichen* (z. B. Bestellnummer des Kunden) sowie der *Leistungszeitraum (Kopf)*.
+
+        * **Datenspeicherung (Kunden):** Wenn Sie die Checkbox *„Kunde speichern/updaten“* aktivieren, wird der Kunde beim Klick auf „Erstellen“ automatisch in Ihrer CSV-Datenbank gespeichert. Zukünftig können Sie den Kunden dann über das 🔍-Lupensymbol schnell suchen und laden.
+
+    
+
+    ### Schritt 2: Texte & Vorlagen bearbeiten
+
+    Klicken Sie auf den Button **„📝 Texte & Vorlagen bearbeiten (Alt+T)“**. Hier können Sie wiederkehrende Textbausteine definieren:
+
+    
+        * *Header* (Über der Adresse), *Einleitung*, *Rechnungsvermerk*, *Zahlungsbedingungen*, *Vor Gruß* und *Gruß*.
+
+        * **Vorlagen speichern:** Wenn Sie z. B. spezielle Texte für eine „Vorschussrechnung“ benötigen, tragen Sie die Texte ein und klicken unten auf **„➕ Als neue Vorlage...“**. 
+
+        * Zurück im Hauptfenster können Sie über das Dropdown-Menü **„Textvorlage“** jederzeit zwischen Ihren gespeicherten Szenarien wechseln.
+
+    
+
+    ### Schritt 3: Positionen erfassen
+
+    Klicken Sie rechts auf **„+ Position hinzufügen“**.
+
+    
+        * **Pflichtfeld:** *Bezeichnung*.
+
+        * Menge, Einzelpreis und Steuersatz (19%, 7% oder 0%) sind vorausgefüllt, können aber jederzeit angepasst werden. Über das Dropdown-Feld bei der Bezeichnung können Sie zudem zuvor in den Einstellungen importierte oder gespeicherte Produkte abrufen.
+
+    
+
+    ### Schritt 4: Vorschau & Generierung
+
+    Unter der Liste der Positionen sehen Sie die berechneten Gesamtbeträge. Ihnen stehen nun verschiedene Aktionen zur Verfügung:
+
+    
+        * **Testrechnung:** Erzeugt eine reine *Vorschau*. Es wird keine Rechnungsnummer blockiert/vergeben und kein Journaleintrag geschrieben. Ideal zur optischen Endkontrolle.
+
+        * **Zugpferdrechnung erstellen (Alt+P):** Die empfohlene Standard-Funktion für Geschäftskunden. Generiert ein sichtbares PDF mit integrierten XML-Daten, verbucht den Vorgang im Journal und zählt die Rechnungsnummer eins hoch.
+
+        * **XRechnung & Begleit-PDF:** Primär für Behörden (Leitweg-ID im Feld "E-Mail" erforderlich). Erzeugt die reine XML-Datei für das Behördenportal und ein Begleit-PDF für Ihre eigenen Akten.
+
+    
+
+    ## 8. Auswertungen (Tab AUSGANG) & Einstellungen (Tab Konfig.)
+
+    
+    ### Die Auswertungsmöglichkeiten (Tab 📊 [A]USGANG)
+
+    Hier werten Sie alle im aktuellen Jahr geschriebenen Rechnungen aus. Wählen Sie Monat und Jahr, um folgende Berichte zu generieren:
+
+    
+        * **📄 Journal als PDF:** Erstellt eine saubere, druckbare Übersichtstabelle aller Ausgangsrechnungen inklusive Gesamtnettoumsatz und detailliert aufgeschlüsselter Steuerbeträge.
+
+        * **📊 Journal als CSV:** Exportiert die Rechnungsdaten tabellarisch für die problemlose Weiterverarbeitung in Microsoft Excel oder ähnlichen Werkzeugen.
+
+        * **📈 DATEV-Export:** Generiert eine formatierte ASCII-Datei für die Kanzleisoftware Ihres Steuerberaters. Rechnungen mit verschiedenen Steuersätzen werden vollautomatisch centgenau zerlegt (Steuer-Splitting) und mit den korrekten Soll/Haben-Kennzeichen verbucht.
+
+    
+
+    ### Einstellungsmöglichkeiten & Gefahrenhinweise (Tab ⚙️ [K]onfig.)
+
+    Im Reiter Konfiguration verwalten Sie Ihre Firmen, Nummernkreise, Briefbögen und DATEV-Sachkonten. Die Oberfläche ist in übersichtliche „Karten“ unterteilt. **Bitte beachten Sie folgende Besonderheiten und Gefahren:**
+
+    
+    
+        **⚠️ VORSICHT BEI DATENVERLUST-RISIKEN:**
+
+        
+            * **🧹 Daten leeren:** Dieser Button im Bereich Profilverwaltung löscht *unwiderruflich alle geschriebenen Rechnungen, Rechnungs-PDFs und Journale* der aktiven Firma! Nutzen Sie diese Funktion nur, wenn Sie eine Testfirma zurücksetzen möchten. Stammdaten (Kunden/Produkte/Vorlagen) bleiben glücklicherweise erhalten.
+
+            * **🗑 Profil löschen:** Entfernt die komplette Firma restlos aus der Konfiguration.
+
+            * **Rechnungsnummer korrigieren:** Ein manueller Eingriff in den Zählerstand (z. B. ein Zurücksetzen der Nummer) kann dazu führen, dass bei der nächsten Rechnungserstellung alte Rechnungen ungewollt überschrieben werden, wenn die Nummer im Ordner bereits vergeben wurde.
+
+        
+    
+    
+    **Wichtige ungefährliche Konfigurationen:**
+
+    
+        * **DATEV-Konten:** Weisen Sie dem Programm mit, welche Sachkonten (SKR03 / SKR04) für den Buchhaltungs-Export genutzt werden sollen.
+
+        * **Briefbogen hinterlegen:** Hier wählen Sie Ihr PDF mit Firmenlogo, das künftig im Hintergrund auf alle ausgehenden Rechnungen gedruckt wird.
+
+        * **Firmendaten:** Tragen Sie Ihre IBAN, Bankdaten und Kontaktdaten ein und aktivieren Sie bei Bedarf den Andruck eines *Girocodes* (QR-Code zum automatischen Bezahlen per Banking-App).
+
+    
+
+    ## 9. Rechnungsformate (ZUGFeRD & XRechnung)
+
+    Das Programm unterstützt:
+
+    
+        * **Testrechnung:** Erstellt eine reine Vorschau-PDF ohne Rechnungsnummer und ohne Journaleintrag im temporären Verzeichnis. Ideal, um das Aussehen vorab zu prüfen. Das Programm bleibt zur weiteren Bearbeitung geöffnet.
+
+        * **ZUGFeRD:** Erzeugt eine Hybrid-PDF, die eine XML-Datei beinhaltet.
+
+        * **XRechnung:** Erzeugt eine reine XML-Datei für das Behörden-Portal und als Beilage ein gesondertes, lesbares Begleit-PDF.
+
+        * **Papierrechnung:** Erzeugt eine rein visuelle PDF ohne eingebettete XML-Daten (nur als Übergangslösung).
+
+    
+
+    ## 10. Eingangsrechnungen erfassen und auswerten
+
+    Legen Sie neue Eingangsrechnungen Ihrer Lieferanten im Netzwerk in den Ordner `reneu`. Klicken Sie im Programm auf "Nächste Eingangsrechnung prüfen". Das Programm prüft diese automatisiert. Fehlerhafte Belege werden mit einer genauen Fehlermeldung abgewiesen. Nach der erfolgreichen Erfassung wird der Beleg im Archiv (`rchn`) gespeichert und automatisch fortlaufend im Eingangs-Journal (`eausw`) vermerkt.
+
+    ## 11. Jahreswechsel
+
+    Ändern Sie in den "Einstellungen" einfach das "Aktuelle Rechnungsjahr" im Dropdown oder legen Sie ein neues Firmenprofil für das neue Jahr an. Eine Anpassung der letzten Rechnungsnummer (z. B. auf 000 für den Neubeginn) kann dort ebenfalls vorgenommen werden.
+
+    
+    # TEIL 3: Administration & IT
+
+    ## 12. Installation, Ordnerstruktur & File-Locking
+
+    Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Arbeitsplatz-Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (`aausw`, `eausw`) und Archive an.
+
+    ### Integrierte Profil-Backups & Datensicherheit
+
+    In der Konfigurationsoberfläche (Reiter **Konfig.**) können Sie per Knopfdruck ein ZIP-Archiv der aktiven Firma anlegen lassen und wiederherstellen. Die Wiederherstellung kann in die geöffnete oder in eine neue Firma erfolgen.
+
+    
+    
+        **⚠️ WICHTIGER HINWEIS ZUR DATENSICHERHEIT:**
+
+        Diese integrierte Backup-Funktion stellt lediglich eine *zusätzliche Sicherungsmöglichkeit* für den einzelnen Arbeitsplatz dar. Sie entbindet Sie keinesfalls von der Pflicht, die Programm- und Netzwerkdaten (Ihren kompletten Daten-Grundpfad) regelmäßig durch externe und professionelle System-Backups zu sichern!
+    
+    
+        **🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:**
+
+        - Das Programm nutzt Sperrdateien (`erechnung.lock` und `erfassung.lock`) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.
+
+        - Sollte ein Arbeitsplatz abstürzen, erkennt das System verwaiste Locks und erlaubt nach einer Sicherheitswarnung das manuelle Entfernen der Sperre ("Lock entfernen").
+
+        - Lokale Konfigurationen landen sicher in `%LOCALAPPDATA%\SokoIur_eRechnung`, was UAC-Berechtigungskonflikte ausschließt.
+    
+
+    ## 13. Mandanten & Datenbanken (Firmendaten)
+
+    Sie können im Reiter "Konfig." beliebig viele verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad an alle Arbeitsplätze im Netzwerk.
+
+    ## 14. DATEV-Export & Buchhaltung
+
+    SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung (Stapelverarbeitung im ASCII-CSV / EXTF-Format).
+
+    
+    
+        **WICHTIGER HINWEIS (BETA-FUNKTION):**
+
+        Die DATEV-Exportfunktionen wurden bisher nicht abschließend in einer produktiven DATEV-Umgebung getestet. Bitte übergeben Sie Daten zunächst probeweise mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import (Feldzuordnungen, 7 Pflichtspalten, Längenbeschränkungen) sicherzustellen.
+    
+
+    ### Konfiguration (SKR03 / SKR04) & Automatisches Steuer-Splitting
+
+    Im Reiter **⚙️ Konfig.** können Sie über **„📈 DATEV-Konten“** Standardkonten für SKR03/SKR04 laden. Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt, anteilig zurückgerechnet und mit intelligent vergebenen Soll/Haben-Kennzeichen (S/H) versehen.
+
+    ## 15. Import-Formate (CSV)
+
+    Alle CSV-Dateien müssen semikolongetrennt (`;`) und im Format UTF-8 vorliegen (bei ANSI-Dateien aus Excel erfolgt eine automatische Reparatur).
+
+    
+    ### Kundendaten Importieren
+
+    Die Import-Datei muss folgende Kopfzeile exakt aufweisen (ohne Zeilenumbruch):
+
+    `Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme`
+    
+    ### Produktdaten Importieren
+
+    Die Import-Datei muss folgende Kopfzeile exakt aufweisen:
+
+    `Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz`
+    
+    ### Rechnungsentwürfe via CLI (rechnung.csv)
+
+    Die `rechnung.csv` für den externen CLI-Aufruf benötigt feste Spalten. Die Kopfdaten werden in jeder Zeile wiederholt, lediglich die Positionsdaten ändern sich je Zeile.
+
+    ## 16. Programmaufruf & Kommandozeile (CLI)
 
     
     ### Tastenkürzel-Übersicht (GUI):
@@ -98,48 +445,15 @@
 
         * `Alt + K` -> Zum Reiter Konfig. wechseln
 
-        * `F1` -> Hilfe & Info aufrufen
-
         * `Alt + L` -> Letzte Rechnungs-CSV laden
 
         * `Alt + T` -> Texte bearbeiten (Header, Einleitung, Gruß)
 
         * `Alt + P` -> ZUGFeRD-Rechnung generieren, öffnen & beenden
 
-        * `+` (Plus-Taste) -> Neue Position im Formular hinzufügen
-
     
 
-    ## 3.1 Die Benutzeroberfläche (Tabs) im Detail
-
-    *Tipp: Sie können zwischen allen Reitern schnell über die Tastatur wechseln. Halten Sie dazu die **Alt-Taste** gedrückt und tippen Sie den unterstrichenen Buchstaben der Tab-Überschrift.*
-
-    ### 📝 E̲RSTELLEN (Ausgangsrechnungen schreiben)
-
-    Hier erfassen und generieren Sie Ihre eigenen Ausgangsrechnungen an Kunden inkl. automatischer Steuerberechnung.
-
-    ### 📥 ERF̲ASSEN (Eingangsrechnungen prüfen)
-
-    Haltautomatisierte Prüfung, Erfassung und Archivierung von Rechnungen Ihrer Lieferanten (Prüfung nach EN 16931 / § 14 UStG).
-
-    ### 📊 A̲USGANG (Ausgangsjournal)
-
-    Auswertung der geschriebenen Rechnungen als PDF, CSV oder DATEV-Export.
-
-    ### 📊 EI̲NGANG (Eingangsjournal & Verwaltung)
-
-    Durchsuchen, Verwalten und Auswerten der erfassten Eingangsrechnungen (Storno-Funktion inklusive).
-
-    ### ⚙️ K̲onfig. (Einstellungen & Stammdaten)
-
-    Zentrale Konfiguration Ihrer Firmen, Nummernkreise, DATEV-Konten und Stammdaten mit hilfreichen Tooltips.
-
-    ### ℹ️ Info (Hilfe & Statistik)
-
-    Dokumentation, Version, Statistiken und Update-Suche.
-
-    
-    ## 3.2 Die Kommandozeilenparameter (CLI Cheat-Sheet) 🔵
+    ### Die Kommandozeilenparameter (CLI Cheat-Sheet)
 
     
         
@@ -172,190 +486,76 @@
         
     
 
-    ## 3.3 Programmfunktionen, Verwendungsszenarien & Anwendungsfälle
+    ## 17. Revisionssicheres Archiv (Ausblick)
 
-    ### Kernfunktionen & Typische Szenarien
+    Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (`rchn` für den Eingang und `are` für den Ausgang) automatisch in einen **WORM-Onlinespeicher** (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.
 
-    **Szenario A (Standalone):** Freiberufler nutzen das Tool als Abrechnungswerkzeug für Kunden, Artikel und DATEV-Export.
+    ## 18. GitHub & Updates
 
-    **Szenario B (Druck-Engine):** Mittelständische Branchensoftware übergibt CSV-Daten per CLI (`--auto`), das Tool bettet sie in den Briefbogen ein und versendet ZUGFeRD-PDFs ohne GUI.
+    Quellcode und Releases sind im offiziellen GitHub-Repository unter [https://github.com/JSoko/SokoIur-eRechnung-Zugferd](https://github.com/JSoko/SokoIur-eRechnung-Zugferd) einsehbar. Über die integrierte Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.
 
-    ### Spezifische Anwendungsfälle (Use Cases)
-
-    
-        * **Behörden (B2G - XRechnung):** Leitweg-ID im Feld "E-Mail / Leitweg-ID" eintragen, Endpoint-Schema auf `0204` setzen. Generiert reine XML-Dateien für Upload-Portale (ZRE/OZG-RE) und Begleit-PDFs.
-
-        * **Geschäftskunden (B2B - E-Rechnungspflicht):** ZUGFeRD-Button nutzen. Enthält Menschen-lesbare PDF-Ansicht und unsichtbare EN 16931 XML-Daten.
-
-        * **Stornorechnung:** Alte Rechnung via CSV laden, Beträge ins Minus setzen, Hinweistexte anpassen.
-
-        * **Girocode:** EPC-QR-Code aufdrucken für schnelles Scannen und Bezahlen per Banking-App.
-
-    
-
-    ## 4. Ordnerstruktur und Admin-Guide 🔵
-
-    Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk).
-
-    
-    
-        **🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:**
-
-        - Das Programm nutzt Sperrdateien (`erechnung.lock` und `erfassung.lock`) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.
-
-        - Sollte ein Arbeitsplatz abstürzen, erkennt das System verwaiste Locks und erlaubt nach einer Sicherheitswarnung das manuelle Entfernen der Sperre ("Lock entfernen").
-
-        - Lokale Konfigurationen landen sicher in `%LOCALAPPDATA%\SokoIur_eRechnung`, was UAC-Berechtigungskonflikte ausschließt.
-    
-
-    ## 5. Jahreswechsel
-
-    Ändern Sie in den "Einstellungen" einfach das "Aktuelle Rechnungsjahr" im Dropdown oder legen Sie ein neues Firmenprofil an.
-
-    ## 6. Mandanten, Datenbanken & Firmendaten
-
-    Sie können im Reiter "Konfig." verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad.
-
-    ## 7. Rechnungspositionen, Leistungszeitraum & Duplikate
-
-    Ist im Kopf UND in der Position ein Zeitraum angegeben, muss der Positionszeitraum zwingend innerhalb des Kopf-Zeitraums liegen.
-
-    ## 8. Rechnungsformate, Papierrechnung & elektronische Empfängeradresse
-
-    Das Programm unterstützt ZUGFeRD (Hybrid-PDF mit XML), reine XRechnung (XML + Begleit-PDF) und Papierrechnungen (Übergangslösung).
-
-    ## 9. Datumseingaben
-
-    Zulässige Formate: `TTMMJJ, TT,MM,JJ, TT.MM.JJJJ, TT,MM,JJJJ` oder `JJJJ-MM-TT`.
-
-    ## 10. Standardtexte & Formatierungen
-
-    Über "Texte bearbeiten" (`Alt+T`) legen Sie Zahlungsbedingungen (BT-20) und Rechnungsvermerke (BT-22) fest. Formatierungs-Kürzel: Zeilenumbruch `~cr`, Fett `~f Text f~`, Kursiv `~k Text k~`.
-
-    ## 11. Eingangsrechnungen erfassen und auswerten
-
-    Legen Sie neue Eingangsrechnungen in den Ordner `reneu`. Das Programm prüft diese automatisiert. Fehlerhafte Belege werden abgewiesen. Nach erfolgreicher Erfassung wird der Beleg im Archiv (`rchn`) gespeichert und im Journal (`eausw`) vermerkt.
-
-    ## 11.8 Hinweise zur revisionssicheren Archivierung (Ausblick)
-
-    Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (`rchn` und `are`) automatisch in einen **WORM-Onlinespeicher** (z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung technisch ausschließt.
-
-    ## 12. DATEV-Export & Buchhaltung 🔵
-
-    SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung (Stapelverarbeitung im ASCII-CSV / EXTF-Format).
-
-    
-    
-        **WICHTIGER HINWEIS (BETA-FUNKTION):**
-
-        Die DATEV-Exportfunktionen wurden bisher nicht abschließend in einer produktiven DATEV-Umgebung getestet. Bitte übergeben Sie Daten zunächst probeweise mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import (Feldzuordnungen, 7 Pflichtspalten, Längenbeschränkungen) sicherzustellen.
-    
-
-    ### 12.1 Konfiguration (SKR03 / SKR04) & Automatisches Steuer-Splitting
-
-    Im Reiter **⚙️ Konfig.** können Sie über **„📈 DATEV-Konten“** Standardkonten für SKR03/SKR04 laden. Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt, anteilig zurückgerechnet und mit intelligent vergebenen Soll/Haben-Kennzeichen (S/H) versehen.
-
-    ## 13. GitHub & Updates
-
-    Quellcode und Releases sind auf GitHub einsehbar. Über die Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen.
-
-    ## 14. Import-Formate (CSV)
-
-    Alle CSV-Dateien müssen semikolongetrennt (`;`) und im Format UTF-8 vorliegen (bei ANSI-Dateien aus Excel erfolgt eine automatische Reparatur).
-
-    ## 15. Mini-Glossar für Einsteiger
-
-    
-        * **ZUGFeRD:** Ein Hybrid-Format, das eine normale PDF-Ansicht für Menschen mit einer unsichtbaren XML-Datei für Computer/Buchhaltung kombiniert.
-
-        * **XRechnung:** Ein reines XML-Datenformat, das vor allem von öffentlichen Auftraggebern (Behörden) vorgeschrieben wird.
-
-        * **Leitweg-ID:** Die digitale Postanschrift für Rechnungen an Behörden (erscheint anstelle einer normalen E-Mail-Adresse).
-
-        * **WORM-Speicher:** (Write Once, Read Many) Ein Speichersystem, bei dem Dateien nach dem Schreiben nicht mehr verändert oder gelöscht werden können (wichtig für GoBD-Konformität).
-
-        * **DATEV EXTF:** Ein standardisiertes ASCII-CSV-Format zum verlustfreien Import von Buchungsstapeln in die Kanzlei-Software des Steuerberaters.
-
-    
-
-    ## 16. FAQ – Häufig gestellte Fragen
-
-    
-    
-        **Wie kann ich mein eigenes Logo auf die Rechnung drucken?**
-        Das Programm nutzt eine PDF-Vorlage als Hintergrund. Erstellen Sie z. B. in Word Ihr Briefpapier mit Logo, speichern Sie es als PDF und hinterlegen Sie es im Reiter *Konfig.* unter „Briefbogen hinterlegen“.
-
-    
-    
-    
-        **Wie setze ich die Rechnungsnummern für das neue Jahr zurück?**
-        Wechseln Sie im Reiter *Konfig.* einfach das „Aktuelle Rechnungsjahr“ und korrigieren Sie darunter die „Letzte Rechnungs-Nr.“ einmalig händisch auf den Startwert.
-
-    
-    
-    
-        **Wie erstelle ich eine XRechnung für Behörden?**
-        Tragen Sie bei der Rechnungserstellung in das Feld „E-Mail / Leitweg-ID“ die Leitweg-ID ein und setzen Sie das „Endpoint-Schema“ auf `0204`.
-
-    
-    
-    
-        **Das Programm startet nicht mehr oder ist gesperrt. Was tun?**
-        Wenn eine Firma gesperrt ist (Lock), wurde das Programm evtl. unsanft beendet. Beim Versuch, den Reiter zu wechseln, erscheint ein Hinweisfenster, in dem Sie den „Lock entfernen“ können.
-
-    
-
-    ## 17. Schlagwortverzeichnis (Index)
+    ## 19. Schlagwortverzeichnis (Index)
 
     
         **B**
 
         [Briefbogen hinterlegen](#kap1)
 
-        [Buchhaltung](#kap12)
+        [Buchhaltung](#kap14)
         **D**
 
         [Daten-Speicherort](#kap1)
 
+        [Daten-Speicherort (Admin)](#kap12)
+
         [Datenschutz](#kap2)
 
-        [DATEV-Export](#kap12)
+        [DATEV-Export](#kap14)
         **E**
 
-        [Eingangsrechnungen prüfen](#kap11)
+        [Eingangsrechnungen prüfen](#kap10)
 
-        [E-Rechnungspflicht](#kap3_3)
+        [E-Rechnungspflicht](#kap3)
         **G**
 
-        [Girocode (QR-Code)](#kap3_3)
+        [Girocode (QR-Code)](#kap3)
         **I**
 
-        [Import (Kunden & Produkte)](#kap14)
+        [Import (Kunden & Produkte)](#kap15)
         **J**
 
-        [Jahreswechsel](#kap5)
+        [Jahreswechsel](#kap11)
 
-        [Journale (Ausgang / Eingang)](#kap3_1)
+        [Journale (Ausgang / Eingang)](#kap6)
         **L**
 
-        [Leitweg-ID](#kap3_3)
+        [Leitweg-ID (Use Case)](#kap3)
+
+        [Leitweg-ID (Glossar)](#kap4)
         **M**
 
-        [Mandanten & Firmenprofile](#kap6)
+        [Mandanten & Firmenprofile](#kap13)
         **N**
 
-        [Netzwerkbetrieb](#kap1)
+        [Netzwerkbetrieb & File-Locking](#kap12)
         **S**
 
-        [Standardtexte](#kap10)
+        [Standardtexte](#kap7)
 
-        [Stornorechnung](#kap3_3)
+        [Stornorechnung](#kap3)
+        **T**
+
+        [Testrechnung](#kap7)
         **X**
 
-        [XRechnung](#kap8)
+        [XRechnung (Format)](#kap9)
+
+        [XRechnung (Glossar)](#kap4)
         **Z**
 
-        [ZUGFeRD](#kap8)
+        [ZUGFeRD (Format)](#kap9)
+
+        [ZUGFeRD (Glossar)](#kap4)
     
     ---
 

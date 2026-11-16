@@ -1,13 +1,25 @@
 # Changelog – SokoIur eRechnung
 
-    **Aktuelle Version: 2.000181**
+    **Aktuelle Version: 2.000206**
+
+    
+    ## Version 2.00206
+
+    ### ✨ Neue Funktionen, Verbesserungen & Datensicherheit
+
+    
+        * **Firmendaten Backup & Restore:** Im Reiter "Konfig." lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.
+
+        * **Testrechnung-Button:** In der Eingabemaske kann nun eine Vorschau-PDF (Testrechnung) erstellt werden. Es wird keine Rechnungsnummer vergeben, kein Journaleintrag erzeugt und das Programm bleibt für weitere Korrekturen geöffnet.
+
+    
 
     ## Version 2.000151
 
     ### ✨ UI/UX-Verbesserungen & Einstellungen
 
     
-        * **Schnellnavigation (Shortcuts):** Die Tastenkürzel für den direkten Wechsel der Reiter (z. B. Alt+E für Erstellen) werden nun platzsparend und visuell elegant durch einen Unterstrich im jeweiligen Buchstaben der Tab-Überschrift (z. B. E̲RSTELLEN) signalisiert.
+        * **Schnellnavigation (Shortcuts):** Die Tastenkürzel für den direkten Wechsel der Reiter (z. B. Alt+E für Erstellen) werden nun platzsparend und visuell elegant durch eckige Klammern um den jeweiligen Buchstaben der Tab-Überschrift (z. B. [E]RSTELLEN) signalisiert.
 
         * **Umbenennung:** Der Reiter „Einstellungen“ wurde in „Konfig.“ (Tastenkürzel Alt+K) umbenannt, um die Tab-Leiste kompakt zu halten.
 
@@ -35,7 +47,7 @@
     ### ✨ Neue Funktionen & Datenverwaltung
 
     
-        * **Firma leeren:** Eine neue Funktion in den Einstellungen ermöglicht es, alle erfassten Buchungen, Rechnungen und Journale einer Firma vollständig zurückzusetzen. Stammdaten (Kunden, Produkte, Briefbogen) bleiben dabei unberührt.
+        * **Firma leeren:** Eine neue Funktion in den Einstellungen ermöglicht es, alle erfassten Buchungen, Rechnungen und Journale einer Firma vollständig zurückzusetzen. Stammdaten (Kunden, Produkte, Briefbogen) sowie alle Textvorlagen (Header, Einleitung, Gruß, Zusatztexte) bleiben dabei unberührt.
 
         * **CSV-Import für Kunden:** Kundendaten können nun per CSV importiert werden. Anhand der Kundennummer werden bestehende Einträge automatisch überschrieben und aktualisiert, neue Kunden werden angehängt.
 
