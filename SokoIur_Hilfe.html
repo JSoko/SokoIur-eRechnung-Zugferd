@@ -68,7 +68,7 @@
                 <li><a class="toc-link" href="#kap14">14. DATEV-Export & Buchhaltung</a></li>
                 <li><a class="toc-link" href="#kap15">15. Import-Formate (CSV)</a></li>
                 <li><a class="toc-link" href="#kap16">16. Programmaufruf & CLI</a></li>
-                <li><a class="toc-link" href="#kap17">17. Revisionssicheres Archiv</a></li>
+                <li><a class="toc-link" href="#kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</a></li>
                 <li><a class="toc-link" href="#kap18">18. GitHub & Updates</a></li>
                 <li><a class="toc-link" href="#kap19">19. Schlagwortverzeichnis (Index)</a></li>
             </ul>
@@ -78,7 +78,7 @@
     <div class="main-content">
         <h1 style="margin-bottom: 0;">SokoIur eRechnung</h1>
         <h2 style="border: none; margin-top: 5px; text-align: center; color: #6c757d;">Das Handbuch</h2>
-        <p class="version"><strong>Version: 2.000206</strong></p>
+        <p class="version"><strong>Version: 2.000227</strong></p>
 
     <!-- TEIL 1: Allgemeiner Teil -->
     <h1 style="background-color: #1f538d; color: #ffffff; padding: 12px 20px; border-radius: 8px; margin-top: 40px; text-align: left; font-size: 1.6em;">TEIL 1: Allgemeiner Teil</h1>
@@ -243,6 +243,7 @@
         <li><strong>📄 Journal als PDF:</strong> Erstellt eine saubere, druckbare Übersichtstabelle aller Ausgangsrechnungen inklusive Gesamtnettoumsatz und detailliert aufgeschlüsselter Steuerbeträge.</li>
         <li><strong>📊 Journal als CSV:</strong> Exportiert die Rechnungsdaten tabellarisch für die problemlose Weiterverarbeitung in Microsoft Excel oder ähnlichen Werkzeugen.</li>
         <li><strong>📈 DATEV-Export:</strong> Generiert eine formatierte ASCII-Datei für die Kanzleisoftware Ihres Steuerberaters. Rechnungen mit verschiedenen Steuersätzen werden vollautomatisch centgenau zerlegt (Steuer-Splitting) und mit den korrekten Soll/Haben-Kennzeichen verbucht.</li>
+        <li><strong>🛡️ Audit-Log PDF:</strong> Erstellt ein formatierbares PDF-Revisionsprotokoll aller vorgenommenen Änderungen und Löschungen (inkl. erzwungener Begründungen) für das ausgewählte Jahr.</li>
     </ul>
 
     <h3>Einstellungsmöglichkeiten & Gefahrenhinweise (Tab ⚙️ [K]onfig.)</h3>
@@ -284,6 +285,7 @@
 
     <h2 id="kap12">12. Installation, Ordnerstruktur & File-Locking</h2>
     <p>Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Arbeitsplatz-Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (<code>aausw</code>, <code>eausw</code>) und Archive an.</p>
+    
     <h3>Integrierte Profil-Backups & Datensicherheit</h3>
     <p>In der Konfigurationsoberfläche (Reiter <strong>Konfig.</strong>) können Sie per Knopfdruck ein ZIP-Archiv der aktiven Firma anlegen lassen und wiederherstellen. Die Wiederherstellung kann in die geöffnete oder in eine neue Firma erfolgen.</p>
     
@@ -291,6 +293,7 @@
         <strong>⚠️ WICHTIGER HINWEIS ZUR DATENSICHERHEIT:</strong><br>
         Diese integrierte Backup-Funktion stellt lediglich eine <em>zusätzliche Sicherungsmöglichkeit</em> für den einzelnen Arbeitsplatz dar. Sie entbindet Sie keinesfalls von der Pflicht, die Programm- und Netzwerkdaten (Ihren kompletten Daten-Grundpfad) regelmäßig durch externe und professionelle System-Backups zu sichern!
     </div>
+    
     <div class="highlight">
         <strong>🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:</strong><br>
         - Das Programm nutzt Sperrdateien (<code>erechnung.lock</code> und <code>erfassung.lock</code>) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.<br>
@@ -372,9 +375,25 @@
         </tr>
     </table>
 
-    <h2 id="kap17">17. Revisionssicheres Archiv (Ausblick)</h2>
-    <p>Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (<code>rchn</code> für den Eingang und <code>are</code> für den Ausgang) automatisch in einen <strong>WORM-Onlinespeicher</strong> (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.</p>
+    <h2 id="kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</h2>
+    
+    <h3>Das GoBD Audit-Log (Verfahrensdokumentation)</h3>
+    <p>Um den strengen Anforderungen der GoBD an Nachvollziehbarkeit und Unveränderbarkeit (vgl. Rz. 58 und Rz. 107-111) zu genügen, führt das Programm automatisch getrennte Audit-Logs für den Ausgangs- und Eingangsbereich. Diese finden Sie im Netzwerkordner unter <code>audit/&lt;Jahr&gt;</code>.</p>
+    
+    <h4>Wann werden welche Einträge protokolliert?</h4>
+    <p>Das System schreibt in folgenden Situationen automatisch einen unveränderlichen Eintrag in das Audit-Log:</p>
+    <ul>
+        <li><strong>Neuerstellung (Eingang & Ausgang):</strong> Sobald eine Ausgangsrechnung generiert (Aktion: <em>Erstellt</em>) oder eine Eingangsrechnung erfasst wird. Das Log verzeichnet dabei präzise und überschneidungsfrei, auf welchem Weg die Rechnung erzeugt wurde: durch einen normalen Programmstart (Modus: <code>GUI</code>), durch manuelle Nachbearbeitung nach Aufruf durch ein Fremdprogramm (Modus: <code>CLI (--edit)</code>) oder vollautomatisiert im Hintergrund durch die Kommandozeile (Modus: <code>CLI (--auto)</code>).</li><li><strong>Änderung / Überschreiben (Ausgang):</strong> Wird eine bereits vergebene Rechnungsnummer im Reiter "ERSTELLEN" erneut aufgerufen und überschrieben (Aktion: <em>Geändert</em>), protokolliert das System diesen Vorgang zum Schutz der fortlaufenden Nummernkreise.</li>
+        <li><strong>Löschung / Storno (Eingang):</strong> Wird ein bereits verbuchter Beleg vom Nutzer nachträglich wieder aus dem Eingangsjournal gelöscht bzw. storniert (Aktion: <em>Gelöscht</em>).</li>
+    </ul>
 
+    <h4>Konfiguration und Export</h4>
+    <ul>
+        <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen (Reiter Konfig.) können Sie die Option "GoBD: Begründungszwang bei Änderung/Löschung" aktivieren. Das Programm zwingt den Anwender dann bei jeder Datenänderung (Überschreiben) oder Löschung zur Eingabe eines Revisionsgrundes. Dieser Grund wird unveränderlich mit dem Log-Eintrag verknüpft. Dies dient bei Betriebsprüfungen als lückenloser Nachweis über die Historie.</li>
+        <li><strong>Exportfunktion:</strong> In den Reitern für Ausgang und Eingang lässt sich das zugehörige jahresbasierte Audit-Log jederzeit komfortabel über den Button "🛡️ Audit-Log PDF" als übersichtliche PDF-Tabelle für den Prüfer generieren.</li>
+    </ul>
+
+    <p>Zur Erfüllung der GoBD wird <em>zusätzlich</em> empfohlen, die generierten Verzeichnisse (<code>rchn</code> für den Eingang und <code>are</code> für den Ausgang) automatisch in einen <strong>WORM-Onlinespeicher</strong> (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.</p>
     <h2 id="kap18">18. GitHub & Updates</h2>
     <p>Quellcode und Releases sind im offiziellen GitHub-Repository unter <a href="https://github.com/JSoko/SokoIur-eRechnung-Zugferd" target="_blank">https://github.com/JSoko/SokoIur-eRechnung-Zugferd</a> einsehbar. Über die integrierte Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.</p>
 
