@@ -21,7 +21,8 @@ else:
     sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # Importieren der Funktionen aus unseren eigenen  Modulen (ERST HIER!)
-from datenbank import init_config, speichere_config, LOCK_FILE, ensure_utf8_csv
+from config import init_config, speichere_config, LOCK_FILE
+from crud import ensure_utf8_csv
 from pdf_zugferd import run_auto_generation
 from gui_app import App
 from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
@@ -62,7 +63,7 @@ def main():
     # --- HTML-Hilfsdatei & Snippet beim Programmstart automatisch im AppData-Ordner aktualisieren ---
     try:
         from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
-        from datenbank import get_appdata_dir, get_app_version
+        from config import get_appdata_dir, get_app_version
         
         v_string = get_app_version()
         last_version = config.get("last_run_version", "")
@@ -218,6 +219,7 @@ def main():
         
         try:
             # 7.2 Generierung durchführen
+            config["is_cli_auto"] = True
             run_auto_generation(config)
         finally:
             # 7.3 Lock nach Generierung (auch bei Fehlern) immer wieder entfernen

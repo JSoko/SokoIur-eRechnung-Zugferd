@@ -76,7 +76,7 @@ def get_doku_html(version_string):
                 <li><a class="toc-link" href="#kap14">14. DATEV-Export & Buchhaltung</a></li>
                 <li><a class="toc-link" href="#kap15">15. Import-Formate (CSV)</a></li>
                 <li><a class="toc-link" href="#kap16">16. Programmaufruf & CLI</a></li>
-                <li><a class="toc-link" href="#kap17">17. Revisionssicheres Archiv</a></li>
+                <li><a class="toc-link" href="#kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</a></li>
                 <li><a class="toc-link" href="#kap18">18. GitHub & Updates</a></li>
                 <li><a class="toc-link" href="#kap19">19. Schlagwortverzeichnis (Index)</a></li>
             </ul>
@@ -251,6 +251,7 @@ def get_doku_html(version_string):
         <li><strong>📄 Journal als PDF:</strong> Erstellt eine saubere, druckbare Übersichtstabelle aller Ausgangsrechnungen inklusive Gesamtnettoumsatz und detailliert aufgeschlüsselter Steuerbeträge.</li>
         <li><strong>📊 Journal als CSV:</strong> Exportiert die Rechnungsdaten tabellarisch für die problemlose Weiterverarbeitung in Microsoft Excel oder ähnlichen Werkzeugen.</li>
         <li><strong>📈 DATEV-Export:</strong> Generiert eine formatierte ASCII-Datei für die Kanzleisoftware Ihres Steuerberaters. Rechnungen mit verschiedenen Steuersätzen werden vollautomatisch centgenau zerlegt (Steuer-Splitting) und mit den korrekten Soll/Haben-Kennzeichen verbucht.</li>
+        <li><strong>🛡️ Audit-Log PDF:</strong> Erstellt ein formatierbares PDF-Revisionsprotokoll aller vorgenommenen Änderungen und Löschungen (inkl. erzwungener Begründungen) für das ausgewählte Jahr.</li>
     </ul>
 
     <h3>Einstellungsmöglichkeiten & Gefahrenhinweise (Tab ⚙️ [K]onfig.)</h3>
@@ -292,6 +293,7 @@ def get_doku_html(version_string):
 
     <h2 id="kap12">12. Installation, Ordnerstruktur & File-Locking</h2>
     <p>Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Arbeitsplatz-Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (<code>aausw</code>, <code>eausw</code>) und Archive an.</p>
+    
     <h3>Integrierte Profil-Backups & Datensicherheit</h3>
     <p>In der Konfigurationsoberfläche (Reiter <strong>Konfig.</strong>) können Sie per Knopfdruck ein ZIP-Archiv der aktiven Firma anlegen lassen und wiederherstellen. Die Wiederherstellung kann in die geöffnete oder in eine neue Firma erfolgen.</p>
     
@@ -299,6 +301,7 @@ def get_doku_html(version_string):
         <strong>⚠️ WICHTIGER HINWEIS ZUR DATENSICHERHEIT:</strong><br>
         Diese integrierte Backup-Funktion stellt lediglich eine <em>zusätzliche Sicherungsmöglichkeit</em> für den einzelnen Arbeitsplatz dar. Sie entbindet Sie keinesfalls von der Pflicht, die Programm- und Netzwerkdaten (Ihren kompletten Daten-Grundpfad) regelmäßig durch externe und professionelle System-Backups zu sichern!
     </div>
+    
     <div class="highlight">
         <strong>🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:</strong><br>
         - Das Programm nutzt Sperrdateien (<code>erechnung.lock</code> und <code>erfassung.lock</code>) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.<br>
@@ -380,9 +383,25 @@ def get_doku_html(version_string):
         </tr>
     </table>
 
-    <h2 id="kap17">17. Revisionssicheres Archiv (Ausblick)</h2>
-    <p>Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (<code>rchn</code> für den Eingang und <code>are</code> für den Ausgang) automatisch in einen <strong>WORM-Onlinespeicher</strong> (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.</p>
+    <h2 id="kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</h2>
+    
+    <h3>Das GoBD Audit-Log (Verfahrensdokumentation)</h3>
+    <p>Um den strengen Anforderungen der GoBD an Nachvollziehbarkeit und Unveränderbarkeit (vgl. Rz. 58 und Rz. 107-111) zu genügen, führt das Programm automatisch getrennte Audit-Logs für den Ausgangs- und Eingangsbereich. Diese finden Sie im Netzwerkordner unter <code>audit/&lt;Jahr&gt;</code>.</p>
+    
+    <h4>Wann werden welche Einträge protokolliert?</h4>
+    <p>Das System schreibt in folgenden Situationen automatisch einen unveränderlichen Eintrag in das Audit-Log:</p>
+    <ul>
+        <li><strong>Neuerstellung (Eingang & Ausgang):</strong> Sobald eine Ausgangsrechnung generiert (Aktion: <em>Erstellt</em>) oder eine Eingangsrechnung erfasst wird. Das Log verzeichnet dabei präzise und überschneidungsfrei, auf welchem Weg die Rechnung erzeugt wurde: durch einen normalen Programmstart (Modus: <code>GUI</code>), durch manuelle Nachbearbeitung nach Aufruf durch ein Fremdprogramm (Modus: <code>CLI (--edit)</code>) oder vollautomatisiert im Hintergrund durch die Kommandozeile (Modus: <code>CLI (--auto)</code>).</li><li><strong>Änderung / Überschreiben (Ausgang):</strong> Wird eine bereits vergebene Rechnungsnummer im Reiter "ERSTELLEN" erneut aufgerufen und überschrieben (Aktion: <em>Geändert</em>), protokolliert das System diesen Vorgang zum Schutz der fortlaufenden Nummernkreise.</li>
+        <li><strong>Löschung / Storno (Eingang):</strong> Wird ein bereits verbuchter Beleg vom Nutzer nachträglich wieder aus dem Eingangsjournal gelöscht bzw. storniert (Aktion: <em>Gelöscht</em>).</li>
+    </ul>
 
+    <h4>Konfiguration und Export</h4>
+    <ul>
+        <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen (Reiter Konfig.) können Sie die Option "GoBD: Begründungszwang bei Änderung/Löschung" aktivieren. Das Programm zwingt den Anwender dann bei jeder Datenänderung (Überschreiben) oder Löschung zur Eingabe eines Revisionsgrundes. Dieser Grund wird unveränderlich mit dem Log-Eintrag verknüpft. Dies dient bei Betriebsprüfungen als lückenloser Nachweis über die Historie.</li>
+        <li><strong>Exportfunktion:</strong> In den Reitern für Ausgang und Eingang lässt sich das zugehörige jahresbasierte Audit-Log jederzeit komfortabel über den Button "🛡️ Audit-Log PDF" als übersichtliche PDF-Tabelle für den Prüfer generieren.</li>
+    </ul>
+
+    <p>Zur Erfüllung der GoBD wird <em>zusätzlich</em> empfohlen, die generierten Verzeichnisse (<code>rchn</code> für den Eingang und <code>are</code> für den Ausgang) automatisch in einen <strong>WORM-Onlinespeicher</strong> (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.</p>
     <h2 id="kap18">18. GitHub & Updates</h2>
     <p>Quellcode und Releases sind im offiziellen GitHub-Repository unter <a href="https://github.com/JSoko/SokoIur-eRechnung-Zugferd" target="_blank">https://github.com/JSoko/SokoIur-eRechnung-Zugferd</a> einsehbar. Über die integrierte Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.</p>
 
@@ -468,11 +487,73 @@ def get_changelog_html(version_string):
 <body>
     <h1>Changelog – SokoIur eRechnung</h1>
     <p><strong>Aktuelle Version: {version_string}</strong></p>
+  
+    <h2>Version 2.000227 <span class="date">(17. November 2026)</span></h2>
+    <p><strong>Umfassendes Architektur-Update (Under the Hood)</strong><br>
+    Das komplette Programm wurde nach dem <em>Single Responsibility Principle</em> modularisiert, um die Wartbarkeit, Stabilität und zukünftige Erweiterbarkeit zu sichern. Der ehemals monolithische Code ist nun in saubere, spezialisierte Einzeldateien unterteilt:</p>
     
-    <h2>Version 2.00206</h2>
-    <h3>✨ Neue Funktionen, Verbesserungen & Datensicherheit</h3>
+    <h3>✨ 1. Daten & Kernfunktionen</h3>
+    <ul>
+        <li><strong>config.py:</strong> Zentrale Verwaltung aller Pfade, Konstanten und Einstellungen.</li>
+        <li><strong>crud.py:</strong> (Create, Read, Update, Delete) – Zentrales Modul für alle Lese- und Schreibzugriffe auf die CSV-Datenbanken und lokale Dateien.</li>
+        <li><strong>utils.py:</strong> Übergreifende Hilfsfunktionen und Formatierer (z.B. Datums- und Zahlenberechnung).</li>
+        <li><strong>audit.py:</strong> Zentrale Protokollierung (GoBD-Compliance).</li>
+    </ul>
+
+    <h3>✨ 2. PDF & XML Engine (Geschäftslogik)</h3>
+    <ul>
+        <li><strong>pdf_builder.py:</strong> Ausschließlich für das optische Zeichnen des PDF-Layouts zuständig (ReportLab).</li>
+        <li><strong>xml_processor.py:</strong> Generiert strikt die maschinenlesbaren XML-Strukturen nach EN 16931 (ZUGFeRD/XRechnung).</li>
+        <li><strong>pdf_zugferd.py:</strong> Fungiert nun als "Dirigent", der das optische Layout und die XML-Daten zusammenführt und die fertige e-Rechnung packt.</li>
+    </ul>
+
+    <h3>✨ 3. Benutzeroberfläche (GUI)</h3>
+    <p>Die riesige Hauptdatei wurde aufgelöst. Jeder Reiter der Oberfläche hat nun seine eigene, übersichtliche Datei:</p>
+    <ul>
+        <li><strong>gui_utils.py:</strong> Allgemeine grafische Werkzeuge (z.B. Hover-Texte / Tooltips).</li>
+        <li><strong>tab_manuell.py:</strong> Steuert den Reiter "Erstellen" (Manuelle Rechnungseingabe).</li>
+        <li><strong>tab_erfassen.py:</strong> Steuert den Reiter "Erfassen" (Eingangsrechnungen verarbeiten).</li>
+        <li><strong>tab_auswertungen.py:</strong> Steuert die Reiter "Ausgang" und "Eingang" (Journale und Auswertungen).</li>
+        <li><strong>tab_einstellungen.py:</strong> Steuert den Reiter "Konfig." (Einstellungen).</li>
+        <li><strong>tab_hilfe.py:</strong> Steuert den Reiter "Info & Hilfe".</li>
+        <li><strong>updater.py:</strong> Die reine Logik für die automatischen P2P- und Online-Updates.</li>
+    </ul>
+    <h2>Version 2.000221</h2>
+    <h3>✨ Bugfixes & Journale</h3>
+    <ul>
+        <li><strong>Korrektur bei Rechnungsänderungen:</strong> Wenn eine Rechnung überschrieben wurde, entstand im Ausgangsjournal (<code>reYYYYMM.csv</code>) bisher fälschlicherweise ein doppelter Eintrag für dieselbe Rechnungsnummer. Das System überschreibt nun die alte Zeile im Journal sauber, sodass die Summenauswertungen und DATEV-Exporte korrekt bleiben. Die Historie der Änderung wird weiterhin lückenlos im GoBD Audit-Log erfasst.</li>
+    </ul>
+    <h3>✨ UI/UX-Verbesserungen</h3>
+    <ul>
+        <li><strong>Responsive Buttons in Auswertungen:</strong> Ein Darstellungsproblem wurde behoben, bei dem die zahlreichen neuen Export-Buttons in den Reitern für Ausgangs- und Eingangsjournale auf schmalen Bildschirmen rechts abgeschnitten wurden. Die Buttons ordnen sich nun flexibel in einem mehrzeiligen Raster (2x2) an und skalieren sicher mit der Fensterbreite.</li>
+        <li><strong>Pfad-Ansicht erweitert:</strong> In den Einstellungen ("Aktive Pfade der aktuellen Firma") wurde der Speicherort für das GoBD-Audit-Log ergänzt. Zusätzlich verfügt nun jeder dort gelistete Pfad über einen direkten Explorer-Button (📂), mit dem sich das jeweilige Windows-Verzeichnis komfortabel per Klick öffnen lässt.</li>
+    </ul>
+    <h3>✨ GoBD-Konformität & Audit-Log</h3>
+    <ul>
+        <li><strong>Audit-Log Duplikate behoben:</strong> Ein Fehler wurde korrigiert, bei dem die Rechnungserstellung aus der Benutzeroberfläche heraus fälschlicherweise einen zweiten Protokolleintrag der Hintergrund-Engine erzeugte. Das System trennt beim Schreiben des GoBD Audit-Logs nun lückenlos und überschneidungsfrei zwischen den drei Startmodi: reguläre GUI (<code>GUI</code>), Fremdaufruf mit manueller Nachbearbeitung (<code>CLI (--edit)</code>) und vollautomatische Hintergrundgenerierung (<code>CLI (--auto)</code>).</li>
+        <li><strong>Audit-Log als PDF exportieren:</strong> In den Auswertungs-Reitern (Ausgang und Eingang) wurde jeweils ein neuer Button ("🛡️ Audit-Log PDF") integriert. Damit lässt sich das im Hintergrund geschriebene GoBD-Revisionsprotokoll auf Knopfdruck als sauberes, tabellarisches Querformat-PDF für den Wirtschaftsprüfer oder das Finanzamt generieren und anzeigen.</li>
+        <li><strong>Automatisches Audit-Log:</strong> Zur Einhaltung der gesetzlichen Vorschriften (Nachvollziehbarkeit und Unveränderbarkeit gemäß GoBD) erstellt das Programm nun für jede Firma jahresbasierte Audit-Logs getrennt für Ein- und Ausgangsrechnungen.</li>
+        <li><strong>Nachweis der Arbeitsplätze:</strong> Das Log erfasst transparent, von welchem PC aus und über welchen Modus (GUI, --edit oder --auto) eine Rechnung erstellt, geändert oder gelöscht wurde.</li>
+        <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen lässt sich nun ein Begründungszwang aktivieren. Anwender müssen bei der Löschung oder Modifikation einer bestehenden Rechnung einen Revisionsgrund eintragen, der revisionssicher in das Log geschrieben wird.</li>
+    </ul>
+    <h3>✨ Netzwerk & Updates</h3>
+    <ul>
+        <li><strong>Optimierter P2P-Update-Prozess:</strong> Wenn das Programm auf ein Update prüft, wird nun <em>zuerst</em> das verbundene Netzwerklaufwerk abgefragt. Liegt dort bereits eine aktualisierte Version bereit (z. B. weil ein anderer Arbeitsplatz das Update bereits durchgeführt hat), wird diese sofort verwendet. Das Programm verbindet sich nur noch dann mit dem Online-Server (erech.6078.de), wenn im lokalen Netz kein neueres Update existiert, was den Traffic drastisch reduziert und den Vorgang stark beschleunigt.</li>
+        <li><strong>Automatische Update-Verteilung (P2P-Ansatz):</strong> Wenn das Programm auf einem Arbeitsplatz gestartet wird und die ausführbare Datei neuer ist als die im zentralen Netzwerkordner hinterlegte Update-Datei (<code>SokoIur_eRechnung_Update.exe</code>), wird diese nun automatisch aktualisiert. So können manuell eingespielte Updates von einem Client automatisch an alle anderen Arbeitsplätze im Netzwerk verteilt werden.</li>
+    </ul>
+    <h3>📚 Handbuch & Dokumentation</h3>
+    <ul>
+        <li><strong>Erweiterung der GoBD-Dokumentation:</strong> Das Administratorhandbuch (Kapitel 17) wurde um eine detaillierte Aufschlüsselung erweitert, in der genau dokumentiert ist, welche Aktionen (Neu, Geändert, Gelöscht) und welche Modi (GUI vs. CLI) zu einem Eintrag im GoBD Audit-Log führen.</li>
+    </ul>
+    <h2>Version 2.000206</h2>
+    <h3>✨ Neue Funktionen & Datensicherheit</h3>
     <ul>
         <li><strong>Firmendaten Backup & Restore:</strong> Im Reiter "Konfig." lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.</li>
+    </ul>
+
+    <h2>Version {version_string}</h2>
+    <h3>✨ Neue Funktionen & Verbesserungen</h3>
+    <ul>
         <li><strong>Testrechnung-Button:</strong> In der Eingabemaske kann nun eine Vorschau-PDF (Testrechnung) erstellt werden. Es wird keine Rechnungsnummer vergeben, kein Journaleintrag erzeugt und das Programm bleibt für weitere Korrekturen geöffnet.</li>
     </ul>
 

@@ -20,8 +20,15 @@ import time
 from datetime import datetime, timedelta
 import webbrowser
 
-from datenbank import speichere_config, get_resource_path, LOCK_FILE, berechne_naechste_rechnungsnummer
-from gui_module import TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabEinstellungenMixin, TabHilfeMixin, UpdaterMixin
+from config import speichere_config, get_resource_path, LOCK_FILE
+from utils import berechne_naechste_rechnungsnummer
+from tab_hilfe import TabHilfeMixin
+from tab_auswertungen import TabAuswertungenMixin
+from tab_einstellungen import TabEinstellungenMixin
+from tab_erfassen import TabErfassenMixin
+from tab_manuell import TabManuellMixin
+from updater import UpdaterMixin
+from gui_utils import create_tooltip
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -169,7 +176,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.title("SokoIur eRechnung")
         
         # 1. Versionsnummer aus der .exe auslesen
-        from datenbank import get_app_version
+        from config import get_app_version
         self.current_version = get_app_version()
         
         # 2. Fenster-Setup & Tastenkürzel
@@ -413,7 +420,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
             if show_message:
                 messagebox.showinfo("Netzwerk-Daten gefunden", f"Es wurden bestehende Daten für '{p_dict['profil_name']}' gefunden und erfolgreich verknüpft!")
         else:
-            from datenbank import create_csv_if_missing
+            from crud import create_csv_if_missing
             create_csv_if_missing(p_dict["firma_csv"], "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Kontoinhaber;Email;Telefon")
             create_csv_if_missing(p_dict["rechnung_csv"], "Rechnungsnummer;Rechnungsdatum;Faelligkeitsdatum;KundeName;KundeStrasse;KundePLZ;KundeOrt;KundeLand;KundeEmail;KundeEndpoint;KundeEndpointScheme;KundeNr;Aktenzeichen;KundeAktenzeichen;LeistungszeitraumKopf;Ratenzahlung;PosNr;Menge;Einheit;Bezeichnung;EinzelpreisNetto;Steuersatz;Zusatztext;LeistungszeitraumPos")
             create_csv_if_missing(p_dict["kunden_csv"], "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme")
@@ -459,7 +466,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                 break
 
     def add_profile(self):
-        from datenbank import get_default_profile
+        from config import get_default_profile
         import time
         d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         name = d_name.get_input()
@@ -497,7 +504,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
 
     
     def refresh_all_ui(self):
-        from datenbank import lade_kunden, lade_produkte, lade_textdatei
+        from crud import lade_kunden, lade_produkte, lade_textdatei
         self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
         self.produkte_liste = lade_produkte(self.p_config.get("produkte_csv", "produkte.csv"))
         self.header_text = lade_textdatei(self.p_config.get('header_csv', ''))
