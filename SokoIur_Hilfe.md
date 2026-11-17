@@ -40,7 +40,7 @@
 
                 * [16. Programmaufruf & CLI](#kap16)
 
-                * [17. Revisionssicheres Archiv](#kap17)
+                * [17. Revisionssicheres Archiv & GoBD-Audit-Log](#kap17)
 
                 * [18. GitHub & Updates](#kap18)
 
@@ -55,7 +55,7 @@
 
         ## Das Handbuch
 
-        **Version: 2.000206**
+        **Version: 2.000227**
 
     
     # TEIL 1: Allgemeiner Teil
@@ -308,6 +308,8 @@
 
         * **📈 DATEV-Export:** Generiert eine formatierte ASCII-Datei für die Kanzleisoftware Ihres Steuerberaters. Rechnungen mit verschiedenen Steuersätzen werden vollautomatisch centgenau zerlegt (Steuer-Splitting) und mit den korrekten Soll/Haben-Kennzeichen verbucht.
 
+        * **🛡️ Audit-Log PDF:** Erstellt ein formatierbares PDF-Revisionsprotokoll aller vorgenommenen Änderungen und Löschungen (inkl. erzwungener Begründungen) für das ausgewählte Jahr.
+
     
 
     ### Einstellungsmöglichkeiten & Gefahrenhinweise (Tab ⚙️ [K]onfig.)
@@ -369,6 +371,7 @@
 
     Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Arbeitsplatz-Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (`aausw`, `eausw`) und Archive an.
 
+    
     ### Integrierte Profil-Backups & Datensicherheit
 
     In der Konfigurationsoberfläche (Reiter **Konfig.**) können Sie per Knopfdruck ein ZIP-Archiv der aktiven Firma anlegen lassen und wiederherstellen. Die Wiederherstellung kann in die geöffnete oder in eine neue Firma erfolgen.
@@ -378,6 +381,7 @@
         **⚠️ WICHTIGER HINWEIS ZUR DATENSICHERHEIT:**
 
         Diese integrierte Backup-Funktion stellt lediglich eine *zusätzliche Sicherungsmöglichkeit* für den einzelnen Arbeitsplatz dar. Sie entbindet Sie keinesfalls von der Pflicht, die Programm- und Netzwerkdaten (Ihren kompletten Daten-Grundpfad) regelmäßig durch externe und professionelle System-Backups zu sichern!
+    
     
     
         **🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:**
@@ -486,9 +490,34 @@
         
     
 
-    ## 17. Revisionssicheres Archiv (Ausblick)
+    ## 17. Revisionssicheres Archiv & GoBD-Audit-Log
 
-    Zur Erfüllung der GoBD wird empfohlen, die generierten Verzeichnisse (`rchn` für den Eingang und `are` für den Ausgang) automatisch in einen **WORM-Onlinespeicher** (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.
+    
+    ### Das GoBD Audit-Log (Verfahrensdokumentation)
+
+    Um den strengen Anforderungen der GoBD an Nachvollziehbarkeit und Unveränderbarkeit (vgl. Rz. 58 und Rz. 107-111) zu genügen, führt das Programm automatisch getrennte Audit-Logs für den Ausgangs- und Eingangsbereich. Diese finden Sie im Netzwerkordner unter `audit/<Jahr>`.
+
+    
+    Wann werden welche Einträge protokolliert?
+    Das System schreibt in folgenden Situationen automatisch einen unveränderlichen Eintrag in das Audit-Log:
+
+    
+        * **Neuerstellung (Eingang & Ausgang):** Sobald eine Ausgangsrechnung generiert (Aktion: *Erstellt*) oder eine Eingangsrechnung erfasst wird. Das Log verzeichnet dabei präzise und überschneidungsfrei, auf welchem Weg die Rechnung erzeugt wurde: durch einen normalen Programmstart (Modus: `GUI`), durch manuelle Nachbearbeitung nach Aufruf durch ein Fremdprogramm (Modus: `CLI (--edit)`) oder vollautomatisiert im Hintergrund durch die Kommandozeile (Modus: `CLI (--auto)`).
+* **Änderung / Überschreiben (Ausgang):** Wird eine bereits vergebene Rechnungsnummer im Reiter "ERSTELLEN" erneut aufgerufen und überschrieben (Aktion: *Geändert*), protokolliert das System diesen Vorgang zum Schutz der fortlaufenden Nummernkreise.
+
+        * **Löschung / Storno (Eingang):** Wird ein bereits verbuchter Beleg vom Nutzer nachträglich wieder aus dem Eingangsjournal gelöscht bzw. storniert (Aktion: *Gelöscht*).
+
+    
+
+    Konfiguration und Export
+    
+        * **Konfigurierbarer Begründungszwang:** In den Einstellungen (Reiter Konfig.) können Sie die Option "GoBD: Begründungszwang bei Änderung/Löschung" aktivieren. Das Programm zwingt den Anwender dann bei jeder Datenänderung (Überschreiben) oder Löschung zur Eingabe eines Revisionsgrundes. Dieser Grund wird unveränderlich mit dem Log-Eintrag verknüpft. Dies dient bei Betriebsprüfungen als lückenloser Nachweis über die Historie.
+
+        * **Exportfunktion:** In den Reitern für Ausgang und Eingang lässt sich das zugehörige jahresbasierte Audit-Log jederzeit komfortabel über den Button "🛡️ Audit-Log PDF" als übersichtliche PDF-Tabelle für den Prüfer generieren.
+
+    
+
+    Zur Erfüllung der GoBD wird *zusätzlich* empfohlen, die generierten Verzeichnisse (`rchn` für den Eingang und `are` für den Ausgang) automatisch in einen **WORM-Onlinespeicher** (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.
 
     ## 18. GitHub & Updates
 

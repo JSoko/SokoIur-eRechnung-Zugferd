@@ -1,15 +1,116 @@
 # Changelog – SokoIur eRechnung
 
-    **Aktuelle Version: 2.000206**
+    **Aktuelle Version: 2.000227**
+
+  
+    ## Version 2.000227 (November 2026)
+
+    **Umfassendes Architektur-Update (Under the Hood)**
+
+    Das komplette Programm wurde nach dem *Single Responsibility Principle* modularisiert, um die Wartbarkeit, Stabilität und zukünftige Erweiterbarkeit zu sichern. Der ehemals monolithische Code ist nun in saubere, spezialisierte Einzeldateien unterteilt:
+    
+    ### ✨ 1. Daten & Kernfunktionen
 
     
-    ## Version 2.00206
+        * **config.py:** Zentrale Verwaltung aller Pfade, Konstanten und Einstellungen.
 
-    ### ✨ Neue Funktionen, Verbesserungen & Datensicherheit
+        * **crud.py:** (Create, Read, Update, Delete) – Zentrales Modul für alle Lese- und Schreibzugriffe auf die CSV-Datenbanken und lokale Dateien.
+
+        * **utils.py:** Übergreifende Hilfsfunktionen und Formatierer (z.B. Datums- und Zahlenberechnung).
+
+        * **audit.py:** Zentrale Protokollierung (GoBD-Compliance).
+
+    
+
+    ### ✨ 2. PDF & XML Engine (Geschäftslogik)
+
+    
+        * **pdf_builder.py:** Ausschließlich für das optische Zeichnen des PDF-Layouts zuständig (ReportLab).
+
+        * **xml_processor.py:** Generiert strikt die maschinenlesbaren XML-Strukturen nach EN 16931 (ZUGFeRD/XRechnung).
+
+        * **pdf_zugferd.py:** Fungiert nun als "Dirigent", der das optische Layout und die XML-Daten zusammenführt und die fertige e-Rechnung packt.
+
+    
+
+    ### ✨ 3. Benutzeroberfläche (GUI)
+
+    Die riesige Hauptdatei wurde aufgelöst. Jeder Reiter der Oberfläche hat nun seine eigene, übersichtliche Datei:
+
+    
+        * **gui_utils.py:** Allgemeine grafische Werkzeuge (z.B. Hover-Texte / Tooltips).
+
+        * **tab_manuell.py:** Steuert den Reiter "Erstellen" (Manuelle Rechnungseingabe).
+
+        * **tab_erfassen.py:** Steuert den Reiter "Erfassen" (Eingangsrechnungen verarbeiten).
+
+        * **tab_auswertungen.py:** Steuert die Reiter "Ausgang" und "Eingang" (Journale und Auswertungen).
+
+        * **tab_einstellungen.py:** Steuert den Reiter "Konfig." (Einstellungen).
+
+        * **tab_hilfe.py:** Steuert den Reiter "Info & Hilfe".
+
+        * **updater.py:** Die reine Logik für die automatischen P2P- und Online-Updates.
+
+    
+    ## Version 2.000221
+
+    ### ✨ Bugfixes & Journale
+
+    
+        * **Korrektur bei Rechnungsänderungen:** Wenn eine Rechnung überschrieben wurde, entstand im Ausgangsjournal (`reYYYYMM.csv`) bisher fälschlicherweise ein doppelter Eintrag für dieselbe Rechnungsnummer. Das System überschreibt nun die alte Zeile im Journal sauber, sodass die Summenauswertungen und DATEV-Exporte korrekt bleiben. Die Historie der Änderung wird weiterhin lückenlos im GoBD Audit-Log erfasst.
+
+    
+    ### ✨ UI/UX-Verbesserungen
+
+    
+        * **Responsive Buttons in Auswertungen:** Ein Darstellungsproblem wurde behoben, bei dem die zahlreichen neuen Export-Buttons in den Reitern für Ausgangs- und Eingangsjournale auf schmalen Bildschirmen rechts abgeschnitten wurden. Die Buttons ordnen sich nun flexibel in einem mehrzeiligen Raster (2x2) an und skalieren sicher mit der Fensterbreite.
+
+        * **Pfad-Ansicht erweitert:** In den Einstellungen ("Aktive Pfade der aktuellen Firma") wurde der Speicherort für das GoBD-Audit-Log ergänzt. Zusätzlich verfügt nun jeder dort gelistete Pfad über einen direkten Explorer-Button (📂), mit dem sich das jeweilige Windows-Verzeichnis komfortabel per Klick öffnen lässt.
+
+    
+    ### ✨ GoBD-Konformität & Audit-Log
+
+    
+        * **Audit-Log Duplikate behoben:** Ein Fehler wurde korrigiert, bei dem die Rechnungserstellung aus der Benutzeroberfläche heraus fälschlicherweise einen zweiten Protokolleintrag der Hintergrund-Engine erzeugte. Das System trennt beim Schreiben des GoBD Audit-Logs nun lückenlos und überschneidungsfrei zwischen den drei Startmodi: reguläre GUI (`GUI`), Fremdaufruf mit manueller Nachbearbeitung (`CLI (--edit)`) und vollautomatische Hintergrundgenerierung (`CLI (--auto)`).
+
+        * **Audit-Log als PDF exportieren:** In den Auswertungs-Reitern (Ausgang und Eingang) wurde jeweils ein neuer Button ("🛡️ Audit-Log PDF") integriert. Damit lässt sich das im Hintergrund geschriebene GoBD-Revisionsprotokoll auf Knopfdruck als sauberes, tabellarisches Querformat-PDF für den Wirtschaftsprüfer oder das Finanzamt generieren und anzeigen.
+
+        * **Automatisches Audit-Log:** Zur Einhaltung der gesetzlichen Vorschriften (Nachvollziehbarkeit und Unveränderbarkeit gemäß GoBD) erstellt das Programm nun für jede Firma jahresbasierte Audit-Logs getrennt für Ein- und Ausgangsrechnungen.
+
+        * **Nachweis der Arbeitsplätze:** Das Log erfasst transparent, von welchem PC aus und über welchen Modus (GUI, --edit oder --auto) eine Rechnung erstellt, geändert oder gelöscht wurde.
+
+        * **Konfigurierbarer Begründungszwang:** In den Einstellungen lässt sich nun ein Begründungszwang aktivieren. Anwender müssen bei der Löschung oder Modifikation einer bestehenden Rechnung einen Revisionsgrund eintragen, der revisionssicher in das Log geschrieben wird.
+
+    
+    ### ✨ Netzwerk & Updates
+
+    
+        * **Optimierter P2P-Update-Prozess:** Wenn das Programm auf ein Update prüft, wird nun *zuerst* das verbundene Netzwerklaufwerk abgefragt. Liegt dort bereits eine aktualisierte Version bereit (z. B. weil ein anderer Arbeitsplatz das Update bereits durchgeführt hat), wird diese sofort verwendet. Das Programm verbindet sich nur noch dann mit dem Online-Server (erech.6078.de), wenn im lokalen Netz kein neueres Update existiert, was den Traffic drastisch reduziert und den Vorgang stark beschleunigt.
+
+        * **Automatische Update-Verteilung (P2P-Ansatz):** Wenn das Programm auf einem Arbeitsplatz gestartet wird und die ausführbare Datei neuer ist als die im zentralen Netzwerkordner hinterlegte Update-Datei (`SokoIur_eRechnung_Update.exe`), wird diese nun automatisch aktualisiert. So können manuell eingespielte Updates von einem Client automatisch an alle anderen Arbeitsplätze im Netzwerk verteilt werden.
+
+    
+    ### 📚 Handbuch & Dokumentation
+
+    
+        * **Erweiterung der GoBD-Dokumentation:** Das Administratorhandbuch (Kapitel 17) wurde um eine detaillierte Aufschlüsselung erweitert, in der genau dokumentiert ist, welche Aktionen (Neu, Geändert, Gelöscht) und welche Modi (GUI vs. CLI) zu einem Eintrag im GoBD Audit-Log führen.
+
+    
+    ## Version 2.000206
+
+    ### ✨ Neue Funktionen & Datensicherheit
 
     
         * **Firmendaten Backup & Restore:** Im Reiter "Konfig." lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.
 
+    
+
+    ## Version 2.000227
+
+    ### ✨ Neue Funktionen & Verbesserungen
+
+    
         * **Testrechnung-Button:** In der Eingabemaske kann nun eine Vorschau-PDF (Testrechnung) erstellt werden. Es wird keine Rechnungsnummer vergeben, kein Journaleintrag erzeugt und das Programm bleibt für weitere Korrekturen geöffnet.
 
     
