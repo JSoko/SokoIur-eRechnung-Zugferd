@@ -6,6 +6,8 @@ Logik und Aufbau des Reiters "Erstellen" (Manuelle Rechnungseingabe).
 import os
 import re
 import csv
+import urllib.parse
+import webbrowser
 from datetime import datetime, timedelta
 import customtkinter as ctk
 import tkinter as tk
@@ -17,9 +19,120 @@ from utils import *
 from crud import *
 from audit import write_audit_log
 from gui_utils import create_tooltip
-from pdf_zugferd import run_auto_generation
 
-class TabManuellMixin:
+class TabManuellMixin:  
+    def send_invoice_email(self):
+        """Zentrale Methode für den E-Mail-Versand nach erfolgreicher PDF-Erstellung."""
+        if not self.chk_email_versand.get():
+            return
+            
+        import subprocess
+        import urllib.parse
+        buyer_endpoint = self.entry_k_endpoint.get().strip()
+        if not buyer_endpoint or '@' not in buyer_endpoint:
+            return
+            
+        try:
+            r_nr = self.entry_r_nr.get().strip()
+            az_val = self.entry_az.get().strip()
+            k_az_val = self.entry_k_az.get().strip()
+            
+            betreff_teile = []
+            if az_val: betreff_teile.append(f"Unser Zeichen: {az_val}")
+            if k_az_val: betreff_teile.append(f"Ihr Zeichen: {k_az_val}")
+            betreff_teile.append(f"Rechnung Nr. {r_nr}")
+            
+            subject = " - ".join(betreff_teile)
+            body = (
+                "Sehr geehrte Damen und Herren,\n\n"
+                "anbei übersenden wir e-Rechnung mit der Bitte um Ausgleich."
+            )
+            
+            # Pfad zur frisch generierten PDF-Datei im Jahresordner ermitteln
+            akt_jahr = self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+            ausgabe_basis = self.p_config.get('ausgabe_ordner', '')
+            
+            mögliche_pfade = [
+                os.path.join(ausgabe_basis, akt_jahr, f"Rechnung_{r_nr}.pdf"),
+                os.path.join(ausgabe_basis, akt_jahr, f"Rechnung_{r_nr}_Begleit.pdf"),
+                os.path.join(ausgabe_basis, f"Rechnung_{r_nr}.pdf"),
+                os.path.join(ausgabe_basis, f"Rechnung_{r_nr}_Begleit.pdf")
+            ]
+            
+            abs_pdf = ""
+            for pfad_kandidat in mögliche_pfade:
+                if os.path.exists(pfad_kandidat):
+                    abs_pdf = os.path.abspath(pfad_kandidat)
+                    break
+                    
+            if not abs_pdf:
+                print("E-Mail-Versand abgebrochen: PDF-Datei wurde im Ausgabeordner nicht gefunden.")
+                return
+
+            methode = self.p_config.get("email_versand_methode", "Keine")
+            gesendet = False
+
+            if methode == "Outlook":
+                try:
+                    import win32com.client as win32
+                    outlook = win32.Dispatch('outlook.application')
+                    mail = outlook.CreateItem(0)
+                    mail.To = buyer_endpoint
+                    mail.Subject = subject
+                    mail.Body = body
+                    if os.path.exists(abs_pdf):
+                        mail.Attachments.Add(abs_pdf)
+                    mail.Display(True)
+                    gesendet = True
+                except Exception as e:
+                    print(f"Outlook COM Fehler: {e}")
+
+            elif methode == "Thunderbird":
+                        try:
+                            # 1. Body und Footer aus den Firmeneinstellungen zusammenführen
+                            konfig_body = self.p_config.get("email_body", "Sehr geehrte Damen und Herren,\n\nanbei übersenden wir e-Rechnung mit der Bitte um Ausgleich.")
+                            konfig_footer = self.p_config.get("email_footer", "").strip()
+                            
+                            body = konfig_body
+                            if konfig_footer:
+                                body += f"\n\n{konfig_footer}"
+
+                            # 2. Thunderbird-Pfad ermitteln
+                            tb_executable = self.p_config.get("thunderbird_pfad", "").strip().strip('"\'')
+                            if not tb_executable or not os.path.exists(tb_executable):
+                                for p in [
+                                    r"C:\Program Files\Mozilla Thunderbird\thunderbird.exe",
+                                    r"C:\Program Files (x86)\Mozilla Thunderbird\thunderbird.exe",
+                                    os.path.expandvars(r"%LOCALAPPDATA%\Programs\Mozilla Thunderbird\thunderbird.exe")
+                                ]:
+                                    if os.path.exists(p):
+                                        tb_executable = p
+                                        break
+
+                            if tb_executable and os.path.exists(tb_executable) and os.path.exists(abs_pdf):
+                                safe_pdf = os.path.abspath(abs_pdf)
+                                
+                                # 3. Übergabe als saubere Parameter-Liste (ohne shell=True).
+                                # Das verhindert, dass Zeilenumbrüche den Befehl abbrechen oder Pfade verschluckt werden!
+                                compose_arg = f"to='{buyer_endpoint}',subject='{subject}',body='{body}',attachment='{safe_pdf}'"
+                                
+                                subprocess.Popen([tb_executable, "-compose", compose_arg])
+                                gesendet = True
+                            else:
+                                os.startfile(abs_pdf)
+                                gesendet = True
+                        except Exception as e:
+                            print(f"Thunderbird Compose Fehler: {e}")
+                            gesendet = True
+
+            # Fallback falls kein Client greift
+            if not gesendet:
+                mailto_url = f"mailto:{urllib.parse.quote(buyer_endpoint)}?subject={urllib.parse.quote(subject)}&body={urllib.parse.quote(body)}"
+                webbrowser.open(mailto_url)
+                if os.path.exists(abs_pdf):
+                    subprocess.Popen(['explorer', '/select,', abs_pdf])
+        except Exception as e:
+            print(f"Fehler beim E-Mail-Versand: {e}")
     def on_main_text_vorlage_change(self, wahl):
         vorlagen = self.p_config.get("text_vorlagen", {})
         if wahl in vorlagen:
@@ -38,6 +151,7 @@ class TabManuellMixin:
             speichere_textdatei(self.p_config.get('vor_gruss_csv'), getattr(self, 'vor_gruss_text', ''))
             speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)            
             speichere_config(self.config)
+
     def open_date_picker(self, entry_widget):
         dialog = ctk.CTkToplevel(self)
         dialog.title("Leistungszeitraum wählen")
@@ -80,7 +194,6 @@ class TabManuellMixin:
         self.create_button(dialog, text="Übernehmen", command=save_date).pack(pady=10)
 
     def choose_and_load_csv(self):
-        # Den arecsv-Ordner des aktuellen Jahres der aktiven Firma ermitteln
         akt_jahr = self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))
         are_dir = self.p_config.get("ausgabe_ordner", "")
         
@@ -90,7 +203,6 @@ class TabManuellMixin:
             start_dir = os.path.dirname(self.p_config.get('rechnung_csv', ''))
             
         if not os.path.exists(start_dir):
-            # Falls das Jahresverzeichnis noch nicht existiert, falle aufs Firmen-Root zurück
             start_dir = os.path.dirname(self.p_config.get('rechnung_csv', ''))
             if not os.path.exists(start_dir):
                 start_dir = os.getcwd()
@@ -101,10 +213,8 @@ class TabManuellMixin:
             filetypes=[("CSV-Dateien", "*.csv*"), ("Alle Dateien", "*.*")]
         )
         if pfad: 
-            ensure_utf8_csv(pfad)  # <--- HIER: Konvertierung durchführen, falls nötig
+            ensure_utf8_csv(pfad)
             self.load_manual_invoice(is_button_click=True, custom_path=pfad)        
-        
-
 
     def open_kunde_search(self, entry_widget=None, mode="name"):
         dialog = ctk.CTkToplevel(self)
@@ -120,7 +230,6 @@ class TabManuellMixin:
         e_search = ctk.CTkEntry(f_search, placeholder_text="Name, Nr. oder Ort...")
         e_search.pack(side="left", fill="x", expand=True, padx=10)
         
-        # Vorhandenen Text übernehmen
         if entry_widget:
             bisheriger_text = entry_widget.get().strip()
             if bisheriger_text:
@@ -138,11 +247,11 @@ class TabManuellMixin:
             self.entry_k_endpoint.delete(0, 'end'); self.entry_k_endpoint.insert(0, k.get('Endpoint', k.get('Email', '')))
             self.entry_k_endpoint_scheme.delete(0, 'end'); self.entry_k_endpoint_scheme.insert(0, k.get('EndpointScheme', ''))
             dialog.destroy()
+            self.check_live_validation()
 
         current_results = []
 
         def update_list(event=None):
-            # Ignoriere reine Navigations-Tasten beim Tippen
             if event and event.keysym in ['Up', 'Down', 'Return', 'Escape']:
                 return
                 
@@ -173,27 +282,18 @@ class TabManuellMixin:
             if len(results) > 100:
                 ctk.CTkLabel(scroll, text=f"... und {len(results)-100} weitere. Bitte Suchbegriff verfeinern.", text_color="gray").pack(pady=5)
                 
-            # --- Tastensteuerung für die Treffer-Buttons ---
             for i, b in enumerate(btn_list):
-                # Pfeil Runter springt zum nächsten Button
                 if i < len(btn_list) - 1:
                     b.bind('<Down>', lambda e, next_b=btn_list[i+1]: next_b.focus_set())
-                # Pfeil Hoch springt nach oben, beim ersten Button geht es zurück ins Suchfeld
                 if i > 0:
                     b.bind('<Up>', lambda e, prev_b=btn_list[i-1]: prev_b.focus_set())
                 else:
                     b.bind('<Up>', lambda e: e_search.focus_set())
-                # Enter übernimmt den fokussierten Button
                 b.bind('<Return>', lambda e, k_obj=current_results[i]: select_kunde(k_obj))
 
-        # Live-Suche bei jedem Tastendruck
         e_search.bind('<KeyRelease>', update_list)
-        
-        # --- Globale Tastensteuerung ---
-        # ESC schließt das Fenster immer sofort ohne Übernahme
         dialog.bind('<Escape>', lambda e: dialog.destroy())
         
-        # Pfeil Runter im Suchfeld springt sofort zum ersten Treffer in der Liste
         def focus_first_result(event):
             children = scroll.winfo_children()
             for w in children:
@@ -202,39 +302,43 @@ class TabManuellMixin:
                     break
         e_search.bind('<Down>', focus_first_result)
         
-        # Enter: Wenn es exakt 1 Treffer gibt, wird dieser sofort übernommen!
         def on_enter_search(event):
             if len(current_results) == 1:
                 select_kunde(current_results[0])
                 
         e_search.bind('<Return>', on_enter_search)
-        dialog.bind('<Return>', on_enter_search)  # NEU: Funktioniert jetzt auch, wenn das Fenster selbst den Fokus hat
+        dialog.bind('<Return>', on_enter_search)
 
-        # Initiale Liste laden
         update_list()
-        
-        # NEU: 50 Millisekunden warten, bis das Fenster gezeichnet ist, dann erst Fokus setzen
         dialog.after(50, e_search.focus_set)
         
     def update_totals_ui(self):
-        g_netto = g_steuer = 0.0
-        steuern = {}
-        for p in self.positionen_liste:
-            m = safe_float(p.get('Menge', 1)); pr = safe_float(p.get('EinzelpreisNetto', 0)); st = safe_float(p.get('Steuersatz', 19))
-            n = m * pr; s = n * (st / 100.0)
-            g_netto += n; g_steuer += s
-            if st > 0: steuern[st] = steuern.get(st, 0.0) + s
+        g_netto, g_steuer, g_brutto, steuer_gruppen = berechne_summen(self.positionen_liste)
         
         t = f"Netto Gesamt: {f_curr(g_netto)}\n"
-        for st, s_wert in sorted(steuern.items()): t += f"+ {f_num(st)}% MwSt: {f_curr(s_wert)}\n"
-        t += f"Brutto Gesamt: {f_curr(g_netto + g_steuer)}"
+        for st, n_sum in sorted(steuer_gruppen.items()):
+            s_wert = round_kaufm(n_sum * (st / 100.0))
+            t += f"+ {f_num(st)}% MwSt: {f_curr(s_wert)}\n"
+            
+        t += f"Brutto Gesamt: {f_curr(g_brutto)}"
         self.lbl_totals.configure(text=t)
-
+    def on_rc_change(self, wahl):
+        if wahl in ("EU", "Drittland") and self.positionen_liste:
+            if messagebox.askyesno("Steuersatz anpassen", f"Reverse Charge ({wahl}) gewählt.\nSollen alle vorhandenen Positionen auf 0% USt. umgestellt werden?"):
+                for p in self.positionen_liste:
+                    p['Steuersatz'] = '0'
+                self.refresh_pos_list()
+        self.check_live_validation()
     def build_manuell_tab(self):
+        # Undo/Redo Stacks initialisieren
+        if not hasattr(self, 'undo_stack'): self.undo_stack = []
+        if not hasattr(self, 'redo_stack'): self.redo_stack = []
+        if not hasattr(self, '_is_restoring'): self._is_restoring = False
+
         left_frame = ctk.CTkScrollableFrame(self.tab_manuell, width=350); left_frame.pack(side="left", fill="y", padx=10, pady=10)
         right_frame = ctk.CTkFrame(self.tab_manuell); right_frame.pack(side="right", fill="both", expand=True, padx=10, pady=10)
         
-        btn_load = self.create_button(left_frame, text="📥 Letzte Rechnungs-CSV laden (Alt+L)", command=lambda: self.load_manual_invoice(is_button_click=True), fg_color="#444", hover_color="#666")
+        btn_load = self.create_button(left_frame, text="📄 Letzte Rechnungs-CSV laden (Alt+L)", command=lambda: self.load_manual_invoice(is_button_click=True), fg_color="#444", hover_color="#666")
         btn_load.pack(pady=(10, 5), padx=10, fill="x")
         create_tooltip(btn_load, "Lädt den zuletzt bearbeiteten Rechnungsentwurf der aktuellen Firma.")
         
@@ -253,19 +357,36 @@ class TabManuellMixin:
         self.entry_k_nr = self.create_input_with_button(left_frame, "Kunden-Nr. (opt.)", "🔍", lambda e: self.open_kunde_search(e, mode="nr"))
         self.entry_k_nr.bind('<Return>', lambda e: self.open_kunde_search(self.entry_k_nr, mode="nr"))
         self.entry_az = self.create_input(left_frame, "Unser Zeichen (opt.)")
-        self.entry_k_az = self.create_input(left_frame, "Ihr Zeichen (opt.)")
-        self.entry_lz_kopf = self.create_input_with_button(left_frame, "Lz. Kopf (opt.)", "📅", self.open_date_picker)
+        self.entry_k_az = self.create_input(left_frame, "Ihr Zeichen")
+        self.entry_lz_kopf = self.create_input_with_button(left_frame, "Leistungszeitraum", "📅", self.open_date_picker)
         self.entry_k_name = self.create_input_with_button(left_frame, "Kunde Name", "🔍", lambda e: self.open_kunde_search(e, mode="name"))
         self.entry_k_name.bind('<Return>', lambda e: self.open_kunde_search(self.entry_k_name, mode="name"))
         self.entry_k_strasse = self.create_input(left_frame, "Kunde Straße")
         self.entry_k_plz_ort = self.create_input(left_frame, "PLZ Ort")
+        self.entry_k_land = self.create_input(left_frame, "Land (z.B. DE, AT, US)")
+        self.entry_k_land.insert(0, "DE")
+        self.combo_rc = self.create_input(
+            left_frame, "Reverse Charge", is_combo=True,
+            combo_values=["Nein", "EU", "Drittland"], command=self.on_rc_change
+        )
+        self.combo_rc.set("Nein")
+        self.entry_k_ustid = self.create_input(left_frame, "Kunde USt-IdNr.")
         self.entry_k_endpoint = self.create_input(left_frame, "E-Mail / Leitweg-ID")
         self.entry_k_endpoint_scheme = self.create_input(left_frame, "Endpoint-Schema (z. B. 0204)")
         
+        # Live-Validierung an Eingabefelder binden (inkl. E-Mail / Leitweg-ID)
+        for entry_widget in (self.entry_r_nr, self.entry_r_datum, self.entry_f_datum, self.entry_k_name, self.entry_k_strasse, self.entry_k_plz_ort, self.entry_k_land, self.entry_k_ustid, self.entry_k_endpoint, self.entry_k_az, self.entry_lz_kopf):
+            if hasattr(entry_widget, 'bind'):
+                entry_widget.bind('<KeyRelease>', self.check_live_validation)
+        
+        # Kunden speichern & E-Mailversand Checkboxen
         self.chk_kunde_speichern = ctk.CTkCheckBox(left_frame, text="Kunde speichern/updaten"); self.chk_kunde_speichern.pack(pady=3, padx=10, anchor="w")
         if self.p_config.get("keep_kunde_speichern", False): self.chk_kunde_speichern.select()
+
+        self.chk_email_versand = ctk.CTkCheckBox(left_frame, text="E-Mailversand anstoßen"); self.chk_email_versand.pack(pady=3, padx=10, anchor="w")
+        if self.p_config.get("keep_email_versand", False): self.chk_email_versand.select()
+        create_tooltip(self.chk_email_versand, "Öffnet nach der Rechnungserstellung automatisch Ihr E-Mail-Programm\nmit vorausgefüllter Empfängeradresse, Betreff und Text.")
         
-        # --- NEU: Vorlagen-Schnellauswahl & Texte-Button ---
         f_txt_vorlage = ctk.CTkFrame(left_frame, fg_color="transparent")
         f_txt_vorlage.pack(fill="x", padx=10, pady=(10, 2))
         ctk.CTkLabel(f_txt_vorlage, text="Textvorlage:", width=120, anchor="w").pack(side="left")
@@ -274,16 +395,22 @@ class TabManuellMixin:
         self.combo_text_vorlage_main.set(self.p_config.get("aktive_text_vorlage", "Standard"))
         self.combo_text_vorlage_main.pack(side="left", fill="x", expand=True, padx=(10, 0))
 
-        self.create_button(left_frame, text="📝 Texte & Vorlagen bearbeiten (Alt+T)", command=self.open_texte_popup).pack(pady=(5, 12), padx=10, fill="x")
+        self.create_button(left_frame, text="📄 Texte & Vorlagen bearbeiten (Alt+T)", command=self.open_texte_popup).pack(pady=(5, 12), padx=10, fill="x")
         ctk.CTkFrame(left_frame, height=2, fg_color="#555").pack(fill="x", pady=10, padx=10)
         self.lbl_totals = ctk.CTkLabel(left_frame, text="Netto Gesamt: 0,00 €\nBrutto Gesamt: 0,00 €", justify="left", font=("Helvetica", 14, "bold"))
         self.lbl_totals.pack(pady=5, padx=15, anchor="w")
         
+        # Live-Fehleranzeige unter den Summen
+        self.lbl_live_errors = ctk.CTkLabel(left_frame, text="", justify="left", font=("Helvetica", 11, "bold"), text_color="#e06666")
+        self.lbl_live_errors.pack(pady=(5, 10), padx=15, anchor="w")
+        
+        self.after(100, self.check_live_validation)
+
         ctk.CTkLabel(right_frame, text="Positionen", font=("Helvetica", 14, "bold")).pack(pady=10)
         self.pos_scroll = ctk.CTkScrollableFrame(right_frame); self.pos_scroll.pack(fill="both", expand=True, padx=10, pady=5)
         
         self.create_button(right_frame, text="+ Position hinzufügen (+)", command=self.open_pos_popup).pack(pady=10)
-        # Frame für geteilte Buttons (Test, Papier & XRechnung) ---
+        
         f_split_btns = ctk.CTkFrame(right_frame, fg_color="transparent")
         f_split_btns.pack(pady=5, fill="x", padx=20)
         
@@ -303,6 +430,20 @@ class TabManuellMixin:
         btn_zugferd.pack(pady=5, fill="x", padx=20)
         create_tooltip(btn_zugferd, "Erzeugt eine ZUGFeRD Hybrid-PDF (PDF inkl. unsichtbarem XML).\nIdeal für Geschäftskunden (B2B) per E-Mail.")
 
+        # Historie-Tracking an Eingabefelder binden
+        kopf_felder = [
+            self.entry_r_nr, self.entry_r_datum, self.entry_f_datum, 
+            self.entry_k_nr, self.entry_az, self.entry_k_az, 
+            self.entry_lz_kopf, self.entry_k_strasse, 
+            self.entry_k_plz_ort, self.entry_k_endpoint, self.entry_k_endpoint_scheme
+        ]
+        for entry in kopf_felder:
+            if hasattr(entry, 'bind'):
+                entry.bind('<FocusOut>', lambda e: self.save_state_to_history())
+                entry.bind('<Return>', lambda e: self.save_state_to_history())
+        if hasattr(self.entry_k_name, 'bind'):
+            self.entry_k_name.bind('<FocusOut>', lambda e: self.save_state_to_history())
+
     def load_manual_invoice(self, is_button_click=False, silent=False, custom_path=None):
         rech_pfad = custom_path if custom_path else self.p_config.get('rechnung_csv', '')
         if not os.path.exists(rech_pfad): 
@@ -318,12 +459,10 @@ class TabManuellMixin:
                 kopf = reader[0]
                 geladene_nr = kopf.get('Rechnungsnummer', '')
 
-                # Überschreibt die Nummer aus der CSV mit dem CLI-Parameter (--renr), falls vorhanden
                 if not is_button_click and self.config.get("cli_renr"):
                     geladene_nr = self.config.get("cli_renr")
 
                 ziel_nr = geladene_nr
-                
                 
                 if is_button_click and geladene_nr:
                     if messagebox.askyesno("Rechnungsnummer", f"Die Rechnungsnummer {geladene_nr} wurde geladen.\nUm eins erhöhen (Ja) oder beibehalten (Nein)?"):
@@ -344,14 +483,13 @@ class TabManuellMixin:
                 self.entry_k_plz_ort.delete(0, 'end'); self.entry_k_plz_ort.insert(0, f"{kopf.get('KundePLZ', '')} {kopf.get('KundeOrt', '')}".strip())
                 self.entry_k_endpoint.delete(0, 'end'); self.entry_k_endpoint.insert(0, kopf.get('KundeEndpoint', kopf.get('KundeEmail', '')))
                 self.entry_k_endpoint_scheme.delete(0, 'end'); self.entry_k_endpoint_scheme.insert(0, kopf.get('KundeEndpointScheme', ''))
+                self.entry_k_land.delete(0, 'end'); self.entry_k_land.insert(0, kopf.get('KundeLand', 'DE') or 'DE')
+                self.combo_rc.set(kopf.get('ReverseCharge', 'Nein') or 'Nein')
+                self.entry_k_ustid.delete(0, 'end'); self.entry_k_ustid.insert(0, kopf.get('KundeUStId', ''))
                 
                 self.positionen_liste = reader
             
             self.zusatz_dict = {}
-            
-            # NEU: Anmerkungen nur laden, wenn die reguläre Firmen-Rechnung geladen wird
-            # ODER wenn das Fremdprogramm explizit eine Zusatzdatei per CLI übergeben hat.
-            # Bei --edit mit einer temporären Rechnung (custom_path) bleiben die alten Anmerkungen leer.
             load_zusatz = True
             if custom_path and not self.config.get("cli_override_zusatz_csv"):
                 load_zusatz = False
@@ -369,6 +507,7 @@ class TabManuellMixin:
             self.vor_gruss_text = lade_textdatei(self.p_config.get('vor_gruss_csv', ''))
             self.gruss_text = lade_textdatei(self.p_config.get('gruss_csv', ''))
             self.refresh_pos_list()
+            self.check_live_validation()
         except Exception as e:
             if not silent: messagebox.showerror("Fehler", f"Fehler beim Laden: {e}")
 
@@ -377,7 +516,7 @@ class TabManuellMixin:
         dialog.title("Texte & Textvorlagen bearbeiten")
         self.center_window(dialog, 680, 720)
         dialog.transient(self)
-        dialog.grab_set() 
+        dialog.grab_set()
         
         if "text_vorlagen" not in self.p_config or not isinstance(self.p_config["text_vorlagen"], dict):
             self.p_config["text_vorlagen"] = {}
@@ -391,7 +530,6 @@ class TabManuellMixin:
                 "rechnungsvermerk": self.p_config.get("rechnungsvermerk_default", "")
             }
 
-        # 1. Kopfbereich für die Vorlagenverwaltung (Dropdown + Buttons)
         f_top = ctk.CTkFrame(dialog, corner_radius=8)
         f_top.pack(side="top", fill="x", padx=15, pady=(12, 5))
         
@@ -496,15 +634,30 @@ class TabManuellMixin:
         self.create_button(f_vorlage_row2, text="➕ Als neue Vorlage...", width=155, fg_color="#289102", hover_color="#1e6e01", command=save_new_vorlage).pack(side="left", padx=5)
         self.create_button(f_vorlage_row2, text="🗑 Löschen", width=90, fg_color="#b30000", hover_color="#800000", command=delete_vorlage).pack(side="right", padx=(5, 0))
 
-        # 2. Feststehender Bereich unten für den Übernehmen-Button
         f_btn = ctk.CTkFrame(dialog, fg_color="transparent")
         f_btn.pack(side="bottom", fill="x", pady=10)
         
-        # 3. Scrollbarer Bereich für die Textfelder (ohne "Merken"-Checkboxen)
         scroll = ctk.CTkScrollableFrame(dialog)
         scroll.pack(fill="both", expand=True, padx=15, pady=5)
         
+        # === HIER DIE NEUE INFO-BOX EINFÜGEN ===
+        info_frame = ctk.CTkFrame(scroll, fg_color="#f8fbff", border_width=1, border_color="#6fa8dc", corner_radius=6)
+        info_frame.pack(fill="x", padx=20, pady=(5, 15))
+        
+        info_text = (
+            "💡 Tipps zur Textformatierung & Umbrüchen:\n"
+            "• Absätze: Nutzen Sie die [Enter]-Taste für einen neuen Absatz.\n"
+            "• Harter Zeilenumbruch: Schreiben Sie <br/> für einen Umbruch ohne Absatzabstand.\n"
+            "• Bedingtes Trennzeichen: Nutzen Sie &shy; (z.B. Rechnungs&shy;nummer) für weiche Umbrüche,\n"
+            "  die von der Text-Engine nur bei Bedarf am Zeilenende getrennt werden.\n"
+            "• Textformatierung: <b>Fett</b> oder <i>Kursiv</i> sind über HTML-Tags möglich.\n"
+            "• Blocksatz: Fließtexte werden automatisch im Blocksatz formatiert."
+        )
+        ctk.CTkLabel(info_frame, text=info_text, justify="left", font=("Helvetica", 11), text_color="#1f538d").pack(anchor="w", padx=12, pady=8)
+        # =======================================
+
         ctk.CTkLabel(scroll, text="Zentrierter Header (über Rechnungs-Nr.):").pack(anchor="w", padx=20, pady=(8, 0))
+        t_head = ctk.CTkTextbox(scroll, height=55); t_head.pack(fill="x", padx=20, pady=(2, 8)); t_head.insert("0.0", self.header_text)
         t_head = ctk.CTkTextbox(scroll, height=55); t_head.pack(fill="x", padx=20, pady=(2, 8)); t_head.insert("0.0", self.header_text)
         
         ctk.CTkLabel(scroll, text="Einleitung (vor Positionen):").pack(anchor="w", padx=20, pady=(4, 0))
@@ -539,7 +692,6 @@ class TabManuellMixin:
             self.p_config["aktive_text_vorlage"] = akt_name
             self.aktive_text_vorlage = akt_name
 
-            # Arbeitsdateien für die aktuelle PDF-Erstellung schreiben
             speichere_textdatei(self.p_config.get('header_csv'), self.header_text)
             speichere_textdatei(self.p_config.get('einleitung_csv'), self.einleitung_text)
             speichere_textdatei(self.p_config.get('vor_gruss_csv'), self.vor_gruss_text)
@@ -565,7 +717,8 @@ class TabManuellMixin:
                 f"{briefbogen_pfad}\n\n"
                 f"Weitere Hinweise und Formatierungsanforderungen finden Sie im Handbuch unter 'Infos'."
             )
-            return  # Bricht das Öffnen des Positions-Popups ab
+            return
+            
         dialog = ctk.CTkToplevel(self); dialog.title("Position bearbeiten" if edit_index is not None else "Neue Position")
         self.center_window(dialog, 600, 390); dialog.transient(self); dialog.grab_set() 
         
@@ -617,6 +770,8 @@ class TabManuellMixin:
             
             self.p_config["letzte_einheit"] = e_einheit.get(); speichere_config(self.config)
             
+            self.save_state_to_history() # Zustand vor Positionsänderung speichern
+            
             pos_nr = str(edit_index + 1) if edit_index is not None else str(len(self.positionen_liste) + 1)
             new_data = {
                 'PosNr': pos_nr, 'Menge': e_menge.get() or "1", 'Einheit': einheit_code,
@@ -637,6 +792,7 @@ class TabManuellMixin:
 
     def delete_pos(self, index):
         if messagebox.askyesno("Löschen", "Position wirklich löschen?"):
+            self.save_state_to_history()  # Zustand vor dem Löschen sichern
             del self.positionen_liste[index]
             new_zusatz = {'0': self.zusatz_dict['0']} if '0' in self.zusatz_dict else {}
             for i, p in enumerate(self.positionen_liste):
@@ -650,38 +806,159 @@ class TabManuellMixin:
         for idx, p in enumerate(self.positionen_liste):
             f = ctk.CTkFrame(self.pos_scroll); f.pack(fill="x", pady=2)
             self.create_button(f, text="🗑", width=30, fg_color="#b30000", hover_color="#800000", command=lambda i=idx: self.delete_pos(i)).pack(side="right", padx=5, pady=5)
-            self.create_button(f, text="✎", width=30, fg_color="#555", hover_color="#777", command=lambda i=idx: self.open_pos_popup(i)).pack(side="right", padx=5, pady=5)
+            self.create_button(f, text="✏️", width=30, fg_color="#555", hover_color="#777", command=lambda i=idx: self.open_pos_popup(i)).pack(side="right", padx=5, pady=5)
             code = p.get('Einheit', 'C62'); bez = p.get('Bezeichnung', '')
             if len(bez) > 40: bez = bez[:37] + "..."
             lbl_text = f"[{p.get('PosNr', '')}] {bez} | {f_num(safe_float(p.get('Menge', 1)))} {EINHEITEN_MAPPING.get(code, code)} | {f_curr(safe_float(p.get('EinzelpreisNetto', 0)))}"
             ctk.CTkLabel(f, text=lbl_text, anchor="w").pack(side="left", fill="x", expand=True, padx=10, pady=5)
         self.update_totals_ui()
 
+    def check_live_validation(self, *args):
+        if not hasattr(self, 'lbl_live_errors'):
+            return
+        
+        errors = []
+        r_nr = self.entry_r_nr.get().strip()
+        r_datum = self.entry_r_datum.get().strip()
+        f_datum = self.entry_f_datum.get().strip()
+        name = self.entry_k_name.get().strip()
+        strasse = self.entry_k_strasse.get().strip()
+        plz_ort = self.entry_k_plz_ort.get().strip()
+        endpoint = self.entry_k_endpoint.get().strip()
+        k_az = self.entry_k_az.get().strip() # NEU: Ihr Zeichen / Buyer Reference
+        
+        try:
+            default_border = ctk.ThemeManager.theme["CTkEntry"]["border_color"]
+        except Exception:
+            default_border = ["#979DA2", "#565B5E"]
+
+        # Rechnungs-Nr. prüfen
+        if not r_nr:
+            self.entry_r_nr.configure(border_color="red")
+            errors.append("• Rechnungs-Nr. fehlt")
+        else:
+            self.entry_r_nr.configure(border_color=default_border)
+
+        # Rechnungsdatum prüfen
+        try:
+            parsed_r = parse_flexible_date(r_datum)
+            datetime.strptime(parsed_r, "%Y-%m-%d")
+            self.entry_r_datum.configure(border_color=default_border)
+        except Exception:
+            self.entry_r_datum.configure(border_color="red")
+            errors.append("• Rechnungsdatum ungültig / fehlt")
+
+        # Fälligkeitsdatum prüfen
+        try:
+            parsed_f = parse_flexible_date(f_datum)
+            datetime.strptime(parsed_f, "%Y-%m-%d")
+            self.entry_f_datum.configure(border_color=default_border)
+        except Exception:
+            self.entry_f_datum.configure(border_color="red")
+            errors.append("• Fälligkeitsdatum ungültig / fehlt")
+
+        # Leistungszeitraum-Kopf prüfen (jetzt als Pflichtfeld)
+        lz_kopf = self.entry_lz_kopf.get().strip()
+        if not lz_kopf:
+            self.entry_lz_kopf.configure(border_color="red")
+            errors.append("• Leistungszeitraum fehlt")
+        else:
+            self.entry_lz_kopf.configure(border_color=default_border)
+
+        if not name:
+            self.entry_k_name.configure(border_color="red")
+            errors.append("• Kundenname fehlt")
+        else:
+            self.entry_k_name.configure(border_color=default_border)
+
+        if not strasse:
+            self.entry_k_strasse.configure(border_color="red")
+            errors.append("• Straße fehlt")
+        else:
+            self.entry_k_strasse.configure(border_color=default_border)
+
+        parts = plz_ort.split()
+        if not plz_ort or len(parts) < 2:
+            self.entry_k_plz_ort.configure(border_color="red")
+            if not plz_ort:
+                errors.append("• PLZ und Ort fehlen")
+            else:
+                errors.append("• PLZ/Ort unvollständig (Leerzeichen fehlt)")
+        else:
+            self.entry_k_plz_ort.configure(border_color=default_border)
+
+        if not endpoint:
+            self.entry_k_endpoint.configure(border_color="red")
+            errors.append("• E-Mail / Leitweg-ID fehlt (für E-Rechnung)")
+        else:
+            self.entry_k_endpoint.configure(border_color=default_border)
+
+        # NEU: Prüfung für 'Ihr Zeichen' (Buyer Reference / BT-10) wegen [BR-DE-15]
+        if not k_az:
+            self.entry_k_az.configure(border_color="red")
+            errors.append("• 'Ihr Zeichen' (Kunden-Aktenzeichen) fehlt")
+        else:
+            self.entry_k_az.configure(border_color=default_border)
+            
+        if errors:
+            self.lbl_live_errors.configure(text="⚠️ NOCH KORREKT AUSZUFÜLLEN:\n" + "\n".join(errors), text_color="#e06666")
+        else:
+            self.lbl_live_errors.configure(text="✅ Alle Pflichtfelder ausgefüllt", text_color="#289102")
+
     def save_manual_invoice(self, silent=False, require_buyer_endpoint=False):
-        # Vor dem Speichern sicherstellen, dass der Lock aktiv ist
-        if hasattr(self, 'check_and_handle_lock') and not self.check_and_handle_lock("📝 ERSTELLEN"):
+        if hasattr(self, 'check_and_handle_lock') and not self.check_and_handle_lock("📋 ERSTELLEN"):
             return False
         self.set_firm_lock()
+        
         if not self.positionen_liste: 
-            messagebox.showwarning("Fehler", "Bitte erfassen Sie zunächst Positionen!")
+            if not silent: 
+                messagebox.showwarning("Fehler", "Bitte erfassen Sie zunächst Positionen!")
             return False
-            
+
+        self.check_live_validation()
+        
+        r_nr = self.entry_r_nr.get().strip()
         r_datum = parse_flexible_date(self.entry_r_datum.get())
         f_datum = parse_flexible_date(self.entry_f_datum.get())
+        name = self.entry_k_name.get().strip()
+        strasse = self.entry_k_strasse.get().strip()
+        plz_ort = self.entry_k_plz_ort.get().strip()
+        parts = plz_ort.split()
+        endpoint = self.entry_k_endpoint.get().strip()
+        
+        # <-- HIER FRÜHZEITIG DEFINIEREN:
+        k_az = self.entry_k_az.get().strip()
         lz_kopf = parse_flexible_date_span(self.entry_lz_kopf.get())
+
+        has_date_error = False
         try:
             datetime.strptime(r_datum, "%Y-%m-%d")
             datetime.strptime(f_datum, "%Y-%m-%d")
         except ValueError:
-            messagebox.showwarning("Fehler", "Datumsangaben fehlerhaft!")
+            has_date_error = True
+
+        # Pflichtprüfung schlägt jetzt dank früher Definition nicht mehr fehl:
+        if not r_nr or not name or not strasse or not plz_ort or len(parts) < 2 or not k_az or not lz_kopf or has_date_error or (require_buyer_endpoint and not endpoint):
+            if not silent:
+                messagebox.showwarning(
+                    "Fehlende Pflichtdaten", 
+                    "Bitte füllen Sie alle rot markierten Pflichtfelder (inkl. 'Ihr Zeichen' und 'Lz. Kopf') korrekt aus."
+                )
             return False
-            
+
+        if not r_nr or not name or not strasse or not plz_ort or len(parts) < 2 or has_date_error or (require_buyer_endpoint and not endpoint):
+            if not silent:
+                messagebox.showwarning(
+                    "Fehlende Pflichtdaten", 
+                    "Bitte füllen Sie alle rot markierten Pflichtfelder und Datumsangaben korrekt aus."
+                )
+            return False
+
+        lz_kopf = parse_flexible_date_span(self.entry_lz_kopf.get())
         self.entry_r_datum.delete(0, 'end'); self.entry_r_datum.insert(0, r_datum)
         self.entry_f_datum.delete(0, 'end'); self.entry_f_datum.insert(0, f_datum)
         self.entry_lz_kopf.delete(0, 'end'); self.entry_lz_kopf.insert(0, lz_kopf)
-        r_nr = self.entry_r_nr.get().strip()
         
-        # --- PRÜFUNG AUF BEREITS EXISTIERENDE RECHNUNGSNUMMER ---
         rechnungs_csv_pfad = self.p_config.get('rechnung_csv', 'rechnung.csv')
         existierende_rechnungen = lade_rechnungen(rechnungs_csv_pfad)
         
@@ -716,7 +993,6 @@ class TabManuellMixin:
                 )
                 return False
             
-            # Audit-Log Begründung abfragen
             audit_bemerkung = ""
             if self.p_config.get("audit_reason_required", False):
                 d_audit = ctk.CTkInputDialog(text=f"Bitte geben Sie den Grund für die Änderung der Rechnung '{r_nr}' an (Audit-Log):", title="GoBD: Begründung erforderlich")
@@ -729,21 +1005,20 @@ class TabManuellMixin:
             audit_bemerkung = ""
             audit_aktion = "Erstellt"
 
-        plz_ort = self.entry_k_plz_ort.get().split(' ', 1)
-        plz = plz_ort[0] if len(plz_ort) > 0 else ""
-        ort = plz_ort[1] if len(plz_ort) > 1 else ""
+        plz = parts[0]
+        ort = " ".join(parts[1:])
     
-        
-        buyer_endpoint = self.entry_k_endpoint.get().strip()
+        buyer_endpoint = endpoint
         buyer_scheme = self.entry_k_endpoint_scheme.get().strip()
         if buyer_endpoint and not buyer_scheme and '@' in buyer_endpoint:
             buyer_scheme = 'EM'
         if require_buyer_endpoint and buyer_endpoint and not buyer_scheme:
             messagebox.showwarning("Fehler", "Für eine Leitweg-ID muss das Endpoint-Schema angegeben werden (regelmäßig 0204).")
             return False
-        if require_buyer_endpoint and not buyer_endpoint:
-            messagebox.showwarning("Fehler", "Für XRechnung/ZUGFeRD ist eine elektronische Käuferadresse erforderlich: E-Mail-Adresse oder Leitweg-ID eintragen.")
-            return False
+
+        kunde_land = self.entry_k_land.get().strip().upper() or 'DE'
+        rc_mode = self.combo_rc.get()
+        kunde_ustid = self.entry_k_ustid.get().strip()
 
         full_positions = []
         for p in self.positionen_liste:
@@ -752,12 +1027,11 @@ class TabManuellMixin:
                 'Rechnungsnummer': r_nr,
                 'Rechnungsdatum': r_datum,
                 'Faelligkeitsdatum': f_datum,
-                'KundeName': self.entry_k_name.get(),
-                'KundeStrasse': self.entry_k_strasse.get(),
+                'KundeName': name,
+                'KundeStrasse': strasse,
                 'KundePLZ': plz,                
                 'KundeOrt': ort,
-                'KundeLand': 'DE',
-                # Optional: elektronische Empfängeradresse (E-Mail oder Leitweg-ID).
+                'KundeLand': kunde_land,
                 'KundeEmail': buyer_endpoint if '@' in buyer_endpoint else '', 'KundeEndpoint': buyer_endpoint, 'KundeEndpointScheme': buyer_scheme,
                 'Zusatztext': '',
                 'KundeNr': self.entry_k_nr.get().strip(),
@@ -765,22 +1039,20 @@ class TabManuellMixin:
                 'KundeAktenzeichen': self.entry_k_az.get().strip(),
                 'LeistungszeitraumKopf': lz_kopf,
                 'Ratenzahlung': str(bool(self.chk_raten.get())),
-#                'Zahlungsbedingungen': self.p_config.get("zahlungsbedingungen_default", ""),
-#                'Rechnungsvermerk': self.p_config.get("rechnungsvermerk_default", "")
+                'ReverseCharge': rc_mode,
+                'KundeUStId': kunde_ustid,
                 })
             full_positions.append(p_copy)
             
-        fieldnames = ['Rechnungsnummer', 'Rechnungsdatum', 'Faelligkeitsdatum', 'KundeName', 'KundeStrasse', 'KundePLZ', 'KundeOrt', 'KundeLand', 'KundeEmail', 'KundeEndpoint', 'KundeEndpointScheme', 'KundeNr', 'Aktenzeichen', 'KundeAktenzeichen', 'LeistungszeitraumKopf', 'Ratenzahlung', 'PosNr', 'Menge', 'Einheit', 'Bezeichnung', 'EinzelpreisNetto', 'Steuersatz', 'Zusatztext', 'LeistungszeitraumPos']
+        fieldnames = ['Rechnungsnummer', 'Rechnungsdatum', 'Faelligkeitsdatum', 'KundeName', 'KundeStrasse', 'KundePLZ', 'KundeOrt', 'KundeLand', 'KundeEmail', 'KundeEndpoint', 'KundeEndpointScheme', 'KundeNr', 'Aktenzeichen', 'KundeAktenzeichen', 'LeistungszeitraumKopf', 'Ratenzahlung', 'PosNr', 'Menge', 'Einheit', 'Bezeichnung', 'EinzelpreisNetto', 'Steuersatz', 'Zusatztext', 'LeistungszeitraumPos', 'ReverseCharge', 'KundeUStId']
         
         try:
             with open(self.p_config['rechnung_csv'], 'w', newline='', encoding='utf-8-sig') as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';'); writer.writeheader(); writer.writerows(full_positions)
                 
-            # --- NEU: Rechnung separat als CSV in arecsv/Jahr abspeichern ---
             akt_jahr = self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))
             are_dir = self.p_config.get("ausgabe_ordner", "")
             if are_dir:
-                # Sucht den Firmen-Basisordner und hängt arecsv/Jahr an
                 arecsv_dir = os.path.join(os.path.dirname(are_dir), "arecsv", akt_jahr)
                 os.makedirs(arecsv_dir, exist_ok=True)
                 csv_archiv_pfad = os.path.join(arecsv_dir, f"Rechnung_{r_nr}.csv")
@@ -804,20 +1076,21 @@ class TabManuellMixin:
             speichere_textdatei(self.p_config.get('vor_gruss_csv'), getattr(self, 'vor_gruss_text', ''))
             speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
             
-            if self.chk_kunde_speichern.get() and self.entry_k_name.get().strip():
-                speichere_kunde(self.p_config.get("kunden_csv", "kunden.csv"), {'Name': self.entry_k_name.get().strip(), 'Strasse': self.entry_k_strasse.get().strip(), 'PLZ_Ort': self.entry_k_plz_ort.get().strip(), 'Land': 'DE', 'KundeNr': self.entry_k_nr.get().strip(), 'Aktenzeichen': self.entry_az.get().strip(), 'KundeAktenzeichen': self.entry_k_az.get().strip(), 'Endpoint': buyer_endpoint, 'EndpointScheme': buyer_scheme})
+            if self.chk_kunde_speichern.get() and name:
+                speichere_kunde(self.p_config.get("kunden_csv", "kunden.csv"), {'Name': name, 'Strasse': strasse, 'PLZ_Ort': plz_ort, 'Land': kunde_land, 'KundeNr': self.entry_k_nr.get().strip(), 'Aktenzeichen': self.entry_az.get().strip(), 'KundeAktenzeichen': self.entry_k_az.get().strip(), 'Endpoint': buyer_endpoint, 'EndpointScheme': buyer_scheme})
                 self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
                 
             self.p_config['letzte_rechnungsnummer'] = r_nr
             self.p_config['keep_raten'] = bool(self.chk_raten.get()); self.p_config['keep_kunde_speichern'] = bool(self.chk_kunde_speichern.get())
+            self.p_config['keep_email_versand'] = bool(self.chk_email_versand.get())
             speichere_config(self.config)
-            # Audit-Log schreiben
+            
             base_data_path = self.config.get("base_data_path", "")
             if base_data_path:
                 firm_dir = os.path.join(base_data_path, self.p_config["profil_name"].replace(" ", "_"))
                 modus = "CLI (--edit)" if self.start_in_edit else "GUI"
                 write_audit_log(firm_dir, "Ausgang", audit_aktion, r_nr, audit_bemerkung, modus)
-            if not silent: messagebox.showinfo("Erfolg", "Ihre Daten wurden erfolgreich gespeichert!")
+            # if not silent: messagebox.showinfo("Erfolg", "Ihre Daten wurden erfolgreich gespeichert!")
             return True
         except Exception as e:
             messagebox.showerror("Fehler", str(e)); return False
@@ -826,6 +1099,10 @@ class TabManuellMixin:
         if not self.positionen_liste:
             return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
         
+        self.check_live_validation()
+        if not self.entry_r_nr.get().strip() or not self.entry_k_name.get().strip() or not self.entry_k_strasse.get().strip() or len(self.entry_k_plz_ort.get().strip().split()) < 2:
+            return messagebox.showwarning("Fehlende Pflichtdaten", "Bitte korrigieren Sie die rot markierten Pflichtfelder vor der Vorschau.")
+
         valid, lz_msg = check_lz_logic(
             {'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())},
             [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste]
@@ -836,11 +1113,11 @@ class TabManuellMixin:
         r_datum = parse_flexible_date(self.entry_r_datum.get())
         f_datum = parse_flexible_date(self.entry_f_datum.get())
         lz_kopf = parse_flexible_date_span(self.entry_lz_kopf.get())
-        plz_ort = self.entry_k_plz_ort.get().split(' ', 1)
-        plz = plz_ort[0] if len(plz_ort) > 0 else ""
-        ort = plz_ort[1] if len(plz_ort) > 1 else ""
+        
+        parts = self.entry_k_plz_ort.get().strip().split()
+        plz = parts[0]
+        ort = " ".join(parts[1:])
 
-        # Dummy-Kopfdaten für die Testrechnung bauen (ohne echtes Speichern der Nummer)
         kopf = {
             'Rechnungsnummer': '',
             'Rechnungsdatum': r_datum,
@@ -849,7 +1126,7 @@ class TabManuellMixin:
             'KundeStrasse': self.entry_k_strasse.get(),
             'KundePLZ': plz,
             'KundeOrt': ort,
-            'KundeLand': 'DE',
+            'KundeLand': self.entry_k_land.get().strip().upper() or 'DE',
             'KundeEmail': self.entry_k_endpoint.get() if '@' in self.entry_k_endpoint.get() else '',
             'KundeEndpoint': self.entry_k_endpoint.get(),
             'KundeEndpointScheme': self.entry_k_endpoint_scheme.get(),
@@ -858,11 +1135,11 @@ class TabManuellMixin:
             'Aktenzeichen': self.entry_az.get().strip(),
             'KundeAktenzeichen': self.entry_k_az.get().strip(),
             'LeistungszeitraumKopf': lz_kopf,
-            'Ratenzahlung': str(bool(self.chk_raten.get()))
+            'Ratenzahlung': str(bool(self.chk_raten.get())),
+            'ReverseCharge': self.combo_rc.get(),
+            'KundeUStId': self.entry_k_ustid.get().strip()
         }
         rechnung_daten = {'kopf': kopf, 'positionen': self.positionen_liste}
-        
-        # Zusatztexte aus dem Dictionary für den PDF-Generator als Liste aufbereiten
         zusatztexte = [{'pos': k, 'text': v.replace('~cr', '\n')} for k, v in self.zusatz_dict.items()]
 
         from pdf_zugferd import erstelle_testrechnung
@@ -876,14 +1153,17 @@ class TabManuellMixin:
                 getattr(self, 'vor_gruss_text', '')
             )
             import os
-            os.startfile(pdf_pfad) # Öffnet die PDF, schließt das Programm aber NICHT.
+            os.startfile(pdf_pfad)
         except Exception as e:
             messagebox.showerror("Fehler bei der Testrechnung", str(e))
 
     def save_generate_papierrechnung_exit(self):
-        """Erstellt eine reine Sicht-PDF als vorübergehende Übergangsfunktion."""
         if not self.positionen_liste:
             return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+        
+        if not self.save_manual_invoice(silent=False, require_buyer_endpoint=False):
+            return
+
         valid, lz_msg = check_lz_logic(
             {'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())},
             [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste]
@@ -891,9 +1171,7 @@ class TabManuellMixin:
         if not valid:
             messagebox.showwarning("Prüfung fehlgeschlagen", lz_msg)
             return
-        # Die Papier-PDF benötigt keinen elektronischen Käufer-Endpoint.
-        if not self.save_manual_invoice(silent=True, require_buyer_endpoint=False):
-            return
+
         from pdf_zugferd import erstelle_papierrechnung
         act_prof = self.p_config
         firma = lade_firma(act_prof['firma_csv'])
@@ -912,7 +1190,6 @@ class TabManuellMixin:
                 act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year)),
                 getattr(self, 'vor_gruss_text', '')
             )
-            
         except Exception as e:
             messagebox.showerror("Papierrechnung konnte nicht erstellt werden", str(e))
             return
@@ -931,17 +1208,20 @@ class TabManuellMixin:
                 os.startfile(pdf_pfad)
             except Exception:
                 pass
+        self.send_invoice_email()
         self.on_closing(skip_warning=True)
 
     def save_generate_xrechnung_exit(self):
-        if not self.positionen_liste: return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+        if not self.positionen_liste: 
+            return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+            
+        if not self.save_manual_invoice(silent=False, require_buyer_endpoint=True): 
+            return
+
         valid, lz_msg = check_lz_logic({'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())}, [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste])
         if not valid:
-            # HIER DIE FEHLERMELDUNG ERGÄNZEN:
             messagebox.showwarning("Prüfung fehlgeschlagen", lz_msg)
             return
-            
-        if not self.save_manual_invoice(silent=True, require_buyer_endpoint=True): return
         
         from pdf_zugferd import erstelle_xrechnung
         act_prof = self.p_config
@@ -980,7 +1260,6 @@ class TabManuellMixin:
             except Exception as e:
                 print(f"Fehler beim Kopieren: {e}")
 
-        # Nach erfolgreicher Erstellung Zielordner öffnen und Anwendung ohne Meldung beenden.
         ziel_ordner = os.path.dirname(pdf_p)
         if os.path.exists(ziel_ordner):
             try:
@@ -991,19 +1270,22 @@ class TabManuellMixin:
                     os.startfile(ziel_ordner)
                 except Exception:
                     pass
+        self.send_invoice_email()
         self.on_closing(skip_warning=True)
 
     def save_generate_open_exit(self):
-        if not self.positionen_liste: return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+        if not self.positionen_liste: 
+            return messagebox.showwarning("Fehler", "Bitte erfassen Sie Positionen!")
+            
+        if not self.save_manual_invoice(silent=False, require_buyer_endpoint=True): 
+            return
         
         valid, lz_msg = check_lz_logic({'LeistungszeitraumKopf': parse_flexible_date_span(self.entry_lz_kopf.get().strip())}, [{'PosNr': p.get('PosNr'), 'LeistungszeitraumPos': p.get('LeistungszeitraumPos')} for p in self.positionen_liste])
         if not valid:
-            # HIER DIE FEHLERMELDUNG ERGÄNZEN:
             messagebox.showwarning("Prüfung fehlgeschlagen", lz_msg)
             return
             
-        if not self.save_manual_invoice(silent=True, require_buyer_endpoint=True): return
-        
+        from pdf_zugferd import run_auto_generation
         run_auto_generation(self.config)
         
         r_nr = self.entry_r_nr.get(); akt_jahr = self.p_config.get("aktuelles_rechnungsjahr", str(datetime.now().year))
@@ -1016,9 +1298,95 @@ class TabManuellMixin:
             except Exception as e:
                 print(f"Fehler beim Kopieren: {e}")
         if os.path.exists(pdf_pfad):
-            # PDF nur öffnen, wenn --no-open nicht übergeben wurde
             if not self.config.get("cli_no_open", False):
                 try: os.startfile(pdf_pfad)
                 except: pass
-            self.on_closing(skip_warning=True)  # <--- NEU: Hier übergeben wir den Freifahrtschein!
+                
+            self.send_invoice_email()
+            self.on_closing(skip_warning=True)
 
+    def save_state_to_history(self):
+        """Speichert einen Schnappschuss der Maske für Undo."""
+        if getattr(self, '_is_restoring', False): return
+        current_state = {
+            'r_nr': self.entry_r_nr.get() if hasattr(self, 'entry_r_nr') else "",
+            'r_datum': self.entry_r_datum.get() if hasattr(self, 'entry_r_datum') else "",
+            'f_datum': self.entry_f_datum.get() if hasattr(self, 'entry_f_datum') else "",
+            'k_nr': self.entry_k_nr.get() if hasattr(self, 'entry_k_nr') else "",
+            'az': self.entry_az.get() if hasattr(self, 'entry_az') else "",
+            'k_az': self.entry_k_az.get() if hasattr(self, 'entry_k_az') else "",
+            'lz_kopf': self.entry_lz_kopf.get() if hasattr(self, 'entry_lz_kopf') else "",
+            'k_name': self.entry_k_name.get() if hasattr(self, 'entry_k_name') else "",
+            'k_strasse': self.entry_k_strasse.get() if hasattr(self, 'entry_k_strasse') else "",
+            'k_plz_ort': self.entry_k_plz_ort.get() if hasattr(self, 'entry_k_plz_ort') else "",
+            'k_endpoint': self.entry_k_endpoint.get() if hasattr(self, 'entry_k_endpoint') else "",
+            'k_scheme': self.entry_k_endpoint_scheme.get() if hasattr(self, 'entry_k_endpoint_scheme') else "",
+            'positionen': [p.copy() for p in getattr(self, 'positionen_liste', [])],
+            'zusatz_dict': dict(getattr(self, 'zusatz_dict', {}))
+        }
+            
+        if hasattr(self, 'undo_stack') and self.undo_stack and self.undo_stack[-1] == current_state:
+            return
+        self.undo_stack.append(current_state)
+        if hasattr(self, 'redo_stack'): self.redo_stack.clear()
+        if len(self.undo_stack) > 20: self.undo_stack.pop(0)
+
+    def perform_undo(self, event=None):
+        if not getattr(self, 'undo_stack', None): return
+        self._is_restoring = True
+        current_state = {
+            'r_nr': self.entry_r_nr.get(), 'r_datum': self.entry_r_datum.get(),
+            'f_datum': self.entry_f_datum.get(), 'k_nr': self.entry_k_nr.get(),
+            'az': self.entry_az.get(), 'k_az': self.entry_k_az.get(),
+            'lz_kopf': self.entry_lz_kopf.get(), 'k_name': self.entry_k_name.get(),
+            'k_strasse': self.entry_k_strasse.get(), 'k_plz_ort': self.entry_k_plz_ort.get(),
+            'k_endpoint': self.entry_k_endpoint.get(), 'k_scheme': self.entry_k_endpoint_scheme.get(),
+            'positionen': [p.copy() for p in self.positionen_liste],
+            'zusatz_dict': dict(self.zusatz_dict)
+        }
+        self.redo_stack.append(current_state)
+        prev_state = self.undo_stack.pop()
+        self._apply_state(prev_state)
+        self._is_restoring = False
+
+    def perform_redo(self, event=None):
+        if not getattr(self, 'redo_stack', None): return
+        self._is_restoring = True
+        current_state = {
+            'r_nr': self.entry_r_nr.get(), 'r_datum': self.entry_r_datum.get(),
+            'f_datum': self.entry_f_datum.get(), 'k_nr': self.entry_k_nr.get(),
+            'az': self.entry_az.get(), 'k_az': self.entry_k_az.get(),
+            'lz_kopf': self.entry_lz_kopf.get(), 'k_name': self.entry_k_name.get(),
+            'k_strasse': self.entry_k_strasse.get(), 'k_plz_ort': self.entry_k_plz_ort.get(),
+            'k_endpoint': self.entry_k_endpoint.get(), 'k_scheme': self.entry_k_endpoint_scheme.get(),
+            'positionen': [p.copy() for p in self.positionen_liste],
+            'zusatz_dict': dict(self.zusatz_dict)
+        }
+        self.redo_stack.append(current_state)
+        next_state = self.redo_stack.pop()
+        self._apply_state(next_state)
+        self._is_restoring = False
+
+    def _apply_state(self, state):
+        self.entry_r_nr.delete(0, 'end'); self.entry_r_nr.insert(0, state['r_nr'])
+        self.entry_r_datum.delete(0, 'end'); self.entry_r_datum.insert(0, state['r_datum'])
+        self.entry_f_datum.delete(0, 'end'); self.entry_f_datum.insert(0, state['f_datum'])
+        self.entry_k_nr.delete(0, 'end'); self.entry_k_nr.insert(0, state['k_nr'])
+        self.entry_az.delete(0, 'end'); self.entry_az.insert(0, state['az'])
+        self.entry_k_az.delete(0, 'end'); self.entry_k_az.insert(0, state['k_az'])
+        self.entry_lz_kopf.delete(0, 'end'); self.entry_lz_kopf.insert(0, state['lz_kopf'])
+        if hasattr(self.entry_k_name, 'set'): self.entry_k_name.set(state['k_name'])
+        else: self.entry_k_name.delete(0, 'end'); self.entry_k_name.insert(0, state['k_name'])
+        self.entry_k_strasse.delete(0, 'end'); self.entry_k_strasse.insert(0, state['k_strasse'])
+        self.entry_k_plz_ort.delete(0, 'end'); self.entry_k_plz_ort.insert(0, state['k_plz_ort'])
+        self.entry_k_endpoint.delete(0, 'end'); self.entry_k_endpoint.insert(0, state['k_endpoint'])
+        self.entry_k_endpoint_scheme.delete(0, 'end'); self.entry_k_endpoint_scheme.insert(0, state['k_scheme'])
+        self.entry_k_endpoint.delete(0, 'end'); self.entry_k_endpoint.insert(0, kopf.get('KundeEndpoint', kopf.get('KundeEmail', '')))
+        self.entry_k_endpoint_scheme.delete(0, 'end'); self.entry_k_endpoint_scheme.insert(0, kopf.get('KundeEndpointScheme', ''))
+        self.entry_k_land.delete(0, 'end'); self.entry_k_land.insert(0, kopf.get('KundeLand', 'DE') or 'DE')
+        self.combo_rc.set(kopf.get('ReverseCharge', 'Nein') or 'Nein')
+        self.entry_k_ustid.delete(0, 'end'); self.entry_k_ustid.insert(0, kopf.get('KundeUStId', ''))
+        self.positionen_liste = [p.copy() for p in state['positionen']]
+        self.zusatz_dict = dict(state['zusatz_dict'])
+        self.refresh_pos_list()
+        self.check_live_validation()

@@ -20,12 +20,15 @@ from reportlab.lib.pagesizes import A4, landscape
 
 
 JOURNAL_FIELDS = [
-    "Interne ER-Nr.",
+   "Interne ER-Nr.",
     "Eingangsdatum",
     "Rechnungsdatum",
     "Lieferant",
+    "Lieferant_Land",
+    "Lieferant_UStId",     # NEU
     "Externe Rechnungsnummer",
     "Format",
+    "Reverse_Charge",
     "Netto",
     "MwSt_19",
     "MwSt_7",

@@ -12,6 +12,41 @@ from config import *
 from utils import *
 from crud import *
 
+def zeichne_blocksatz_zeile(c, x, y, text, width_limit, size=10, font="Helvetica"):
+    """Zeichnet eine einzelne Textzeile im Blocksatz über die gegebene Breite."""
+    c.setFont(font, size)
+    wörter = text.split()
+    if len(wörter) <= 1:
+        c.drawString(x, y, text)
+        return
+
+    # Prüfen, ob es sich um die letzte Absatzzeile handelt (diese wird linksbündig belassen)
+    # Da hier zeilenweise aufgerufen wird, übergeben wir das Flag 'ist_letzte_zeile' separat.
+    
+def zeichne_formatierten_blocksatz_zeile(c, x, y, text, width_limit, size=10):
+    """Zeichnet formatierten Text im Blocksatz."""
+    c.setFont("Helvetica", size)
+    wörter = text.split()
+    if len(wörter) <= 1:
+        zeichne_formatierten_text(c, x, y, text, size, align="left")
+        return
+
+    # Berechne die Breite aller Wörter ohne normale Leerzeichen
+    wörter_breite = sum(c.stringWidth(w, "Helvetica", size) for w in wörter)
+    gesamt_freiraum = width_limit - wörter_breite
+    
+    if gesamt_freiraum <= 0 or len(wörter) <= 1:
+        zeichne_formatierten_text(c, x, y, text, size, align="left")
+        return
+
+    # Zusatzabstand pro Zwischenraum berechnen
+    extra_abstand = gesamt_freiraum / (len(wörter) - 1)
+    
+    current_x = x
+    for i, wort in enumerate(wörter):
+        c.drawString(current_x, y, wort)
+        current_x += c.stringWidth(wort, "Helvetica", size) + extra_abstand
+
 def zeichne_formatierten_text(c, x, y, text, size=10, align="left"):
     is_bold = False
     is_italic = False
@@ -196,10 +231,16 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     y_tabelle -= 5
     
     if einleitung_text:
-        for zeile in einleitung_text.split('\n'):
-            for wrap_line in split_text_to_lines(zeile, 470, c, "Helvetica", 10):
+        for absatz in einleitung_text.split('\n'):
+            wrapped_lines = split_text_to_lines(absatz, 470, c, "Helvetica", 10)
+            for idx, wrap_line in enumerate(wrapped_lines):
                 y_tabelle = check_page_break(y_tabelle, 15, False)
-                zeichne_formatierten_text(c, 60, y_tabelle, wrap_line, 10, align="left")
+                # Letzte Zeile des Absatzes linksbündig, alle anderen im Blocksatz
+                is_last = (idx == len(wrapped_lines) - 1)
+                if is_last or len(wrap_line.split()) <= 1:
+                    zeichne_formatierten_text(c, 60, y_tabelle, wrap_line, 10, align="left")
+                else:
+                    zeichne_formatierten_blocksatz_zeile(c, 60, y_tabelle, wrap_line, 470, 10)
                 y_tabelle -= 12
         y_tabelle -= 10
     else: y_tabelle -= 10
@@ -276,13 +317,8 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     c.drawRightString(530, y_tabelle - 5, f_curr(gesamt_netto))
     y_tabelle -= 12
     
-    steuer_gruppen = {}
-    for pos in positionen:
-        satz = safe_float(pos.get('Steuersatz', 19.0))
-        st = safe_float(pos['Menge'], 1.0) * safe_float(pos['EinzelpreisNetto'], 0.0) * (satz / 100.0)
-        if satz > 0:
-            if satz not in steuer_gruppen: steuer_gruppen[satz] = 0.0
-            steuer_gruppen[satz] += st
+    _, _, _, steuer_gruppen_netto = berechne_summen(positionen)
+    steuer_gruppen = {satz: round_kaufm(n_sum * (satz / 100.0)) for satz, n_sum in steuer_gruppen_netto.items()}
             
     for satz, s_wert in sorted(steuer_gruppen.items()):
         c.drawString(380, y_tabelle - 5, f"zzgl. {f_num(satz)}% USt.:")
@@ -485,15 +521,16 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
     y_vor_gruss = y_tabelle
     
     if vor_gruss_text:
-        raw_lines = vor_gruss_text.split('\n')
-        wrapped_lines = []
-        for rl in raw_lines:
-            wrapped_lines.extend(split_text_to_lines(rl, 470, c, "Helvetica", 10))
-            
-        y_tabelle = check_page_break(y_tabelle, len(wrapped_lines) * 15, False)
-        for zeile in wrapped_lines:
-            zeichne_formatierten_text(c, 60, y_tabelle, zeile, 10)
-            y_tabelle -= 12
+        for absatz in vor_gruss_text.split('\n'):
+            wrapped_lines = split_text_to_lines(absatz, 470, c, "Helvetica", 10)
+            for idx, wrap_line in enumerate(wrapped_lines):
+                y_tabelle = check_page_break(y_tabelle, 15, False)
+                is_last = (idx == len(wrapped_lines) - 1)
+                if is_last or len(wrap_line.split()) <= 1:
+                    zeichne_formatierten_text(c, 60, y_tabelle, wrap_line, 10, align="left")
+                else:
+                    zeichne_formatierten_blocksatz_zeile(c, 60, y_tabelle, wrap_line, 470, 10)
+                y_tabelle -= 12
         y_tabelle -= 10
     
     y_vor_gruss = y_tabelle

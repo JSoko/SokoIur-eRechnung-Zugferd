@@ -54,7 +54,6 @@ def get_app_version():
     return v_string
 
 APP_DIR = get_appdata_dir()
-# ... ab hier geht der restliche Code weiter (CONFIG_DATEI = ...) ...
 CONFIG_DATEI = "config.json"
 LOCK_FILE = "erechnung.lock"
 LOCAL_CONFIG = os.path.join(APP_DIR, "local_config.json")
@@ -110,12 +109,13 @@ def get_default_profile(suffix=""):
         "datev_aufwand_7": "3300",
         "datev_aufwand_0": "3200",
         "datev_kreditor": "70000",
-        "audit_reason_required": False
+        "audit_reason_required": False,
+        "email_versand_methode": "Keine",  # Optionen: "Keine", "Outlook", "Thunderbird"
+        "thunderbird_pfad": r"C:\Program Files\Mozilla Thunderbird\thunderbird.exe"
     }
     
 
 def init_config():
-    # 1. Lokale Config laden (für Startpfad und Geometrie)
     config = {"window_geometry": "950x850", "terms_accepted": False, "base_data_path": "", "active_profile_index": 0}
     if os.path.exists(LOCAL_CONFIG):
         try:
@@ -124,7 +124,6 @@ def init_config():
                 config.update(local_data)
         except: pass
 
-    # 2. Globale Config aus dem Netzwerk laden (falls base_data_path existiert)
     config["profiles"] = []
     if config.get("base_data_path") and os.path.exists(config["base_data_path"]):
         shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")
@@ -134,17 +133,15 @@ def init_config():
                     config["profiles"] = json.load(f)
             except: pass
 
-    # Fallback, falls noch keine Firmen existieren
     if not config["profiles"]:
         config["profiles"] = [get_default_profile("")]
 
     return config
 
 def speichere_config(config):
-    # 1. Lokale Config speichern (Programmordner)
     local_data = {
         "window_geometry": config.get("window_geometry", "950x700"),
-        "window_state": config.get("window_state", "normal"),  # <--- Muss hier vorhanden sein!
+        "window_state": config.get("window_state", "normal"),
         "terms_accepted": config.get("terms_accepted", False),
         "base_data_path": config.get("base_data_path", ""),
         "active_profile_index": config.get("active_profile_index", 0),
@@ -156,7 +153,6 @@ def speichere_config(config):
     with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(local_data, f, indent=4)
         
-    # 2. Globale Profile im Netzwerk speichern (Firmenübergreifend)
     if config.get("base_data_path") and os.path.exists(config["base_data_path"]):
         shared_config_path = os.path.join(config["base_data_path"], "shared_firms.json")
         with open(shared_config_path, 'w', encoding='utf-8') as f:

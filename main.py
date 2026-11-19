@@ -123,6 +123,11 @@ def main():
                 
         # NEU: Abbruch, wenn die übergebene Firma nicht existiert
         if not profil_gefunden:
+            try:
+                import pyi_splash
+                pyi_splash.close()
+            except ImportError:
+                pass
             err_msg = f"Fehler: Das übergebene Firmenprofil '{args.profil}' wurde in der Datenbank nicht gefunden!"
             print(err_msg)
             
@@ -141,6 +146,11 @@ def main():
     if not config.get("terms_accepted", False):
         root = tk.Tk()
         root.withdraw()
+        try:
+            import pyi_splash
+            pyi_splash.close()
+        except ImportError:
+            pass    
         haftungs_text = (
             "HAFTUNGSAUSSCHLUSS UND NUTZUNGSBEDINGUNGEN\n\n"
             "Das Programm 'SokoIur eRechnung' wird Ihnen unentgeltlich (als Gefälligkeit / Schenkung) zur Verfügung gestellt.\n\n"
@@ -228,28 +238,27 @@ def main():
                     os.remove(lock_file)
                 except Exception:
                     pass
+                    
+        # Splash-Screen im Auto-Modus direkt schließen
+        try:
+            import pyi_splash
+            pyi_splash.close()
+        except ImportError:
+            pass
+            
     else:
         app = App(config, start_in_edit=args.edit)
         
-        # --- TESTVERSION: Parameter-Anzeige bei --edit ---
-#        if args.edit:
-#            import tkinter.messagebox as messagebox
-            
-            # Sammle alle Parameter aus dem args-Objekt
-#            debug_info = "Aktuell übergebene CLI-Parameter:\n\n"
-            #for arg, value in vars(args).items():
-                #if value:  # Zeige der Übersichtlichkeit halber nur Parameter an, die auch gesetzt wurden
-#                    debug_info += f"--{arg.replace('_', '-')}: {value}\n"
-            
-            # Messagebox mit 500ms Verzögerung aufrufen, damit das Hauptfenster zuerst fertig lädt
-#            app.after(500, lambda: messagebox.showinfo("Testversion: CLI-Übergabe", debug_info))
-        # -------------------------------------------------
-
+        def close_splash():
+            try:
+                import pyi_splash
+                pyi_splash.close()
+            except ImportError:
+                pass
+                
+        # Schließt den Splash-Screen erst 200ms nach dem Start der Mainloop
+        app.after(200, close_splash)
         app.mainloop()
         
-    #else:
-    #    app = App(config, start_in_edit=args.edit)
-    #    app.mainloop()
-    
 if __name__ == "__main__":
     main()

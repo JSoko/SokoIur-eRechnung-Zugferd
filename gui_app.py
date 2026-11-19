@@ -28,12 +28,14 @@ from tab_einstellungen import TabEinstellungenMixin
 from tab_erfassen import TabErfassenMixin
 from tab_manuell import TabManuellMixin
 from updater import UpdaterMixin
+from tab_verwaltung import TabVerwaltungMixin
 from gui_utils import create_tooltip
+from tab_dashboard import TabDashboardMixin
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
 
-class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabEinstellungenMixin, TabHilfeMixin, UpdaterMixin):
+class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabEinstellungenMixin, TabHilfeMixin, UpdaterMixin, TabVerwaltungMixin, TabDashboardMixin):
 
     def get_firm_lock_path(self, lock_name="erechnung.lock"):
         base_path = self.config.get("base_data_path")
@@ -144,6 +146,15 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         if getattr(self, '_initializing', False): return  
         selected_tab = self.tabview.get()
         
+        if not self.loaded_tabs.get(selected_tab, True):
+            if selected_tab == self.name_manuell: self.build_manuell_tab()
+            elif selected_tab == self.name_erfassen: self.build_erfassen_tab()
+            elif selected_tab == self.name_ausgang: self.build_ausgang_tab()
+            elif selected_tab == self.name_eingang: self.build_eingang_tab()
+            elif selected_tab == self.name_settings: self.build_settings_tab()
+            elif selected_tab == self.name_hilfe: self.build_hilfe_tab()
+            self.loaded_tabs[selected_tab] = True
+        
         if selected_tab == self.name_manuell:
             if not self.check_and_handle_lock(selected_tab, "erechnung.lock"):
                 self.tabview.set(self.name_hilfe)
@@ -222,6 +233,11 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.bind('<Alt-k>', lambda e: self.tabview.set(self.name_settings))
         self.bind('<Alt-K>', lambda e: self.tabview.set(self.name_settings))
         self.bind('<F1>', lambda e: self.tabview.set(self.name_hilfe))
+        # Tastenkürzel für Undo / Redo registrieren
+        self.bind('<Control-z>', lambda e: self.perform_undo() if hasattr(self, 'perform_undo') else None)
+        self.bind('<Control-Z>', lambda e: self.perform_undo() if hasattr(self, 'perform_undo') else None)
+        self.bind('<Control-y>', lambda e: self.perform_redo() if hasattr(self, 'perform_redo') else None)
+        self.bind('<Control-Y>', lambda e: self.perform_redo() if hasattr(self, 'perform_redo') else None)
         
         self.header_container = ctk.CTkFrame(self, fg_color="transparent")
         self.header_container.pack(fill="x", padx=20, pady=(10, 0))
@@ -250,18 +266,24 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         # ----------------------------------------------------------
         
         # ERST JETZT den großen Tab-Bereich packen
-        self.tabview = ctk.CTkTabview(self) 
+        self.tabview = ctk.CTkTabview(self, command=self.on_tab_change) 
         self.tabview.pack(padx=20, pady=(10, 5), fill="both", expand=True)
-        
-        # Spezielle Unicode-Zeichen für fette Buchstaben (Sans-Serif Bold)
+                
         self.name_manuell = "📝 [E]RSTELLEN"
-        # ... ab hier geht der Code wie gewohnt weiter ...
         self.name_erfassen = "📥 ER[F]ASSEN"
         self.name_ausgang = "📊 [A]USGANG"
         self.name_eingang = "📊 E[I]NGANG"
         self.name_settings = "⚙️ [K]onfig."
         self.name_hilfe = "ℹ️ Info [F1]"
-
+        # Tracking Dictionary
+        self.loaded_tabs = {
+            self.name_manuell: False,
+            self.name_erfassen: False,
+            self.name_ausgang: False,
+            self.name_eingang: False,
+            self.name_settings: False,
+            self.name_hilfe: False
+        }
         self.tab_manuell = self.tabview.add(self.name_manuell)
         self.tab_erfassen = self.tabview.add(self.name_erfassen)
         self.tab_ausgang = self.tabview.add(self.name_ausgang)
@@ -272,7 +294,14 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
 
         # 3. DATENSPEICHERORT PRÜFEN & ORDNER SETUP
         if not self.config.get("base_data_path"):
+            try:
+                import pyi_splash
+                pyi_splash.close()
+            except ImportError:
+                pass
+            
             new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
+
             if not new_path:
                 sys.exit(0)
             self.config["base_data_path"] = new_path
@@ -321,8 +350,13 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                     is_other_process = False
             except:
                 pass
-
             if is_other_process:
+                try:
+                    import pyi_splash
+                    pyi_splash.close()
+                except ImportError:
+                    pass
+                
                 messagebox.showerror(
                     "Programmstart verweigert", 
                     f"Die Firma '{self.p_config['profil_name']}' ist bereits auf diesem oder einem anderen Rechner in Bearbeitung (Lock aktiv).\n\n"
@@ -463,6 +497,8 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                     
                 # 4. Gesamte Benutzeroberfläche und Daten mit der neuen Firma neu laden
                 self.refresh_all_ui()
+                # --- WORKAROUND: Nach Firmenwechsel immer auf den Erstellen-Tab springen ---
+                self.tabview.set(self.name_manuell)
                 break
 
     def add_profile(self):
@@ -532,15 +568,12 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         self.positionen_liste = []
         self.zusatz_dict = {}
         self.has_unsaved_changes = False
-        # ... (Rest von refresh_all_ui bleibt unverändert)
-        self.has_unsaved_changes = False
-
-        # Alte Inhalte in allen Reitern löschen
+        
         reiter_liste = [
             self.tab_manuell, 
             self.tab_erfassen, 
             self.tab_ausgang, 
-            self.tab_eingang, 
+            self.tab_eingang,
             self.tab_settings, 
             self.tab_hilfe
         ]
@@ -549,13 +582,14 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
                 w.destroy()
 
         # Inhalte neu aufbauen
+        # Status aller Tabs zurücksetzen (werden erst beim Anklicken gebaut)
+        for key in self.loaded_tabs:
+            self.loaded_tabs[key] = False
+            
+        # Nur den Start-Tab (Manuell) sofort aufbauen
         self.build_manuell_tab()
-        self.build_erfassen_tab()
-        self.build_ausgang_tab()
-        self.build_eingang_tab()
-        self.build_settings_tab()
-        self.build_hilfe_tab()
-        
+        self.loaded_tabs[self.name_manuell] = True
+                
         # Datumsfelder und Rechnungsnummer im Reiter "Rechnung erstellen" füllen
         heute = datetime.now()
         tage = int(self.p_config.get("faelligkeit_tage", "29")) if str(self.p_config.get("faelligkeit_tage", "29")).isdigit() else 29
@@ -568,7 +602,7 @@ class App(ctk.CTk, TabManuellMixin, TabErfassenMixin, TabAuswertungenMixin, TabE
         
         self.entry_r_nr.delete(0, 'end')
         self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
-
+        
     def on_closing(self, skip_warning=False):
         # 1. Sicherheitsabfragen (bestehender Code...)
         if not skip_warning:

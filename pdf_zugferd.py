@@ -20,6 +20,8 @@ from crud import *
 from audit import write_audit_log
 from xml_processor import esc_xml, clean_xml_text, generiere_en16931_xml
 from pdf_builder import generiere_rechnung_text_pdf
+from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
+from reportlab.lib.styles import ParagraphStyle
 
 def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
@@ -32,9 +34,7 @@ def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_tex
     hinweis_text = "~kHinweis: Dies ist eine Begleitdatei zur XRechnungsdatei und maßgeblich ist die X-Rechnungsdatei.k~"
     gruss_erweitert = f"{gruss_text}\n\n{hinweis_text}" if gruss_text else hinweis_text
 
-    netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
-    steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0)/100.0) for p in positionen)
-    brutto = netto + steuer
+    netto, steuer, brutto, _ = berechne_summen(positionen)
 
     text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_erweitert, header_text, einleitung_text, vor_gruss_text)
     text_pdf = PdfReader(text_pdf_stream)
@@ -76,9 +76,7 @@ def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, grus
     """Erstellt ausschließlich eine visuelle PDF-Rechnung ohne XML-Anhang."""
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
-    netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
-    steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0) / 100.0) for p in positionen)
-    brutto = netto + steuer
+    netto, steuer, brutto, _ = berechne_summen(positionen)
     text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
@@ -116,9 +114,7 @@ def erstelle_testrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_
     # Rechnungsnummer für die visuelle Ausgabe unterdrücken
     kopf['Rechnungsnummer'] = ""
     
-    netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
-    steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0) / 100.0) for p in positionen)
-    brutto = netto + steuer
+    netto, steuer, brutto, _ = berechne_summen(positionen)
     
     text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
     writer = PdfWriter()
@@ -161,9 +157,7 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     
     r_datum, f_datum = formatiere_datum(kopf.get('Rechnungsdatum', '')), formatiere_datum(kopf.get('Faelligkeitsdatum', ''))
     
-    gesamt_netto = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) for p in positionen)
-    gesamt_steuer = sum(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0) * (safe_float(p.get('Steuersatz', 19.0), 19.0)/100.0) for p in positionen)
-    gesamt_brutto = gesamt_netto + gesamt_steuer
+    gesamt_netto, gesamt_steuer, gesamt_brutto, _ = berechne_summen(positionen)
 
     text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text)
     text_pdf = PdfReader(text_pdf_stream)

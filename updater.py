@@ -19,67 +19,74 @@ from config import speichere_config
 
 class UpdaterMixin:
     def enforce_network_version(self):
-        base_path = self.config.get("base_data_path", "")
-        if not base_path or not os.path.exists(base_path): return True
+        def _check_version():
+            base_path = self.config.get("base_data_path", "")
+            if not base_path or not os.path.exists(base_path): return True
+                    
+            version_file = os.path.join(base_path, "erech.txt")
+            stored_version = ""
+            if os.path.exists(version_file):
+                try:
+                    with open(version_file, "r") as f:
+                        stored_version = f.read().strip()
+                except: pass
                 
-        version_file = os.path.join(base_path, "erech.txt")
-        stored_version = ""
-        if os.path.exists(version_file):
-            try:
-                with open(version_file, "r") as f:
-                    stored_version = f.read().strip()
-            except: pass
-            
-        # NEU: Wenn wir im Entwicklermodus sind, prüfen wir nichts und schreiben nichts ins Netzwerk!
-        if self.current_version == "Entwickler-Version":
-            return True
-            
-        
-        def parse_v(v):
-            if not v: return 0.0
-            try:
-                p = v.split('.')
-                return float(p[0] + '.' + ''.join(p[1:]))
-            except ValueError:
-                # Falls noch "Entwickler-Version" in der Datei steht, werten wir das als Version 0.0
-                return 0.0
-            
-        c_v = parse_v(self.current_version)
-        s_v = parse_v(stored_version)
-        
-        # --- NEU: SokoIur_eRechnung_Update.exe ersetzen, wenn die gestartete exe neuer (jünger) ist ---
-        if getattr(sys, 'frozen', False):
-            try:
-                import shutil
-                update_exe_path = os.path.join(base_path, "SokoIur_eRechnung_Update.exe")
-                current_exe = os.path.abspath(sys.executable)
+            # NEU: Wenn wir im Entwicklermodus sind, prüfen wir nichts und schreiben nichts ins Netzwerk!
+            if self.current_version == "Entwickler-Version":
+                return True
                 
-                if current_exe.lower() != update_exe_path.lower():
-                    should_copy = False
-                    if not os.path.exists(update_exe_path):
-                        should_copy = True
-                    else:
-                        # Vergleicht das Änderungsdatum (Modification Time)
-                        if os.path.getmtime(current_exe) > os.path.getmtime(update_exe_path):
+            
+            def parse_v(v):
+                if not v: return 0.0
+                try:
+                    p = v.split('.')
+                    return float(p[0] + '.' + ''.join(p[1:]))
+                except ValueError:
+                    # Falls noch "Entwickler-Version" in der Datei steht, werten wir das als Version 0.0
+                    return 0.0
+                
+            c_v = parse_v(self.current_version)
+            s_v = parse_v(stored_version)
+            
+            # --- NEU: SokoIur_eRechnung_Update.exe ersetzen, wenn die gestartete exe neuer (jünger) ist ---
+            if getattr(sys, 'frozen', False):
+                try:
+                    import shutil
+                    update_exe_path = os.path.join(base_path, "SokoIur_eRechnung_Update.exe")
+                    current_exe = os.path.abspath(sys.executable)
+                    
+                    if current_exe.lower() != update_exe_path.lower():
+                        should_copy = False
+                        if not os.path.exists(update_exe_path):
                             should_copy = True
-                            
-                    if should_copy:
-                        shutil.copy2(current_exe, update_exe_path)
-            except Exception as e:
-                print(f"Fehler beim Aktualisieren der Update.exe im Netzwerk: {e}")
+                        else:
+                            # Vergleicht das Änderungsdatum (Modification Time)
+                            if os.path.getmtime(current_exe) > os.path.getmtime(update_exe_path):
+                                should_copy = True
+                                
+                        if should_copy:
+                            shutil.copy2(current_exe, update_exe_path)
+                except Exception as e:
+                    print(f"Fehler beim Aktualisieren der Update.exe im Netzwerk: {e}")
+            
+            if c_v < s_v:
+                self.withdraw()  # Hauptfenster verstecken, um Datenzugriff zu blockieren
+                messagebox.showerror("Versionskonflikt", f"Die Daten wurden mit einer neueren Programmversion ({stored_version}) bearbeitet.\n\nUm Datenverlust im Netzwerk zu vermeiden, ist ein Update zwingend erforderlich!")
+                self.check_for_updates(force=True)
+                return False
+            elif c_v > s_v:
+                try:
+                    # Überschreibt die fehlerhafte "Entwickler-Version" im Netzwerk wieder mit der echten Versionsnummer
+                    with open(version_file, "w") as f:
+                        f.write(self.current_version)
+                except: pass
+            return True
+        import threading
+        threading.Thread(target=_check_version, daemon=True).start()
+        return True # Sofort True zurückgeben, damit die GUI weiterlädt
         
-        if c_v < s_v:
-            self.withdraw()  # Hauptfenster verstecken, um Datenzugriff zu blockieren
-            messagebox.showerror("Versionskonflikt", f"Die Daten wurden mit einer neueren Programmversion ({stored_version}) bearbeitet.\n\nUm Datenverlust im Netzwerk zu vermeiden, ist ein Update zwingend erforderlich!")
-            self.check_for_updates(force=True)
-            return False
-        elif c_v > s_v:
-            try:
-                # Überschreibt die fehlerhafte "Entwickler-Version" im Netzwerk wieder mit der echten Versionsnummer
-                with open(version_file, "w") as f:
-                    f.write(self.current_version)
-            except: pass
-        return True
+        
+        
 
     def check_for_updates(self, force=False):
         # 1. Zuerst prüfen, ob im lokalen Netzwerklaufwerk bereits ein Update liegt

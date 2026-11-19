@@ -288,6 +288,14 @@ class TabEinstellungenMixin:
         
         btn_restore = self.create_button(f_prof_btns2, text="📂 Firmendaten restore", width=150, command=self.restore_profile_data, fg_color="#444", hover_color="#666")
         btn_restore.pack(side="left", padx=10)
+        ctk.CTkButton(
+            f_prof_card, 
+            text="👥 Kunden & Artikel visuell verwalten", 
+            font=("Helvetica", 14, "bold"),
+            fg_color="#1f538d",
+            height=35,
+            command=self.open_verwaltung_popup
+        ).pack(fill="x", padx=15, pady=(5, 15))
 
         # --- KARTE 2: Stammdaten & Datenbanken ---
         f_stamm_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
@@ -295,11 +303,10 @@ class TabEinstellungenMixin:
         
         ctk.CTkLabel(f_stamm_card, text="📁 Stammdaten & Datenbanken", font=("Helvetica", 15, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
         
+        # Zeile 1: Firmendaten, DATEV und Briefbogen
         f_stamm_r1 = ctk.CTkFrame(f_stamm_card, fg_color="transparent")
         f_stamm_r1.pack(fill="x", padx=15, pady=5)
         self.create_button(f_stamm_r1, text="🏢 Firmendaten", command=self.open_firma_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=(0, 10))
-        self.create_button(f_stamm_r1, text="👥 Kunden", command=self.open_kunden_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-        self.create_button(f_stamm_r1, text="📦 Produkte", command=self.open_produkte_manager, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
         
         btn_datev = self.create_button(f_stamm_r1, text="📈 DATEV-Konten", command=self.open_datev_manager, fg_color="#107C41", hover_color="#0b5c30")
         btn_datev.pack(side="left", padx=10)
@@ -309,11 +316,12 @@ class TabEinstellungenMixin:
         btn_brief.pack(side="left", padx=10)
         create_tooltip(btn_brief, "Hinterlegen Sie ein PDF als Design-Vorlage\n(Logo, Fußzeile) für Ihre Ausgangsrechnungen.")
 
+        # Zeile 2: CSV-Massenimporte
         f_stamm_r2 = ctk.CTkFrame(f_stamm_card, fg_color="transparent")
         f_stamm_r2.pack(fill="x", padx=15, pady=(5, 15))
         self.create_button(f_stamm_r2, text="⬇️ Kunden importieren (CSV)", command=self.import_kunden_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=(0, 10))
         self.create_button(f_stamm_r2, text="⬇️ Produkte importieren (CSV)", command=self.import_produkte_csv, fg_color="#444", hover_color="#666").pack(side="left", padx=10)
-
+        
         # --- KARTE 3: Nummernkreise ---
         f_num_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
         f_num_card.pack(fill="x", pady=10, padx=10)
@@ -336,8 +344,77 @@ class TabEinstellungenMixin:
         self.lbl_letzte_er_nr = ctk.CTkLabel(f_num_grid, text=self.p_config.get("letzte_eingangsrechnungsnummer","") or "Noch keine", width=150, anchor="w")
         self.lbl_letzte_er_nr.grid(row=2, column=1, pady=5, sticky="w")
         self.create_button(f_num_grid, text="✏️ Korrigieren", width=100, command=self.edit_letzte_eingangs_nr).grid(row=2, column=2, padx=10, pady=5, sticky="w")
+        
+        # --- E-Mail-Versand Methode Auswahl ---
+        def on_email_methode_change(wahl):
+            self.p_config["email_versand_methode"] = wahl
+            speichere_config(self.config)
 
+        f_mail_methode = ctk.CTkFrame(f_num_grid, fg_color="transparent")
+        f_mail_methode.grid(row=5, column=0, columnspan=3, pady=(10, 5), sticky="w")
+        
+        ctk.CTkLabel(f_mail_methode, text="E-Mail-Versand Client:", width=180, anchor="w").pack(side="left")
+        combo_mail_methode = ctk.CTkComboBox(
+            f_mail_methode, 
+            values=["Keine", "Outlook", "Thunderbird"], 
+            command=on_email_methode_change,
+            width=160
+        )
+        combo_mail_methode.set(self.p_config.get("email_versand_methode", "Keine"))
+        combo_mail_methode.pack(side="left", padx=10)
+        create_tooltip(combo_mail_methode, "Wählen Sie aus, ob Rechnungen automatisch über Outlook,\nThunderbird oder klassisch per mailto + Explorer (Drag & Drop) versendet werden.")
+        # --- Thunderbird Pfad Konfiguration ---
+        # --- Thunderbird Pfad Konfiguration ---
+        def save_tb_pfad():
+            self.p_config["thunderbird_pfad"] = entry_tb.get().strip()
+            speichere_config(self.config)
+            messagebox.showinfo("Gespeichert", "Thunderbird-Pfad wurde aktualisiert.")
+
+        f_tb_path = ctk.CTkFrame(f_num_grid, fg_color="transparent")
+        f_tb_path.grid(row=6, column=0, columnspan=3, pady=(5, 10), sticky="w")
+        
+        ctk.CTkLabel(f_tb_path, text="Thunderbird .exe Pfad:", width=180, anchor="w").pack(side="left")
+        entry_tb = ctk.CTkEntry(f_tb_path, width=280)
+        entry_tb.pack(side="left", padx=10)
+        entry_tb.insert(0, self.p_config.get("thunderbird_pfad", r"C:\Program Files\Mozilla Thunderbird\thunderbird.exe"))
+        
+        def browse_tb():
+            p = filedialog.askopenfilename(title="thunderbird.exe auswählen", filetypes=[("Executable", "*.exe")])
+            if p:
+                entry_tb.delete(0, "end")
+                entry_tb.insert(0, p)
+                save_tb_pfad()
+
+        self.create_button(f_tb_path, text="📁", width=35, command=browse_tb).pack(side="left")
+        self.create_button(f_tb_path, text="Speichern", width=80, command=save_tb_pfad, fg_color="#1f538d").pack(side="left", padx=5)
+        create_tooltip(entry_tb, "Pfad zur thunderbird.exe (z.B. C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe)")
+        
+        # --- E-Mail Text & Footer Konfiguration ---
+        f_mail_txt = ctk.CTkFrame(f_num_grid, fg_color="transparent")
+        f_mail_txt.grid(row=7, column=0, columnspan=3, pady=(10, 10), sticky="w")
+        
+        ctk.CTkLabel(f_mail_txt, text="Standard E-Mail Text (Body):", width=180, anchor="w").pack(anchor="w", pady=(0, 2))
+        entry_mail_body = ctk.CTkTextbox(f_mail_txt, width=420, height=80)
+        entry_mail_body.pack(anchor="w", pady=(0, 5))
+        entry_mail_body.insert("0.0", self.p_config.get("email_body", "Sehr geehrte Damen und Herren,\n\nanbei übersenden wir e-Rechnung mit der Bitte um Ausgleich."))
+        
+        ctk.CTkLabel(f_mail_txt, text="E-Mail Footer / Signatur:", width=180, anchor="w").pack(anchor="w", pady=(5, 2))
+        entry_mail_footer = ctk.CTkTextbox(f_mail_txt, width=420, height=60)
+        entry_mail_footer.pack(anchor="w", pady=(0, 5))
+        entry_mail_footer.insert("0.0", self.p_config.get("email_footer", ""))
+
+        def save_mail_text_config():
+            self.p_config["email_body"] = entry_mail_body.get("0.0", "end").strip()
+            self.p_config["email_footer"] = entry_mail_footer.get("0.0", "end").strip()
+            speichere_config(self.config)
+            messagebox.showinfo("Gespeichert", "E-Mail Text und Footer wurden aktualisiert.")
+
+        self.create_button(f_mail_txt, text="E-Mail-Texte speichern", width=160, command=save_mail_text_config, fg_color="#1f538d").pack(anchor="w", pady=5)
+        create_tooltip(entry_mail_body, "Der Standardtext, der beim automatischen E-Mail-Versand verwendet wird.")
+        create_tooltip(entry_mail_footer, "Ihre Signatur, die automatisch unter den E-Mail-Text gesetzt wird.")
+        
         # Direkte Speicher-Funktionen für die Checkboxen, damit sie beim Klick sofort ins Profil geschrieben werden
+           
         def toggle_xrechnung_leseabschrift():
             self.p_config["xrechnung_leseabschrift"] = bool(self.chk_xrechnung_leseabschrift.get())
             speichere_config(self.config)
@@ -596,109 +673,7 @@ class TabEinstellungenMixin:
             
         self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
     
-    def open_kunden_manager(self):
-        dialog = ctk.CTkToplevel(self); dialog.title("Kundendaten verwalten")
-        self.center_window(dialog, 700, 500); dialog.transient(self); dialog.grab_set()
-        scroll = ctk.CTkScrollableFrame(dialog); scroll.pack(fill="both", expand=True, padx=10, pady=10)
-
-        def refresh():
-            for w in scroll.winfo_children(): w.destroy()
-            for idx, k in enumerate(self.kunden_liste):
-                f = ctk.CTkFrame(scroll); f.pack(fill="x", pady=2)
-                self.create_button(f, text="🗑", width=30, fg_color="#b30000", hover_color="#800000", command=lambda i=idx: delete_k(i)).pack(side="right", padx=5, pady=5)
-                self.create_button(f, text="✎", width=30, fg_color="#555", hover_color="#777", command=lambda i=idx: edit_k(i)).pack(side="right", padx=5, pady=5)
-                ctk.CTkLabel(f, text=f"{k.get('Name','')} | {k.get('PLZ_Ort','')}", anchor="w").pack(side="left", padx=10, fill="x", expand=True)
-
-        def delete_k(index):
-            if messagebox.askyesno("Löschen", "Kunde wirklich löschen?", parent=dialog):
-                del self.kunden_liste[index]
-                speichere_alle_kunden(self.p_config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
-                refresh()
-
-        def edit_k(index=None):
-            d_edit = ctk.CTkToplevel(dialog); d_edit.title("Kunde bearbeiten" if index is not None else "Neuer Kunde")
-            self.center_window(d_edit, 500, 350); d_edit.transient(dialog); d_edit.grab_set()
-            
-            e_name = self.create_input(d_edit, "Name"); e_str = self.create_input(d_edit, "Straße")
-            e_plz = self.create_input(d_edit, "PLZ Ort"); e_nr = self.create_input(d_edit, "Kunden-Nr."); 
-            e_az = self.create_input(d_edit, "Unser Zeichen"); e_k_az = self.create_input(d_edit, "Ihr Zeichen")
-            e_endpoint = self.create_input(d_edit, "E-Mail / Leitweg-ID"); e_endpoint_scheme = self.create_input(d_edit, "Endpoint-Schema")
-            
-            if index is not None:
-                k = self.kunden_liste[index]
-                e_name.insert(0, k.get('Name','')); e_str.insert(0, k.get('Strasse',''))
-                e_plz.insert(0, k.get('PLZ_Ort','')); e_nr.insert(0, k.get('KundeNr',''))
-                e_az.insert(0, k.get('Aktenzeichen',''))
-                e_k_az.insert(0, k.get('KundeAktenzeichen',''))
-                e_endpoint.insert(0, k.get('Endpoint', k.get('Email', ''))); e_endpoint_scheme.insert(0, k.get('EndpointScheme', ''))
-                
-            def save():
-                if not e_name.get().strip(): return messagebox.showwarning("Fehler", "Name darf nicht leer sein!", parent=d_edit)
-                endpoint = e_endpoint.get().strip(); endpoint_scheme = e_endpoint_scheme.get().strip()
-                if endpoint and not endpoint_scheme and '@' in endpoint: endpoint_scheme = 'EM'
-                if endpoint and not endpoint_scheme:
-                    return messagebox.showwarning("Fehler", "Für eine Leitweg-ID ist ein Endpoint-Schema erforderlich (regelmäßig 0204).", parent=d_edit)
-                neu = {'Name': e_name.get().strip(), 'Strasse': e_str.get().strip(), 'PLZ_Ort': e_plz.get().strip(), 'Land': 'DE', 'KundeNr': e_nr.get().strip(), 'Aktenzeichen': e_az.get().strip(), 'KundeAktenzeichen': e_k_az.get().strip(), 'Endpoint': endpoint, 'EndpointScheme': endpoint_scheme}
-                if index is not None: self.kunden_liste[index] = neu
-                else: self.kunden_liste.append(neu)
-                speichere_alle_kunden(self.p_config.get("kunden_csv", "kunden.csv"), self.kunden_liste)
-                self.entry_k_name.configure(values=[k['Name'] for k in self.kunden_liste]); refresh(); d_edit.destroy()
-                
-            self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
-        self.create_button(dialog, text="+ Neuen Kunden anlegen", command=lambda: edit_k()).pack(pady=10); refresh()
-
-    def open_produkte_manager(self):
-        dialog = ctk.CTkToplevel(self); dialog.title("Produktdaten verwalten")
-        self.center_window(dialog, 700, 500); dialog.transient(self); dialog.grab_set()
-        scroll = ctk.CTkScrollableFrame(dialog); scroll.pack(fill="both", expand=True, padx=10, pady=10)
-
-        def refresh():
-            for w in scroll.winfo_children(): w.destroy()
-            for idx, p in enumerate(self.produkte_liste):
-                f = ctk.CTkFrame(scroll); f.pack(fill="x", pady=2)
-                self.create_button(f, text="🗑", width=30, fg_color="#b30000", hover_color="#800000", command=lambda i=idx: delete_p(i)).pack(side="right", padx=5, pady=5)
-                self.create_button(f, text="✎", width=30, fg_color="#555", hover_color="#777", command=lambda i=idx: edit_p(i)).pack(side="right", padx=5, pady=5)
-                ctk.CTkLabel(f, text=f"{p.get('Bezeichnung','')} | {p.get('EinzelpreisNetto','0')}€ | {p.get('Steuersatz','19')}%", anchor="w").pack(side="left", padx=10, fill="x", expand=True)
-
-        def delete_p(index):
-            if messagebox.askyesno("Löschen", "Produkt wirklich löschen?", parent=dialog):
-                del self.produkte_liste[index]
-                speichere_alle_produkte(self.p_config.get("produkte_csv", "produkte.csv"), self.produkte_liste); refresh()
-
-        def edit_p(index=None):
-            d_edit = ctk.CTkToplevel(dialog); d_edit.title("Produkt bearbeiten" if index is not None else "Neues Produkt")
-            self.center_window(d_edit, 500, 350); d_edit.transient(dialog); d_edit.grab_set()
-            
-            e_bez = self.create_input(d_edit, "Bezeichnung"); e_menge = self.create_input(d_edit, "Standard-Menge")
-            e_einheit = self.create_input(d_edit, "Einheit", is_combo=True, combo_values=EINHEITEN_LISTE)
-            e_preis = self.create_input(d_edit, "Einzelpreis (€)"); e_steuer = self.create_input(d_edit, "Steuer (%)")
-            
-            if index is not None:
-                p = self.produkte_liste[index]
-                e_bez.insert(0, p.get('Bezeichnung','')); e_menge.insert(0, f"{safe_float(p.get('Menge',1)):g}")
-                e_preis.insert(0, p.get('EinzelpreisNetto','')); e_steuer.insert(0, p.get('Steuersatz','19'))
-                c = p.get('Einheit', 'C62')
-                for val in EINHEITEN_LISTE:
-                    if c in val or EINHEITEN_MAPPING.get(c, c) in val: e_einheit.set(val); break
-            else:
-                e_menge.insert(0, "1"); e_einheit.set("Stück (C62)"); e_steuer.insert(0, "19")
-                
-            def save():
-                if not e_bez.get().strip(): return messagebox.showwarning("Fehler", "Bezeichnung darf nicht leer sein!", parent=d_edit)
-                try: float(e_menge.get().replace(',', '.') or "1"); float(e_preis.get().replace(',', '.') or "0.0"); float(e_steuer.get().replace(',', '.') or "19")
-                except ValueError: return messagebox.showwarning("Eingabefehler", "Zahlenwerte fehlerhaft!", parent=d_edit)
-                
-                einheit_code = re.search(r'\((.*?)\)', e_einheit.get()).group(1).strip() if re.search(r'\((.*?)\)', e_einheit.get()) else e_einheit.get().strip()
-                neu = {'Bezeichnung': e_bez.get().strip(), 'Menge': e_menge.get().replace(',','.'), 'Einheit': einheit_code, 'EinzelpreisNetto': e_preis.get().replace(',','.'), 'Steuersatz': e_steuer.get().replace(',','.')}
-                if index is not None: self.produkte_liste[index] = neu
-                else: self.produkte_liste.append(neu)
-                speichere_alle_produkte(self.p_config.get("produkte_csv", "produkte.csv"), self.produkte_liste)
-                refresh(); d_edit.destroy()
-                
-            self.create_button(d_edit, text="Speichern", command=save).pack(pady=20)
-            
-        self.create_button(dialog, text="+ Neues Produkt anlegen", command=lambda: edit_p()).pack(pady=10); refresh()
-
+    
     def clear_profile_data(self):
         warnung = (
             "ACHTUNG: Dies löscht unwiderruflich ALLE erfassten Rechnungen, Journale und PDFs der aktiven Firma!\n"

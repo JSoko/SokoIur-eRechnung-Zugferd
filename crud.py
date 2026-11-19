@@ -6,7 +6,35 @@ Lese- und Schreiboperationen für Firmen, Rechnungen, Kunden und Produkte.
 """
 import os
 import csv
+import tempfile
 
+def atomic_save_csv(pfad, fieldnames, rows, delimiter=';'):
+    """
+    Schreibt CSV-Daten atomar (absturzsicher), indem zuerst in eine 
+    temporäre Datei im selben Ordner geschrieben und diese dann umbenannt wird.
+    """
+    dir_name = os.path.dirname(os.path.abspath(pfad))
+    os.makedirs(dir_name, exist_ok=True)
+    
+    # Temporäre Datei im selben Verzeichnis erstellen
+    fd, temp_path = tempfile.mkstemp(dir=dir_name, text=True)
+    try:
+        with os.fdopen(fd, 'w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=delimiter)
+            writer.writeheader()
+            writer.writerows(rows)
+            
+        # Atomarer Austausch (überschreibt das Ziel sicher in einem Schritt)
+        os.replace(temp_path, pfad)
+    except Exception as e:
+        # Bei einem Fehler die Temp-Datei aufräumen
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+        raise e
+        
 def create_csv_if_missing(filename, header_str):
     if not os.path.exists(filename):
         with open(filename, 'w', encoding='utf-8-sig') as f:
@@ -17,11 +45,9 @@ def ensure_utf8_csv(pfad):
     if not pfad or not os.path.exists(pfad):
         return
     try:
-        # Testweise als UTF-8 lesen
         with open(pfad, 'r', encoding='utf-8-sig') as f:
             f.read()
     except UnicodeDecodeError:
-        # Wenn es knallt, als Windows-1252 (Standard Excel/ANSI) lesen und überschreiben
         with open(pfad, 'r', encoding='windows-1252') as f:
             inhalt = f.read()
         with open(pfad, 'w', encoding='utf-8-sig') as f:
@@ -93,6 +119,7 @@ def lade_kunden(pfad):
 
 def speichere_alle_kunden(pfad, kunden_liste):
     fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen', 'KundeAktenzeichen', 'Endpoint', 'EndpointScheme']
+    atomic_save_csv(pfad, fieldnames, kunden_liste, delimiter=';')
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
@@ -122,7 +149,30 @@ def lade_produkte(pfad):
 
 def speichere_alle_produkte(pfad, produkte_liste):
     fieldnames = ['Bezeichnung', 'Menge', 'Einheit', 'EinzelpreisNetto', 'Steuersatz']
+    atomic_save_csv(pfad, fieldnames, produkte_liste, delimiter=';')
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
         writer.writerows(produkte_liste)
+        
+def loesche_kunde(pfad, kunden_name):
+    kunden = lade_kunden(pfad)
+    kunden_neu = [k for k in kunden if k['Name'].strip().lower() != kunden_name.strip().lower()]
+    speichere_alle_kunden(pfad, kunden_neu)
+
+def speichere_produkt(pfad, produkt_daten):
+    produkte = lade_produkte(pfad)
+    updated = False
+    for p in produkte:
+        if p['Bezeichnung'].strip().lower() == produkt_daten['Bezeichnung'].strip().lower():
+            p.update(produkt_daten)
+            updated = True
+            break
+    if not updated:
+        produkte.append(produkt_daten)
+    speichere_alle_produkte(pfad, produkte)
+
+def loesche_produkt(pfad, bezeichnung):
+    produkte = lade_produkte(pfad)
+    produkte_neu = [p for p in produkte if p['Bezeichnung'].strip().lower() != bezeichnung.strip().lower()]
+    speichere_alle_produkte(pfad, produkte_neu)

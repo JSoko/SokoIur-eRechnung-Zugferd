@@ -308,7 +308,7 @@ class TabErfassenMixin:
         from eingangsrechnung import _money
         d = ctk.CTkToplevel(self)
         d.title('Eingangsrechnung prüfen und erfassen')
-        self.center_window(d, 640, 560)
+        self.center_window(d, 640, 610)
         d.transient(self)
         d.grab_set()
 
@@ -326,17 +326,22 @@ class TabErfassenMixin:
             f"Rechnungsdatum: {data.get('date', '')}",
             f"Leistungs-/Lieferdatum: {data.get('delivery_date', '') or '-'}",
             f"Fälligkeitsdatum: {data.get('due_date', '') or '-'}",
+            f"Land / Reverse Charge: {data.get('supplier_country', '-') or '-'} | {data.get('reverse_charge', 'Nein')}",
             f"Netto: {_money(data.get('net', '0'))} EUR",
             f"Umsatzsteuer: {_money(data.get('tax', '0'))} EUR",
             f"Brutto: {_money(data.get('gross', '0'))} EUR",
         ]
         ctk.CTkLabel(d, text='\n'.join(lines), justify='left').pack(padx=35, anchor='w')
 
+        combo_rc_in = self.create_input(d, "Reverse Charge", is_combo=True, combo_values=["Nein", "EU", "Drittland"])
+        combo_rc_in.set(data.get("reverse_charge", "Nein"))
+
         var = ctk.BooleanVar(value=bool(self.p_config.get('xrechnung_leseabschrift', True)))
         if kind == 'XRechnung':
             ctk.CTkCheckBox(d, text='Lesbare PDF-Leseabschrift im Archiv erstellen', variable=var).pack(pady=12)
 
         def yes():
+            data["reverse_charge"] = combo_rc_in.get()
             if kind == 'XRechnung':
                 self.p_config['xrechnung_leseabschrift'] = bool(var.get())
                 speichere_config(self.config)
@@ -358,7 +363,7 @@ class TabErfassenMixin:
         from eingangsrechnung import _d, normalize_date_de, check_duplicate_incoming
         d = ctk.CTkToplevel(self)
         d.title('Sonstige Eingangsrechnung erfassen')
-        self.center_window(d, 640, 680)
+        self.center_window(d, 640, 760)
         d.transient(self)
         d.grab_set()
 
@@ -388,6 +393,22 @@ class TabErfassenMixin:
         combo_vat = self.create_input(d, "Steuersatz (%)", is_combo=True, combo_values=["19", "7", "0"])
         combo_vat.set("19")
 
+        entry_country = self.create_input(d, "Lieferanten-Land (z.B. DE, US, LU)")
+        entry_country.insert(0, prefill.get("supplier_country", "DE") if prefill else "DE")
+        entry_tax_id = self.create_input(d, "Lieferant USt-IdNr.")
+        if prefill and prefill.get("supplier_tax_id"):
+            entry_tax_id.insert(0, str(prefill.get("supplier_tax_id")))
+
+        def on_rc_in_change(wahl):
+            if wahl in ("EU", "Drittland"):
+                combo_vat.set("0")
+
+        combo_rc_manual = self.create_input(
+            d, "Reverse Charge", is_combo=True,
+            combo_values=["Nein", "EU", "Drittland"], command=on_rc_in_change
+        )
+        combo_rc_manual.set(prefill.get("reverse_charge", "Nein") if prefill else "Nein")
+
         if prefill:
             for k in ('supplier', 'number', 'date', 'net', 'tax', 'gross'):
                 if prefill.get(k):
@@ -414,7 +435,15 @@ class TabErfassenMixin:
                 return messagebox.showwarning('Angabe fehlt', 'Bitte geben Sie den Namen des Lieferanten ein.', parent=d)
             if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', norm_date):
                 return messagebox.showwarning('Datumsformat', 'Bitte geben Sie ein gültiges Rechnungsdatum ein (z. B. 15.03.2026).', parent=d)
+            rc_val = combo_rc_manual.get()
+            tax_id_val = entry_tax_id.get().strip()
 
+            if rc_val == "EU" and not tax_id_val:
+                return messagebox.showwarning(
+                    'USt-IdNr. fehlt',
+                    'Bei einer EU-Reverse-Charge-Rechnung muss die USt-IdNr. des Lieferanten angegeben werden.',
+                    parent=d
+                )
             net_str = entries['net'].get().strip()
             tax_str = entries['tax'].get().strip()
             gross_str = entries['gross'].get().strip()
@@ -454,6 +483,9 @@ class TabErfassenMixin:
 
             data = {
                 'supplier': supplier,
+                'supplier_country': entry_country.get().strip().upper() or 'DE',
+                'supplier_tax_id': tax_id_val,
+                'reverse_charge': rc_val,
                 'number': number or 'ohne Nr.',
                 'date': norm_date,
                 'net': str(net),
@@ -556,8 +588,11 @@ class TabErfassenMixin:
             'Eingangsdatum': today_str,
             'Rechnungsdatum': invoice_date,
             'Lieferant': data.get('supplier', ''),
+            'Lieferant_Land': data.get('supplier_country', ''),
+            'Lieferant_UStId': data.get('supplier_tax_id', ''),
             'Externe Rechnungsnummer': data.get('number', ''),
             'Format': kind,
+            'Reverse_Charge': data.get('reverse_charge', 'Nein'),
             'Netto': _money(data.get('net')),
             'MwSt_19': _money(t19),
             'MwSt_7': _money(t7),

@@ -5,6 +5,7 @@ Globale Hilfsfunktionen für Datumsberechnungen, Nummernkreise und Währungsform
 """
 import re
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP
 
 EINHEITEN_LISTE = [
     "Stück (C62)", "Pauschale (LS)", "Stunde(n) (HUR)", 
@@ -95,3 +96,24 @@ def check_lz_logic(kopf, positionen):
                 if p_s < g_s or p_e > g_e:
                     return False, f"Fehler bei Position {pos.get('PosNr')}:\nDer Zeitraum der Position ({parse_lz_lesbar(lz_pos)}) liegt außerhalb des Zeitraums der Gesamtrechnung ({parse_lz_lesbar(kopf.get('LeistungszeitraumKopf', ''))}).\n\nBitte korrigieren Sie die Daten entsprechend."
     return True, ""
+def round_kaufm(val):
+    """Kaufmännisches Runden auf 2 Nachkommastellen zur Vermeidung von Float-Fehlern."""
+    try:
+        return float(Decimal(str(val)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+    except:
+        return 0.00
+
+def berechne_summen(positionen):
+    gesamt_netto = sum(round_kaufm(safe_float(p['Menge'], 1.0) * safe_float(p['EinzelpreisNetto'], 0.0)) for p in positionen)
+    
+    steuer_gruppen = {}
+    for pos in positionen:
+        satz = safe_float(pos.get('Steuersatz', 19.0), 19.0)
+        n = round_kaufm(safe_float(pos['Menge'], 1.0) * safe_float(pos['EinzelpreisNetto'], 0.0))
+        if satz > 0:
+            steuer_gruppen[satz] = steuer_gruppen.get(satz, 0.0) + n
+            
+    gesamt_steuer = sum(round_kaufm(netto_sum * (satz / 100.0)) for satz, netto_sum in steuer_gruppen.items())
+    gesamt_brutto = round_kaufm(gesamt_netto + gesamt_steuer)
+    
+    return gesamt_netto, gesamt_steuer, gesamt_brutto, steuer_gruppen

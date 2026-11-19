@@ -100,6 +100,13 @@ class TabAuswertungenMixin:
         btn_a_audit.pack(side="left", fill="x", expand=True, padx=5)
         create_tooltip(btn_a_audit, "Erstellt das Revisions-Protokoll (GoBD Audit-Log)\nder Ausgangsrechnungen als PDF-Datei für das Jahr.")
         
+        f_btns3 = ctk.CTkFrame(f, fg_color="transparent")
+        f_btns3.pack(pady=(5, 20), fill="x", padx=10)
+        
+        btn_dash = self.create_button(f_btns3, text="📈 Visuelles Business-Dashboard öffnen", command=self.open_dashboard_popup, fg_color="#1f538d", hover_color="#14375d")
+        btn_dash.pack(side="left", fill="x", expand=True, padx=5)
+        create_tooltip(btn_dash, "Öffnet ein interaktives Grafik-Dashboard mit monatlichem Umsatzverlauf,\nTop-5-Kunden und einer Gegenüberstellung von Umsatzsteuer und Vorsteuer.")
+        
         self.update_ausw_jahre()
     
     def build_eingang_tab(self):
