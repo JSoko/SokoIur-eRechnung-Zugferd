@@ -19,13 +19,70 @@
 </head>
 <body>
     <h1>Changelog – SokoIur eRechnung</h1>
-    <p><strong>Aktuelle Version: 2.000227</strong></p>
-  
-    <h2>Version 2.000227 <span class="date">(November 2026)</span></h2>
+    <p class="version"><strong>Aktuelle Version: Entwickler-Version</strong></p>
+	<h2>Version 2.000290 <span class="date">(19. November 2026)</span></h2>
+	<h3>🛠 System, Architektur &amp; Code-Bereinigung</h3>
+    <ul>
+        <li><strong>Auslagerung der Dokumentation in HTML-Vorlagen:</strong> Das Handbuch und das Changelog wurden aus der Python-Logik (<code>hilfe_texte.py</code>) herausgelöst und in eigenständige, leicht pflegbare HTML-Dateien (<code>html/handbuch.html</code> und <code>html/changelog.html</code>) überführt.</li>
+        <li><strong>Intelligentes Caching (<code>doku_meta.json</code>):</strong> Beim Programmstart und beim Aufruf der Hilfe prüft das System nun anhand von Versionsnummer und Datei-Zeitstempel, ob die Dokumentationsdateien im AppData-Ordner bereits aktuell sind. Dadurch entfallen unnötige Schreibvorgänge bei jedem Klick.</li>
+        <li><strong>Code-Bereinigung:</strong> Doppelte Methodendefinitionen im Auswertungsmodul sowie veraltete Hilfsfunktionen wurden entfernt und der Build-Prozess (PyInstaller) für die Einbindung der HTML-Ressourcen optimiert.</li>
+    </ul>
+    <h2>Version 2.000289 <span class="date">(18. November 2026)</span></h2>
+    <h3>✨ Reverse Charge (EU &amp; Drittland) für Ein- und Ausgangsrechnungen</h3>
+    <ul>
+        <li><strong>Ausgangsrechnungen (ERSTELLEN):</strong> Neue Felder für <em>Land</em>, <em>Reverse Charge</em> (Nein / EU / Drittland) und <em>Kunde USt-IdNr.</em> inkl. Live-Pflichtprüfung bei EU-Reverse-Charge, automatischer 0%-Umstellung, gesetzlichen PDF-Hinweisen sowie EN-16931-XML-Codes (<code>AE</code> / <code>VATEX-EU-AE</code> bzw. <code>O</code> / <code>VATEX-EU-O</code>).</li>
+        <li><strong>Eingangsrechnungen (ERFASSEN):</strong> Automatische Reverse-Charge-Erkennung im XML-Parser (Unterschiedliche USt-IdNr.-Prüfung für EU vs. Drittland) sowie manuelle Auswahl in der Erfassungsmaske.</li>
+        <li><strong>DATEV-Export &amp; Handbuch:</strong> Getrennte DATEV-Sachkonten für EU- und Drittland-Reverse-Charge im Ein- und Ausgang sowie ausführliche Ausfüllanleitung im Handbuch (Kapitel 7, 10 und 14).</li>
+    </ul>
+
+    <h3>✨ Automatisierter E-Mail-Versand &amp; Thunderbird-Integration</h3>
+    <ul>
+        <li><strong>Konfigurierbarer E-Mail-Body &amp; Footer:</strong> In den Firmeneinstellungen (Reiter <em>Konfig.</em>) wurden zwei neue Konfigurationsfelder für den Standard-E-Mail-Text sowie den E-Mail-Footer / Signatur hinzugefügt.</li>
+        <li><strong>Robuste Thunderbird-Schnittstelle:</strong> Der E-Mail-Versand über Mozilla Thunderbird wurde auf eine saubere Parameter-Liste über <code>subprocess.Popen</code> umgestellt. Dadurch werden Zeilenumbrüche, der volle Text, Empfänger, Betreff und der PDF-Anhang in modernen Thunderbird-Versionen absolut fehlerfrei und im Klartext übergeben.</li>
+        <li><strong>Intelligente Signatur-Erkennung:</strong> Der im Programm hinterlegte Footer wird nahtlos eingebunden. Ist in Thunderbird im Standardkonto bereits eine eigene Signatur aktiv, ergänzt das System den Text intelligent, um doppelte Footer zu vermeiden.</li>
+    </ul>
+
+    <h3>✨ Live-Validierung &amp; Visuelle Fehleranzeige in der Erfassungsmaske</h3>
+    <ul>
+        <li><strong>Live-Fehleranzeige unter den Summen:</strong> Im Reiter <em>[E]RSTELLEN</em> wurde direkt unter der Netto-/Brutto-Gesamtanzeige ein dynamisches Ausgabefeld integriert. Dieses prüft bei jedem Tastendruck in Echtzeit, ob alle Pflichtfelder (Kundenname, Straße, getrennte PLZ und Ort) korrekt ausgefüllt sind.</li>
+        <li><strong>Sofortige rote Rahmen-Markierung:</strong> Unvollständige oder fehlende Pflichtfelder werden nun in der Eingabemaske direkt rot umrandet, sobald der Benutzer tippt oder eine Aktion ausführt.</li>
+        <li><strong>Strikte Erstellungs-Sperre:</strong> Der Klick auf Rechnungsgenerierungs-Buttons (Zugpferdrechnung, XRechnung, Papier-PDF) bricht nun sofort und ohne Umwege ab, wenn noch Pflichtfehler vorliegen. Die Rechnung kann erst generiert werden, wenn das Live-Ausgabefeld grünes Licht gibt.</li>
+        <li><strong>Absturzsichere CSV-Speicherung (Atomic Writes):</strong> Das Speichern von Kunden- und Artikeldaten im Netzwerk wurde durch einen atomaren Schreibmechanismus (Zwischenspeicherung via Temp-Datei und anschließender Ersetzung per <code>os.replace</code>) erweitert. Dadurch wird eine Beschädigung der CSV-Dateien bei plötzlichen Netzwerk- oder Stromausfällen technisch ausgeschlossen.</li>
+        <li><strong>Undo/Redo-Verlauf (Strg+Z / Strg+Y):</strong> In der manuellen Erfassungsmaske können Änderungen an Kopfdaten und Positionen nun wie in einem Editor rückgängig gemacht oder wiederholt werden.</li>
+    </ul>
+
+    <h3>✨ XML-Validierung &amp; XRechnung (EN 16931)</h3>
+    <ul>
+        <li><strong>Exakte kaufmännische Rundung:</strong> Ein tiefliegendes Problem der Fließkomma-Arithmetik (IEEE 754) wurde behoben. Beträge und Steuern werden nun über eine zentrale Funktion kaufmännisch exakt auf 2 Nachkommastellen gerundet. Dies löst XRechnungs-Validierungsfehler wie <code>[BR-CO-10]</code> (Summe Nettobetrag) und <code>[BR-CO-14]</code> (Summe Mehrwertsteuer).</li>
+        <li><strong>Bereinigung leerer XML-Elemente:</strong> Optionale Felder ohne Inhalt (wie z.B. Leitweg-ID, Kundennummer oder Aktenzeichen) erzeugen nun keine leeren XML-Tags mehr. Dies behebt den Validierungsfehler <code>[PEPPOL-EN16931-R008]</code>.</li>
+        <li><strong>Pflichtfeldprüfung Ort (Buyer City):</strong> Gemäß EN 16931 (BT-52) ist der Ort des Rechnungsempfängers zwingend vorgeschrieben. Fehlt der Ort in der Eingabemaske, fügt das System zur Vermeidung des Fehlers <code>[BR-DE-8]</code> nun automatisch den Platzhalter &quot;Fehlt&quot; in das XML ein (im Handbuch wurde ein entsprechender Warnhinweis zur korrekten Dateneingabe ergänzt).</li>
+        <li><strong>Dynamische Hilfe-Generierung:</strong> Das Handbuch und das Changelog werden beim Klick nun bei jedem Aufruf dynamisch neu geschrieben. Zuvor wurden HTML-Dateien aus Vorversionen im Cache behalten, wodurch Neuerungen nach einem Update unsichtbar blieben.</li>
+    </ul>
+
+    <h3>✨ User Experience (UX) &amp; Stabilität</h3>
+    <ul>
+        <li><strong>Netzwerkweite Statistiken (Info-Tab):</strong> Die Programm- und Belegstatistiken im Info-Reiter (F1) wurden deutlich erweitert. Neben der aktiven Firma werden nun asynchron im Hintergrund die Gesamtdaten aller im Netzwerk hinterlegten Firmen ausgelesen und angezeigt.</li>
+        <li><strong>Splash-Screen Fix:</strong> Ein kritischer Fehler beim Programmstart wurde behoben. Wenn das Programm aufgrund einer existierenden Netzwerk-Sperre (Lock-Datei) oder beim ersten Start (Ordner-Abfrage) blockierte, wurde die entsprechende Fehlermeldung/Abfrage hinter dem Startbildschirm (Splash-Screen) versteckt. Der Splash-Screen wird bei Dialogen nun sofort beendet.</li>
+        <li><strong>Tab-Fokus nach Firmenwechsel:</strong> Wechselt man in der Header-Leiste das Firmenprofil, springt die Ansicht nun automatisch wieder auf den Tab &quot;ERSTELLEN&quot;, da ansonsten der Inhalt des vorherigen Tabs unsichtbar bleiben konnte.</li>
+    </ul>
+
+    <h2>Version 2.000229 <span class="date">(17. November 2026)</span></h2>
+    <h3>✨ Neue Funktionen &amp; Verbesserungen</h3>
+    <ul>
+        <li><strong>Erweitertes Business-Dashboard:</strong>
+            <ul>
+                <li><strong>Geschäftsjahresauswahl:</strong> Das Dashboard besitzt nun ein integriertes Jahr-Dropdown, mit dem direkt im Fenster zwischen den Geschäftsjahren gewechselt werden kann.</li>
+                <li><strong>Direkte Wert-Einblendungen:</strong> Kundennamen und Umsätze werden nun direkt in den Balken der Top-5-Kunden angezeigt; die Steuer-Übersicht zeigt die exakten Beträge als direkte Zahlen-Labels über den Säulen.</li>
+            </ul>
+        </li>
+        <li><strong>Visuelle Stammdatenverwaltung:</strong> Im Reiter &quot;Konfig.&quot; gibt es den Button &quot;👥 Kunden &amp; Artikel visuell verwalten&quot; zur komfortablen Pflege per Live-Suche und Tabellenansicht (inkl. passender ZUGFeRD-Dropdowns für Einheiten und Steuersätze).</li>
+        <li><strong>Testrechnung-Button:</strong> In der Eingabemaske kann eine Vorschau-PDF ohne Nummernvergabe oder Journaleintrag erzeugt werden.</li>
+    </ul>
+
     <p><strong>Umfassendes Architektur-Update (Under the Hood)</strong><br>
     Das komplette Programm wurde nach dem <em>Single Responsibility Principle</em> modularisiert, um die Wartbarkeit, Stabilität und zukünftige Erweiterbarkeit zu sichern. Der ehemals monolithische Code ist nun in saubere, spezialisierte Einzeldateien unterteilt:</p>
-    
-    <h3>✨ 1. Daten & Kernfunktionen</h3>
+
+    <h3>✨ 1. Daten &amp; Kernfunktionen</h3>
     <ul>
         <li><strong>config.py:</strong> Zentrale Verwaltung aller Pfade, Konstanten und Einstellungen.</li>
         <li><strong>crud.py:</strong> (Create, Read, Update, Delete) – Zentrales Modul für alle Lese- und Schreibzugriffe auf die CSV-Datenbanken und lokale Dateien.</li>
@@ -33,65 +90,61 @@
         <li><strong>audit.py:</strong> Zentrale Protokollierung (GoBD-Compliance).</li>
     </ul>
 
-    <h3>✨ 2. PDF & XML Engine (Geschäftslogik)</h3>
+    <h3>✨ 2. PDF &amp; XML Engine (Geschäftslogik)</h3>
     <ul>
         <li><strong>pdf_builder.py:</strong> Ausschließlich für das optische Zeichnen des PDF-Layouts zuständig (ReportLab).</li>
         <li><strong>xml_processor.py:</strong> Generiert strikt die maschinenlesbaren XML-Strukturen nach EN 16931 (ZUGFeRD/XRechnung).</li>
-        <li><strong>pdf_zugferd.py:</strong> Fungiert nun als "Dirigent", der das optische Layout und die XML-Daten zusammenführt und die fertige e-Rechnung packt.</li>
+        <li><strong>pdf_zugferd.py:</strong> Fungiert nun als &quot;Dirigent&quot;, der das optische Layout und die XML-Daten zusammenführt und die fertige e-Rechnung packt.</li>
     </ul>
 
     <h3>✨ 3. Benutzeroberfläche (GUI)</h3>
     <p>Die riesige Hauptdatei wurde aufgelöst. Jeder Reiter der Oberfläche hat nun seine eigene, übersichtliche Datei:</p>
     <ul>
         <li><strong>gui_utils.py:</strong> Allgemeine grafische Werkzeuge (z.B. Hover-Texte / Tooltips).</li>
-        <li><strong>tab_manuell.py:</strong> Steuert den Reiter "Erstellen" (Manuelle Rechnungseingabe).</li>
-        <li><strong>tab_erfassen.py:</strong> Steuert den Reiter "Erfassen" (Eingangsrechnungen verarbeiten).</li>
-        <li><strong>tab_auswertungen.py:</strong> Steuert die Reiter "Ausgang" und "Eingang" (Journale und Auswertungen).</li>
-        <li><strong>tab_einstellungen.py:</strong> Steuert den Reiter "Konfig." (Einstellungen).</li>
-        <li><strong>tab_hilfe.py:</strong> Steuert den Reiter "Info & Hilfe".</li>
+        <li><strong>tab_manuell.py:</strong> Steuert den Reiter &quot;Erstellen&quot; (Manuelle Rechnungseingabe).</li>
+        <li><strong>tab_erfassen.py:</strong> Steuert den Reiter &quot;Erfassen&quot; (Eingangsrechnungen verarbeiten).</li>
+        <li><strong>tab_auswertungen.py:</strong> Steuert die Reiter &quot;Ausgang&quot; und &quot;Eingang&quot; (Journale und Auswertungen).</li>
+        <li><strong>tab_einstellungen.py:</strong> Steuert den Reiter &quot;Konfig.&quot; (Einstellungen).</li>
+        <li><strong>tab_hilfe.py:</strong> Steuert den Reiter &quot;Info &amp; Hilfe&quot;.</li>
         <li><strong>updater.py:</strong> Die reine Logik für die automatischen P2P- und Online-Updates.</li>
     </ul>
+
     <h2>Version 2.000221</h2>
-    <h3>✨ Bugfixes & Journale</h3>
+    <h3>✨ Bugfixes &amp; Journale</h3>
     <ul>
         <li><strong>Korrektur bei Rechnungsänderungen:</strong> Wenn eine Rechnung überschrieben wurde, entstand im Ausgangsjournal (<code>reYYYYMM.csv</code>) bisher fälschlicherweise ein doppelter Eintrag für dieselbe Rechnungsnummer. Das System überschreibt nun die alte Zeile im Journal sauber, sodass die Summenauswertungen und DATEV-Exporte korrekt bleiben. Die Historie der Änderung wird weiterhin lückenlos im GoBD Audit-Log erfasst.</li>
     </ul>
     <h3>✨ UI/UX-Verbesserungen</h3>
     <ul>
         <li><strong>Responsive Buttons in Auswertungen:</strong> Ein Darstellungsproblem wurde behoben, bei dem die zahlreichen neuen Export-Buttons in den Reitern für Ausgangs- und Eingangsjournale auf schmalen Bildschirmen rechts abgeschnitten wurden. Die Buttons ordnen sich nun flexibel in einem mehrzeiligen Raster (2x2) an und skalieren sicher mit der Fensterbreite.</li>
-        <li><strong>Pfad-Ansicht erweitert:</strong> In den Einstellungen ("Aktive Pfade der aktuellen Firma") wurde der Speicherort für das GoBD-Audit-Log ergänzt. Zusätzlich verfügt nun jeder dort gelistete Pfad über einen direkten Explorer-Button (📂), mit dem sich das jeweilige Windows-Verzeichnis komfortabel per Klick öffnen lässt.</li>
+        <li><strong>Pfad-Ansicht erweitert:</strong> In den Einstellungen (&quot;Aktive Pfade der aktuellen Firma&quot;) wurde der Speicherort für das GoBD-Audit-Log ergänzt. Zusätzlich verfügt nun jeder dort gelistete Pfad über einen direkten Explorer-Button (📂), mit dem sich das jeweilige Windows-Verzeichnis komfortabel per Klick öffnen lässt.</li>
     </ul>
-    <h3>✨ GoBD-Konformität & Audit-Log</h3>
+    <h3>✨ GoBD-Konformität &amp; Audit-Log</h3>
     <ul>
         <li><strong>Audit-Log Duplikate behoben:</strong> Ein Fehler wurde korrigiert, bei dem die Rechnungserstellung aus der Benutzeroberfläche heraus fälschlicherweise einen zweiten Protokolleintrag der Hintergrund-Engine erzeugte. Das System trennt beim Schreiben des GoBD Audit-Logs nun lückenlos und überschneidungsfrei zwischen den drei Startmodi: reguläre GUI (<code>GUI</code>), Fremdaufruf mit manueller Nachbearbeitung (<code>CLI (--edit)</code>) und vollautomatische Hintergrundgenerierung (<code>CLI (--auto)</code>).</li>
-        <li><strong>Audit-Log als PDF exportieren:</strong> In den Auswertungs-Reitern (Ausgang und Eingang) wurde jeweils ein neuer Button ("🛡️ Audit-Log PDF") integriert. Damit lässt sich das im Hintergrund geschriebene GoBD-Revisionsprotokoll auf Knopfdruck als sauberes, tabellarisches Querformat-PDF für den Wirtschaftsprüfer oder das Finanzamt generieren und anzeigen.</li>
+        <li><strong>Audit-Log als PDF exportieren:</strong> In den Auswertungs-Reitern (Ausgang und Eingang) wurde jeweils ein neuer Button (&quot;🛡️ Audit-Log PDF&quot;) integriert. Damit lässt sich das im Hintergrund geschriebene GoBD-Revisionsprotokoll auf Knopfdruck als sauberes, tabellarisches Querformat-PDF für den Wirtschaftsprüfer oder das Finanzamt generieren und anzeigen.</li>
         <li><strong>Automatisches Audit-Log:</strong> Zur Einhaltung der gesetzlichen Vorschriften (Nachvollziehbarkeit und Unveränderbarkeit gemäß GoBD) erstellt das Programm nun für jede Firma jahresbasierte Audit-Logs getrennt für Ein- und Ausgangsrechnungen.</li>
         <li><strong>Nachweis der Arbeitsplätze:</strong> Das Log erfasst transparent, von welchem PC aus und über welchen Modus (GUI, --edit oder --auto) eine Rechnung erstellt, geändert oder gelöscht wurde.</li>
         <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen lässt sich nun ein Begründungszwang aktivieren. Anwender müssen bei der Löschung oder Modifikation einer bestehenden Rechnung einen Revisionsgrund eintragen, der revisionssicher in das Log geschrieben wird.</li>
     </ul>
-    <h3>✨ Netzwerk & Updates</h3>
+    <h3>✨ Netzwerk &amp; Updates</h3>
     <ul>
         <li><strong>Optimierter P2P-Update-Prozess:</strong> Wenn das Programm auf ein Update prüft, wird nun <em>zuerst</em> das verbundene Netzwerklaufwerk abgefragt. Liegt dort bereits eine aktualisierte Version bereit (z. B. weil ein anderer Arbeitsplatz das Update bereits durchgeführt hat), wird diese sofort verwendet. Das Programm verbindet sich nur noch dann mit dem Online-Server (erech.6078.de), wenn im lokalen Netz kein neueres Update existiert, was den Traffic drastisch reduziert und den Vorgang stark beschleunigt.</li>
         <li><strong>Automatische Update-Verteilung (P2P-Ansatz):</strong> Wenn das Programm auf einem Arbeitsplatz gestartet wird und die ausführbare Datei neuer ist als die im zentralen Netzwerkordner hinterlegte Update-Datei (<code>SokoIur_eRechnung_Update.exe</code>), wird diese nun automatisch aktualisiert. So können manuell eingespielte Updates von einem Client automatisch an alle anderen Arbeitsplätze im Netzwerk verteilt werden.</li>
     </ul>
-    <h3>📚 Handbuch & Dokumentation</h3>
+    <h3>📚 Handbuch &amp; Dokumentation</h3>
     <ul>
         <li><strong>Erweiterung der GoBD-Dokumentation:</strong> Das Administratorhandbuch (Kapitel 17) wurde um eine detaillierte Aufschlüsselung erweitert, in der genau dokumentiert ist, welche Aktionen (Neu, Geändert, Gelöscht) und welche Modi (GUI vs. CLI) zu einem Eintrag im GoBD Audit-Log führen.</li>
     </ul>
-    <h2>Version 2.000206</h2>
-    <h3>✨ Neue Funktionen & Datensicherheit</h3>
-    <ul>
-        <li><strong>Firmendaten Backup & Restore:</strong> Im Reiter "Konfig." lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.</li>
-    </ul>
 
-    <h2>Version 2.000227</h2>
-    <h3>✨ Neue Funktionen & Verbesserungen</h3>
+    <h2>Version 2.000206</h2>
+    <h3>✨ Neue Funktionen &amp; Datensicherheit</h3>
     <ul>
-        <li><strong>Testrechnung-Button:</strong> In der Eingabemaske kann nun eine Vorschau-PDF (Testrechnung) erstellt werden. Es wird keine Rechnungsnummer vergeben, kein Journaleintrag erzeugt und das Programm bleibt für weitere Korrekturen geöffnet.</li>
+        <li><strong>Firmendaten Backup &amp; Restore:</strong> Im Reiter &quot;Konfig.&quot; lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.</li>
     </ul>
 
     <h2>Version 2.000151</h2>
-    <h3>✨ UI/UX-Verbesserungen & Einstellungen</h3>
+    <h3>✨ UI/UX-Verbesserungen &amp; Einstellungen</h3>
     <ul>
         <li><strong>Schnellnavigation (Shortcuts):</strong> Die Tastenkürzel für den direkten Wechsel der Reiter (z. B. Alt+E für Erstellen) werden nun platzsparend und visuell elegant durch eckige Klammern um den jeweiligen Buchstaben der Tab-Überschrift (z. B. [E]RSTELLEN) signalisiert.</li>
         <li><strong>Umbenennung:</strong> Der Reiter „Einstellungen“ wurde in „Konfig.“ (Tastenkürzel Alt+K) umbenannt, um die Tab-Leiste kompakt zu halten.</li>
@@ -99,15 +152,17 @@
         <li><strong>Hover-Erklärungen (Tooltips):</strong> Wichtige Buttons und Checkboxen in den Einstellungen sind nun mit hilfreichen Tooltips versehen, die beim Darüberfahren mit der Maus Erklärungen einblenden.</li>
         <li><strong>DATEV-Konten Manager:</strong> Der Konfigurations-Button für die DATEV-Kontenrahmen (SKR03/SKR04) ist nun prominent im Bereich der Stammdaten integriert.</li>
     </ul>
+
     <h2>Version 2.000150</h2>
-    <h3>✨ Kommandozeile (CLI) & Fremdprogramm-Integration</h3>
+    <h3>✨ Kommandozeile (CLI) &amp; Fremdprogramm-Integration</h3>
     <ul>
         <li><strong>Strikte Profil-Validierung:</strong> Wird das Programm über <code>--auto</code> oder <code>--edit</code> mit einem nicht existierenden Firmennamen aufgerufen, bricht es nun mit einer klaren Fehlermeldung ab. Zuvor wurde fälschlicherweise das Standardprofil herangezogen.</li>
         <li><strong>Sicherheitswarnung bei Abbruch:</strong> Wird die GUI über den Parameter <code>--edit</code> von einem Drittsystem aufgerufen, erscheint nun ein spezifischer Warnhinweis, wenn der Nutzer das Fenster ohne Rechnungserstellung (Beenden / X) schließen möchte. Dies beugt verwaisten Rechnungsnummern im Drittsystem vor.</li>
         <li><strong>Saubere Textfelder:</strong> Beim CLI-gesteuerten Einlesen einer temporären Rechnungs-CSV werden alte Anmerkungen (Zusatztexte) aus dem regulären Firmenbetrieb nun korrekt ignoriert, sodass eine saubere Maske zur Verfügung steht.</li>
     </ul>
+
     <h2>Version 2.000146</h2>
-    <h3>✨ Neue Funktionen & Datenverwaltung</h3>
+    <h3>✨ Neue Funktionen &amp; Datenverwaltung</h3>
     <ul>
         <li><strong>Firma leeren:</strong> Eine neue Funktion in den Einstellungen ermöglicht es, alle erfassten Buchungen, Rechnungen und Journale einer Firma vollständig zurückzusetzen. Stammdaten (Kunden, Produkte, Briefbogen) sowie alle Textvorlagen (Header, Einleitung, Gruß, Zusatztexte) bleiben dabei unberührt.</li>
         <li><strong>CSV-Import für Kunden:</strong> Kundendaten können nun per CSV importiert werden. Anhand der Kundennummer werden bestehende Einträge automatisch überschrieben und aktualisiert, neue Kunden werden angehängt.</li>
@@ -116,14 +171,14 @@
     </ul>
 
     <h2>Version 2.000134</h2>
-    <h3>✨ DATEV-Export & Buchhaltung</h3>
+    <h3>✨ DATEV-Export &amp; Buchhaltung</h3>
     <ul>
         <li><strong>Automatisierter DATEV-Export:</strong> In den Reitern „Ausgang“ und „Eingang“ können nun vollautomatisch DATEV-konforme ASCII-CSV-Dateien (Stapelverarbeitung) für den Steuerberater erzeugt werden.</li>
         <li><strong>Steuer-Splitting:</strong> Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt und auf die jeweils passenden Sachkonten aufgeteilt. Die Soll/Haben-Kennzeichen (S/H) werden vom System intelligent vergeben.</li>
         <li><strong>DATEV-Konfigurationsmanager:</strong> Im Reiter „Einst.“ wurde ein Manager für die DATEV-Buchhaltung hinzugefügt. Per Knopfdruck lassen sich hier die Standardkonten für den Kontenrahmen <strong>SKR03</strong> oder <strong>SKR04</strong> laden oder individuelle Aufwands-, Erlös- und Sammelkonten pflegen.</li>
     </ul>
 
-    <h3>✨ Journale & Auswertungen</h3>
+    <h3>✨ Journale &amp; Auswertungen</h3>
     <ul>
         <li><strong>Neue Export-Möglichkeiten:</strong> In den Reitern „Ausgang“ und „Eingang“ wurden Buttons für den direkten CSV-Export hinzugefügt. Journale lassen sich nun auf Knopfdruck wahlweise als PDF (für den Ausdruck) oder als CSV (für den Import in Fremdsysteme oder Excel) generieren.</li>
         <li><strong>Automatischer Start:</strong> Nach der Generierung wird das erzeugte Journal (egal ob PDF oder CSV) nun direkt in der jeweiligen Standardanwendung Ihres Computers geöffnet, sodass lange Lade-Rückmeldungen entfallen.</li>
@@ -131,7 +186,7 @@
         <li><strong>Bugfix PDF-Engine:</strong> Ein iterativer Fehler bei der Erzeugung des Ausgangsjournals (PDF) wurde behoben, der durch falsch übergebene String-Variablen auftreten konnte.</li>
     </ul>
 
-    <h3>✨ Bugfixes & CLI-Verbesserungen</h3>
+    <h3>✨ Bugfixes &amp; CLI-Verbesserungen</h3>
     <ul>
         <li><strong>Firmendaten (Falzmarken):</strong> Ein Fehler beim Speichern der Firmendaten wurde behoben. Das Feld 'Falzmarken' wurde korrekt in die Datenbankstruktur aufgenommen, sodass Änderungen nun fehlerfrei gesichert werden.</li>
         <li><strong>CLI/Edit-Modus (Temp-Dateien):</strong> Wird die GUI über ein Fremdprogramm mit einer temporären CSV-Datei aufgerufen, überschreibt diese nicht mehr fälschlicherweise den Pfad der echten Rechnungsdatenbank.</li>
@@ -141,31 +196,31 @@
         <li><strong>Code-Bereinigung:</strong> Unbenutzte Code-Fragmente wurden zur Fehlervermeidung aus den GUI-Modulen entfernt.</li>
     </ul>
 
-    <h3>📚 Dokumentation & Handbuch-Erweiterung</h3>
+    <h3>📚 Dokumentation &amp; Handbuch-Erweiterung</h3>
     <ul>
-        <li><strong>Funktionsübersicht & Anwendungsfälle:</strong> Das integrierte Handbuch wurde um das neue Kapitel 3.3 ("Programmfunktionen, Verwendungsszenarien & Anwendungsfälle") erweitert. Die Unterschiede zwischen der Rechnungsstellung an Behörden (XRechnung via Leitweg-ID / ZRE-Portal) und an Geschäftskunden gemäß der kommenden E-Rechnungspflicht 2025-2028 (ZUGFeRD via E-Mail) werden klar herausgestellt.</li>
+        <li><strong>Funktionsübersicht &amp; Anwendungsfälle:</strong> Das integrierte Handbuch wurde um das neue Kapitel 3.3 (&quot;Programmfunktionen, Verwendungsszenarien &amp; Anwendungsfälle&quot;) erweitert. Die Unterschiede zwischen der Rechnungsstellung an Behörden (XRechnung via Leitweg-ID / ZRE-Portal) und an Geschäftskunden gemäß der kommenden E-Rechnungspflicht 2025-2028 (ZUGFeRD via E-Mail) werden klar herausgestellt.</li>
         <li><strong>DATEV-Export Dokumentation:</strong> Das Handbuch (Kapitel 12) wurde um eine ausführliche technische Dokumentation der neuen DATEV-Exportfunktionen inkl. ausdrücklichem <strong>Beta-Warnhinweis</strong> (Testlauf mit Steuerberater erforderlich) erweitert.</li>
     </ul>
 
     <h2>10.11.2026</h2>
-    <h3>✨ Neue Funktionen & XML-Korrekturen</h3>
+    <h3>✨ Neue Funktionen &amp; XML-Korrekturen</h3>
     <ul>
         <li><strong>Automatische UTF-8-Konvertierung:</strong> Werden fehlerhaft codierte Rechnungs-CSVs über die Kommandozeile oder die GUI geladen, repariert und konvertiert das Programm diese nun vollautomatisch in das benötigte UTF-8-Format.</li>
-        <li><strong>Referenzen normkonform getrennt:</strong> Das Feld "Ihr Zeichen" (KundeAktenzeichen) wird als echte Leitweg-Referenz (BuyerReference BT-13) übergeben. Das interne Feld "Unser Zeichen" (Aktenzeichen) wird standardkonform als Rechnungsnotiz (IncludedNote) in die XML geschrieben.</li>
+        <li><strong>Referenzen normkonform getrennt:</strong> Das Feld &quot;Ihr Zeichen&quot; (KundeAktenzeichen) wird als echte Leitweg-Referenz (BuyerReference BT-13) übergeben. Das interne Feld &quot;Unser Zeichen&quot; (Aktenzeichen) wird standardkonform als Rechnungsnotiz (IncludedNote) in die XML geschrieben.</li>
         <li><strong>Kommandozeilen-Erweiterung:</strong> Das Kunden-Aktenzeichen kann nun per Parameter <code>--kunde-az</code> gesetzt werden.</li>
     </ul>
 
     <h2>09.11.2026</h2>
-    <h3>📚 Dokumentation & Handbuch-Erweiterung</h3>
+    <h3>📚 Dokumentation &amp; Handbuch-Erweiterung</h3>
     <ul>
-        <li><strong>Revisionssichere Archivierung (Kapitel 11.8):</strong> Das Handbuch wurde um ein dediziertes Kapitel zur revisionssicheren Archivierung nach GoBD in Kombination mit Nextcloud & WORM-Speichern ergänzt.</li>
+        <li><strong>Revisionssichere Archivierung (Kapitel 11.8):</strong> Das Handbuch wurde um ein dediziertes Kapitel zur revisionssicheren Archivierung nach GoBD in Kombination mit Nextcloud &amp; WORM-Speichern ergänzt.</li>
     </ul>
-    <h3>⚡ Performance & Fehlerbehebungen (Bugfixes)</h3>
+    <h3>⚡ Performance &amp; Fehlerbehebungen (Bugfixes)</h3>
     <ul>
         <li><strong>Statistik-Korrektur:</strong> Die Zählung der erstellten Ausgangsrechnungen im Reiter „Info“ wurde korrigiert.</li>
         <li><strong>Performance-Boost im Eingangsordner:</strong> Das Einlesen und Prüfen von Eingangsrechnungen wurde extrem beschleunigt (Caching der Journal-Datenbasis).</li>
     </ul>
-    <h3>🛠 System & Architektur</h3>
+    <h3>🛠 System &amp; Architektur</h3>
     <ul>
         <li><strong>Neues Update-System:</strong> Die Update-Prüfung erfolgt nun über erech.6078.de. Updates werden automatisch in das Netzlaufwerk kopiert.</li>
         <li><strong>AppData-Nutzung:</strong> Lokale Konfigurationsdateien werden ab sofort sicher im Windows-Benutzerverzeichnis (<code>%LOCALAPPDATA%</code>) abgelegt, was UAC-Berechtigungskonflikte behebt.</li>
