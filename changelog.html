@@ -19,8 +19,40 @@
 </head>
 <body>
     <h1>Changelog – SokoIur eRechnung</h1>
-    <p class="version"><strong>Aktuelle Version: Entwickler-Version</strong></p>
-	<h2>Version 2.000290 <span class="date">(19. November 2026)</span></h2>
+
+    <h2>Version 2.100324 <span class="date">(21. November 2026)</span></h2>
+    <h3>✨ Eingangsrechnungen: Temp-Ansicht, Begleit-PDF-Zuordnung &amp; Build-Prozess</h3>
+    <ul>
+        <li><strong>Belegansicht über Temp-Kopie (Reiter <em>Erfassen</em>):</strong> Beim Öffnen von Eingangsrechnungen zur Ansicht (<em>👁 Öffnen</em>, <em>👁 Beleg ansehen</em> sowie <em>👁 Originaldatei zur Ansicht öffnen</em>) wird der Beleg nun zunächst in einen Unterordner im System-Temp-Verzeichnis (<code>%TEMP%\SokoIur_eRechnung_Ansicht</code>) kopiert und von dort geöffnet. Dadurch bleibt die Originaldatei im Eingangsordner (<code>reneu</code>) ungesperrt und kann direkt im Anschluss ohne Dateikonflikte verschoben oder gelöscht werden.</li>
+        <li><strong>Wechselseitige Zuordnung von XRechnung (XML) und Begleit-PDF:</strong>
+            <ul>
+                <li>Liegt neben mindestens einer XML-Datei ein reguläres PDF (ohne ZUGFeRD-XML) im Eingangsordner, erscheint in der Belegliste der Button <em>Begleitpdf</em>. Nach Auswahl der zugehörigen XML-Datei öffnet sich direkt deren Prüf- und Erfassungsmaske mit vorgemerktem Begleit-PDF.</li>
+                <li>Umgekehrt bietet der Prüf- und Bestätigungsdialog einer XRechnung den Button <em>Begleit-PDF</em> an, sofern passende PDF-Dateien im Eingangsordner liegen. Das zugeordnete PDF wird bei der Erfassung zusammen mit der XML-Datei archiviert (<code>&lt;ER-Nr.&gt;_Begleit.pdf</code> in <code>rchn/&lt;Jahr&gt;</code>) und aus dem Eingangsordner entfernt.</li>
+            </ul>
+        </li>
+        <li><strong>Getrennte Anzeige von XML und Begleit-PDF im Eingangsjournal:</strong> Wurde eine XRechnung zusammen mit einem Begleit-PDF erfasst, zeigt die Journalliste im Reiter <em>📥 Eingang</em> nun zwei separate Schaltflächen (<em>👁 XML</em> und <em>👁 Begleit</em>) anstelle eines einzelnen Beleg-Buttons. Beim Stornieren/Löschen eines Eintrags wird das zugehörige Begleit-PDF ebenfalls automatisch aus dem Archiv entfernt.</li>
+        <li><strong>Optimierter Build- &amp; Update-Rollout (<code>compile.cmd</code>):</strong> Der nicht mehr benötigte sekundäre Ablagepfad (<code>APP_DIR</code>) wurde entfernt. Vor dem Kopieren eines neuen Update-Setups in das Netzwerkverzeichnis wird die bisherige Setup-Datei anhand der Versionsnummer aus <code>erech.txt</code> automatisch archiviert (<code>SokoIur_eRechnung_Update_Setup_V&lt;Version&gt;.exe</code>), und die Gesamtcode-Sicherung wird sauber im Unterordner <code>src\Gesamtcode</code> abgelegt.</li>
+    </ul>
+
+
+    <h2>Version 2.100315 <span class="date">(20. November 2026)</span></h2>
+    <h3>✨ Dialogboxen, Tastatursteuerung &amp; Lock-Handling</h3>
+    <ul>
+        <li><strong>Zuverlässige Tab- &amp; Tastatur-Navigation in Dialogen:</strong> In <code>gui_app.py</code> (<code>_show_custom_dialog</code>) wurde die Fokus-Steuerung für modale Dialoge grundlegend überarbeitet. Ein mehrfacher Wechsel zwischen den Buttons über <code>Tab</code>, <code>Shift+Tab</code> sowie die Pfeiltasten funktioniert nun endlos und ohne Hängenbleiben; <code>Enter</code>, <code>Leertaste</code>, <code>Esc</code> sowie Mausklicks lösen den jeweils gewählten Button exakt aus.</li>
+        <li><strong>Deutliche Hervorhebung des aktiven Dialog-Buttons:</strong> Der aktuell fokussierte Button wird nun durch einen gelben Signal-Hintergrund, dunkle Fettschrift, weißen Fokusrahmen und einen vorangestellten Pfeil (<code>▶</code>) klar von inaktiven (grünen) Buttons abgehoben.</li>
+        <li><strong>Einheitliche Dialoge im gesamten Programm:</strong> Alle verbliebenen Standard-Systemdialoge (<code>tkinter.messagebox</code>) in <code>tab_erfassen.py</code>, <code>tab_einstellungen.py</code>, <code>tab_verwaltung.py</code> und <code>tab_auswertungen.py</code> wurden auf die einheitlichen App-Dialoge (<code>show_info</code>, <code>show_warning</code>, <code>show_error</code>, <code>ask_yes_no</code>) umgestellt.</li>
+        <li><strong>Erweiterte Lock-Prüfung beim Programmstart:</strong> Stößt das Programm beim Start auf eine bestehende Firmen-Sperrdatei (<code>erechnung.lock</code>), bietet der Dialog neben <em>OK</em> (Beenden) nun auch die Schaltflächen <em>Noch einmal prüfen</em> und <em>Lock entfernen</em> (inklusive Sicherheitsabfrage) an und zentriert den Hinweis sauber auf dem Bildschirm.</li>
+    </ul>
+
+    <h2>Version 2.100310 <span class="date">(20. November 2026)</span></h2>
+    <h3>✨ UI/UX-Verbesserungen &amp; Fehlerbehebungen</h3>
+    <ul>
+        <li><strong>Kopfzeile mit Firmenauswahl &amp; Tabs auf gleicher Höhe:</strong> In <code>gui_app.py</code> wurden die Profilauswahl und die Tab-Navigation in einer gemeinsamen Kopfzeile angeordnet und optisch aufeinander abgestimmt.</li>
+        <li><strong>Kompaktere Checkboxen im Erstellen-Reiter:</strong> In <code>tab_manuell.py</code> wurden die Checkboxen <em>Kunde speichern</em>, <em>E-Mailversand</em> und <em>Ratenzahlung</em> kompakter gestaltet, sodass sie besser zu ihrer Beschriftung passen und mehr Platz für die Positionsliste bleibt.</li>
+        <li><strong>Automatische Scrollbar-Sichtbarkeit:</strong> Über <code>setup_auto_scrollbar</code> und <code>update_scrollable_visibility</code> in <code>gui_utils.py</code> (angebunden in <code>tab_manuell.py</code>, <code>tab_erfassen.py</code> und <code>tab_auswertungen.py</code>) werden Scrollbalken nur dann angezeigt, wenn tatsächlich Scrollbedarf besteht.</li>
+        <li><strong>Fix für Statistik-Ladevorgang im Info-Reiter:</strong> In <code>tab_hilfe.py</code> wurde die fehlende Methode <code>_load_stats_async</code> ergänzt, damit beim Öffnen des Info-Reiters keine Ausnahme mehr auftritt und die Statistiken für aktive Firma sowie Netzwerk korrekt geladen werden.</li>
+    </ul>
+	<h2>Version 2.000291 <span class="date">(19. November 2026)</span></h2>
 	<h3>🛠 System, Architektur &amp; Code-Bereinigung</h3>
     <ul>
         <li><strong>Auslagerung der Dokumentation in HTML-Vorlagen:</strong> Das Handbuch und das Changelog wurden aus der Python-Logik (<code>hilfe_texte.py</code>) herausgelöst und in eigenständige, leicht pflegbare HTML-Dateien (<code>html/handbuch.html</code> und <code>html/changelog.html</code>) überführt.</li>
@@ -55,7 +87,7 @@
     <ul>
         <li><strong>Exakte kaufmännische Rundung:</strong> Ein tiefliegendes Problem der Fließkomma-Arithmetik (IEEE 754) wurde behoben. Beträge und Steuern werden nun über eine zentrale Funktion kaufmännisch exakt auf 2 Nachkommastellen gerundet. Dies löst XRechnungs-Validierungsfehler wie <code>[BR-CO-10]</code> (Summe Nettobetrag) und <code>[BR-CO-14]</code> (Summe Mehrwertsteuer).</li>
         <li><strong>Bereinigung leerer XML-Elemente:</strong> Optionale Felder ohne Inhalt (wie z.B. Leitweg-ID, Kundennummer oder Aktenzeichen) erzeugen nun keine leeren XML-Tags mehr. Dies behebt den Validierungsfehler <code>[PEPPOL-EN16931-R008]</code>.</li>
-        <li><strong>Pflichtfeldprüfung Ort (Buyer City):</strong> Gemäß EN 16931 (BT-52) ist der Ort des Rechnungsempfängers zwingend vorgeschrieben. Fehlt der Ort in der Eingabemaske, fügt das System zur Vermeidung des Fehlers <code>[BR-DE-8]</code> nun automatisch den Platzhalter &quot;Fehlt&quot; in das XML ein (im Handbuch wurde ein entsprechender Warnhinweis zur korrekten Dateneingabe ergänzt).</li>
+        <li><strong>Pflichtfeldprüfung Ort (Buyer City):</strong> Gemäß EN 16931 (BT-52) ist der Ort des Rechnungsempfängers zwingend vorgeschrieben. Fehlt der Ort in der Eingabemaske, fügt das System zur Vermeidung des Fehlers <code>[BR-DE-8]</code> nun automatisch den Platzhalter &quot;Fehlt&quot; in das XML ein (im Handbuch wurde ein entsprender Warnhinweis zur korrekten Dateneingabe ergänzt).</li>
         <li><strong>Dynamische Hilfe-Generierung:</strong> Das Handbuch und das Changelog werden beim Klick nun bei jedem Aufruf dynamisch neu geschrieben. Zuvor wurden HTML-Dateien aus Vorversionen im Cache behalten, wodurch Neuerungen nach einem Update unsichtbar blieben.</li>
     </ul>
 
