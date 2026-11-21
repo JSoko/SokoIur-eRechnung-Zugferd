@@ -1,894 +1,200 @@
 """
 hilfe_texte.py
---------------------
-HTML- und Markdown-Generierung für das Handbuch und Changelog.
+--------------
+Lädt Handbuch und Changelog aus HTML-Dateien und stellt Dokumentationsdateien
+im Programmpfad (mit Fallback auf AppData) bereit.
 """
+import os
 import re
-
-def get_doku_html(version_string):
-    return rf"""<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SokoIur eRechnung - Handbuch</title>
-    <style>
-        html {{ background-color: #e9ecef; scroll-behavior: smooth; }}
-        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.7; color: #333; max-width: 1300px; margin: 40px auto; padding: 0 20px; display: flex; gap: 30px; }}
-        .sidebar {{ flex: 0 0 300px; position: sticky; top: 40px; height: calc(100vh - 80px); overflow-y: auto; background-color: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }}
-        .main-content {{ flex: 1; background-color: #ffffff; padding: 50px 60px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); min-width: 0; }}
-        h1 {{ color: #1f538d; text-align: center; margin-bottom: 5px; font-size: 2.2em; }}
-        p.version {{ text-align: center; color: #6c757d; margin-top: 0; margin-bottom: 40px; }}
-        h2 {{ color: #1f538d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 50px; font-size: 1.6em; }}
-        h3 {{ color: #2c3e50; margin-top: 30px; font-size: 1.2em; }}
-        a {{ color: #0066cc; text-decoration: none; }}
-        a:hover {{ text-decoration: underline; color: #004999; }}
-        p, li {{ font-size: 15px; }}
-        .toc ul {{ list-style-type: none; padding: 0; margin: 0; }}
-        .toc li {{ margin-bottom: 12px; font-size: 14px; }}
-        .toc-link {{ color: #495057; text-decoration: none; display: block; transition: all 0.2s; border-left: 2px solid transparent; padding-left: 10px; margin-left: -12px; }}
-        .toc-link:hover {{ color: #1f538d; font-weight: bold; border-left: 2px solid #1f538d; background: #f8f9fa; }}
-        code {{ background: #f1f3f5; padding: 3px 6px; border-radius: 4px; font-family: 'Consolas', monospace; color: #d63384; font-size: 0.95em; }}
-        .highlight {{ background-color: #f8fbff; border-left: 5px solid #6fa8dc; padding: 15px 20px; margin: 25px 0; border-radius: 0 8px 8px 0; }}
-        .warning-box {{ background-color: #fff5f5; border-left: 5px solid #e06666; padding: 15px 20px; margin: 25px 0; border-radius: 0 8px 8px 0; color: #990000; }}
-        
-        table.cheat-sheet {{ width: 100%; border-collapse: collapse; margin-top: 15px; margin-bottom: 15px; }}
-        table.cheat-sheet th, table.cheat-sheet td {{ border: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 14px; }}
-        table.cheat-sheet th {{ background-color: #f8f9fa; color: #1f538d; }}
-        
-        details {{ background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; margin-bottom: 15px; padding: 15px; transition: all 0.2s ease; }}
-        details[open] {{ background: #ffffff; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }}
-        summary {{ font-size: 15px; cursor: pointer; color: #1f538d; outline: none; list-style: none; display: flex; align-items: center; justify-content: space-between; }}
-        summary::-webkit-details-marker {{ display: none; }}
-        summary:after {{ content: '+'; font-size: 20px; font-weight: bold; color: #1f538d; }}
-        details[open] summary:after {{ content: '-'; }}
-        details p {{ margin-top: 15px; margin-bottom: 0; padding-top: 15px; border-top: 1px solid #e9ecef; }}
-        
-        @media (max-width: 950px) {{ body {{ flex-direction: column; padding: 10px; }} .sidebar {{ position: static; height: auto; padding: 20px; }} .main-content {{ padding: 30px 20px; }} }}
-    </style>
-</head>
-
-<body>
-    <div class="sidebar">
-        <h2 style="margin-top: 0; border: none; font-size: 1.4em;">Inhaltsverzeichnis</h2>
-        <div class="toc">
-            <div style="font-weight: bold; color: #1f538d; margin-top: 10px; margin-bottom: 5px;">TEIL 1: Allgemein</div>
-            <ul>
-                <li><a class="toc-link" href="#kap1">1. Zielgruppe, Zweck & Schnellstart</a></li>
-                <li><a class="toc-link" href="#kap2">2. Haftungsausschluss & Lizenzen</a></li>
-                <li><a class="toc-link" href="#kap3">3. Verwendungsszenarien & Use Cases</a></li>
-                <li><a class="toc-link" href="#kap4">4. Mini-Glossar</a></li>
-                <li><a class="toc-link" href="#kap5">5. FAQ – Häufige Fragen</a></li>
-            </ul>
-            <div style="font-weight: bold; color: #1f538d; margin-top: 15px; margin-bottom: 5px;">TEIL 2: Anwenderhandbuch</div>
-            <ul>
-                <li><a class="toc-link" href="#kap6">6. Die Benutzeroberfläche (Tabs)</a></li>
-                <li><a class="toc-link" href="#kap7">7. Schritt-für-Schritt: ZUGFeRD-Rechnung</a></li>
-                <li><a class="toc-link" href="#kap8">8. Auswertungen & Einstellungen (Warnung)</a></li>
-                <li><a class="toc-link" href="#kap9">9. Rechnungsformate (ZUGFeRD/XML)</a></li>
-                <li><a class="toc-link" href="#kap10">10. Eingangsrechnungen erfassen</a></li>
-                <li><a class="toc-link" href="#kap11">11. Jahreswechsel</a></li>
-            </ul>
-            <div style="font-weight: bold; color: #1f538d; margin-top: 15px; margin-bottom: 5px;">TEIL 3: Administration & IT</div>
-            <ul>
-                <li><a class="toc-link" href="#kap12">12. Ordnerstruktur & File-Locking</a></li>
-                <li><a class="toc-link" href="#kap13">13. Mandanten & Datenbanken</a></li>
-                <li><a class="toc-link" href="#kap14">14. DATEV-Export & Buchhaltung</a></li>
-                <li><a class="toc-link" href="#kap15">15. Import-Formate (CSV)</a></li>
-                <li><a class="toc-link" href="#kap16">16. Programmaufruf & CLI</a></li>
-                <li><a class="toc-link" href="#kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</a></li>
-                <li><a class="toc-link" href="#kap18">18. E-Mail-Versand & Thunderbird-Integration</a></li>
-                <li><a class="toc-link" href="#kap19">19. GitHub & Updates</a></li>
-                <li><a class="toc-link" href="#kap20">20. Schlagwortverzeichnis (Index)</a></li>
-            </ul>
-        </div>
-    </div>
-    
-    <div class="main-content">
-        <h1 style="margin-bottom: 0;">SokoIur eRechnung</h1>
-        <h2 style="border: none; margin-top: 5px; text-align: center; color: #6c757d;">Das Handbuch</h2>
-        <p class="version"><strong>Version: {version_string}</strong></p>
-
-    <!-- TEIL 1: Allgemeiner Teil -->
-    <h1 style="background-color: #1f538d; color: #ffffff; padding: 12px 20px; border-radius: 8px; margin-top: 40px; text-align: left; font-size: 1.6em;">TEIL 1: Allgemeiner Teil</h1>
-
-    <h2 id="kap1">1. Zielgruppe, Zweck & Schnellstart</h2>
-    
-    <h3>Für wen und was ist das Programm gedacht?</h3>
-    <p>Das Programm <strong>SokoIur eRechnung</strong> richtet sich an Freiberufler, Selbstständige, Handwerker sowie kleine bis mittlere Unternehmen, die rechtssichere elektronische Rechnungen im modernen <strong>ZUGFeRD-</strong> und <strong>XRechnung-Standard</strong> erstellen, empfangen und verwalten möchten. Es fungiert entweder als eigenständige Standalone-Lösung für den Arbeitsplatz oder als unsichtbare „Druck-Engine“ im Hintergrund, die von externen Branchenprogrammen via Kommandozeile ferngesteuert werden kann.</p>
-
-    <h3>Welche Aufgaben kann das Programm erfüllen?</h3>
-    <ul>
-        <li><strong>Ausgangsrechnungen:</strong> Schreiben und Generieren von GoBD-konformen Rechnungen inkl. automatischer Steuerberechnung, optionalem Girocode (QR-Code) und integriertem PDF-Briefpapier.</li>
-        <li><strong>Eingangsrechnungen:</strong> Automatisierte formelle Prüfung nach EN 16931 / § 14 UStG, Duplikatskontrolle (Hash & Inhalt) und revisionsvorbereitende Archivierung.</li>
-        <li><strong>Buchhaltung & Export:</strong> Erstellung von Ein- und Ausgangsjournalen als PDF oder CSV sowie direkter DATEV-Export (EXTF) mit automatischem Steuer-Splitting.</li>
-        <li><strong>Netzwerk- & Mehrplatzbetrieb:</strong> Parallele Nutzung über ein zentrales Netzlaufwerk mit integriertem File-Locking (Sperrdateien) zur Vermeidung von Konflikten.</li>
-    </ul>
-
-    <h3>Installation & Ersteinrichtung</h3>
-    <p>Die Anwendung (<code>.exe</code>) kann in einem beliebigen Ordner auf Ihrem PC abgelegt werden – auch in systemgeschützten Verzeichnissen wie <code>C:\Programme</code>.</p>
-    
-    <div class="highlight">
-        <strong>⚡ In 3 Schritten zur ersten Rechnung (Quickstart für Eilige):</strong><br>
-        1. <strong>Grundpfad wählen:</strong> Beim ersten Start einen zentralen Datenspeicherort (bei Mehrplatznutzung ein Netzlaufwerk) festlegen.<br>
-        2. <strong>Briefbogen hinterlegen:</strong> Im Reiter <strong>⚙️ Konfig.</strong> über den Button <em>„Briefbogen hinterlegen“</em> Ihre PDF-Vorlage hochladen.<br>
-        3. <strong>Rechnung schreiben:</strong> In den Reiter <strong>📝 ERSTELLEN</strong> wechseln, Kundendaten eintragen, Positionen hinzufügen und unten auf <em>„Zugpferdrechnung erstellen & öffnen (Alt+P)“</em> klicken.
-    </div>
-
-    <p><strong>WICHTIGER HINWEIS ZUM DATENSPEICHERORT:</strong> Dieser Ordner darf sich aus Sicherheits- und Updategründen NICHT innerhalb oder unterhalb des Programmordners befinden! Wenn Sie das Programm von mehreren Rechnern aus nutzen möchten, wählen Sie hier zwingend ein freigegebenes Netzwerklaufwerk aus.</p>
-    
-    <h3>Briefbogen hinterlegen:</h3>
-    <p>Um Ihr eigenes Rechnungsdesign (Logo, Fußzeile etc.) als Hintergrund für die Rechnungen zu verwenden, wechseln Sie in den Reiter <strong>⚙️ Konfig.</strong> und klicken Sie im Bereich der Firmendaten auf den Button <strong>„📄 Briefbogen hinterlegen“</strong>. Wählen Sie dort einfach Ihre PDF-Vorlage aus.</p>
-    <p><em>Tipp:</em> Verfügt Ihr Briefbogen über zwei Seiten, nutzt das Programm für die erste Rechnungsseite die erste Seite des Briefbogens. Für alle Folgeseiten nutzt es die zweite Seite. Wenn Ihr Briefbogen nur aus einer Seite besteht, deckt das Programm auf Folgeseiten den oberen Kopfbereich automatisch unsichtbar ab.</p>
-    
-    <h2 id="kap2">2. Haftungsausschluss, Support & Lizenzen</h2>
-    <h3>Haftungsausschluss</h3>
-    <p>Das Programm „SokoIur eRechnung“ wird Ihnen unentgeltlich zur Verfügung gestellt. Eine Gewährleistung für die inhaltliche und technische Fehlerfreiheit, insbesondere für die 100%ige korrekte technische Umsetzung der komplexen ZUGFeRD- und XRechnung-Spezifikationen, wird ausdrücklich ausgeschlossen.</p>
-    <h3>Gewerbliche Nutzung & Support</h3>
-    <p>Die Nutzung is kostenfrei. Wenn Sie das Programm gewerblich nutzen und die Weiterentwicklung wertschätzen, können Sie eine freiwillige Zahlung leisten. Kostenloser, individueller Support kann nicht geleistet werden.</p>
-    <div class="highlight">
-        <strong>Kontakt:</strong> Webseite: <a href="https://erech.6078.de" target="_blank">https://erech.6078.de</a> | E-Mail: <a href="mailto:SokoIur@6078.de">SokoIur@6078.de</a>
-    </div>
-
-    <h3>Lizenzerklärung (Freeware / Donationware)</h3>
-    <p><strong>1. Nutzungsrechte:</strong> Das Programm (ausführbare Datei) wird als Freeware/Donationware bereitgestellt. Die private und gewerbliche Nutzung ist kostenfrei gestattet.</p>
-    <p><strong>2. Weitergabe:</strong> Die Software darf unverändert kostenlos weitergegeben werden. Kommerzieller Vertrieb ist untersagt.</p>
-    <p><strong>3. Quellcode:</strong> Der Quellcode ist auf <a href="https://github.com/JSoko/SokoIur-eRechnung-Zugferd" target="_blank">GitHub</a> einsehbar. Die .exe darf nicht dekompiliert oder manipuliert werden.</p>
-    <p><strong>4. Drittkomponenten & Lizenzen:</strong> Dieses Programm wurde in <a href="https://docs.python.org/3/license.html" target="_blank">Python (PSF License)</a> geschrieben und nutzt folgende Open-Source-Bibliotheken:</p>
-        
-    <ul>
-        <li><strong>CustomTkinter:</strong> <a href="https://github.com/TomSchimansky/CustomTkinter/blob/main/LICENSE" target="_blank">MIT License</a></li>
-        <li><strong>ReportLab:</strong> <a href="https://www.reportlab.com/open_source/license/" target="_blank">BSD License</a></li>
-        <li><strong>pypdf:</strong> <a href="https://github.com/py-pdf/pypdf/blob/main/LICENSE" target="_blank">BSD 3-Clause License</a></li>
-        <li><strong>qrcode:</strong> <a href="https://github.com/lincolnloop/python-qrcode/blob/master/LICENSE" target="_blank">BSD 3-Clause License</a></li>
-    </ul>
-        
-    
-    <h2 id="kap3">3. Verwendungsszenarien & Use Cases</h2>
-    <h3>Typische Szenarien</h3>
-    <p><strong>Szenario A (Standalone):</strong> Freiberufler nutzen das Tool als alleiniges Abrechnungswerkzeug für Kunden, Artikel und DATEV-Export.<br>
-    <strong>Szenario B (Druck-Engine):</strong> Mittelständische Branchensoftware übergibt CSV-Daten per CLI, das Tool bettet sie in den Briefbogen ein und versendet ZUGFeRD-PDFs ohne dass die GUI sichtbar wird.</p>
-
-    <h3>Spezifische Anwendungsfälle (Use Cases)</h3>
-    <ul>
-        <li><strong>Behörden (B2G - XRechnung):</strong> Leitweg-ID im Feld "E-Mail / Leitweg-ID" eintragen, Endpoint-Schema auf <code>0204</code> setzen. Generiert reine XML-Dateien für Upload-Portale (ZRE/OZG-RE) und Begleit-PDFs.</li>
-        <li><strong>Geschäftskunden (B2B - E-Rechnungspflicht):</strong> ZUGFeRD-Button nutzen. Enthält Menschen-lesbare PDF-Ansicht und unsichtbare EN 16931 XML-Daten.</li>
-        <li><strong>Stornorechnung:</strong> Alte Rechnung via CSV laden, Beträge ins Minus setzen, Hinweistexte anpassen.</li>
-        <li><strong>Girocode:</strong> EPC-QR-Code aufdrucken für schnelles Scannen und Bezahlen per Banking-App.</li>
-    </ul>
-
-    <h2 id="kap4">4. Mini-Glossar</h2>
-    <ul>
-        <li><strong>ZUGFeRD:</strong> Ein Hybrid-Format, das eine normale PDF-Ansicht für Menschen mit einer unsichtbaren XML-Datei für Computer/Buchhaltung kombiniert.</li>
-        <li><strong>XRechnung:</strong> Ein reines XML-Datenformat, das vor allem von öffentlichen Auftraggebern (Behörden) vorgeschrieben wird.</li>
-        <li><strong>Leitweg-ID:</strong> Die digitale Postanschrift für Rechnungen an Behörden (erscheint anstelle einer normalen E-Mail-Adresse).</li>
-        <li><strong>WORM-Speicher:</strong> (Write Once, Read Many) Ein Speichersystem, bei dem Dateien nach dem Schreiben nicht mehr verändert oder gelöscht werden können (wichtig für GoBD-Konformität).</li>
-        <li><strong>DATEV EXTF:</strong> Ein standardisiertes ASCII-CSV-Format zum verlustfreien Import von Buchungsstapeln in die Kanzlei-Software des Steuerberaters.</li>
-    </ul>
-
-    <h2 id="kap5">5. FAQ – Häufige Fragen</h2>
-    
-    <details>
-        <summary><strong>Wie kann ich mein eigenes Logo auf die Rechnung drucken?</strong></summary>
-        <p>Das Programm nutzt eine PDF-Vorlage als Hintergrund. Erstellen Sie z. B. in Word Ihr Briefpapier mit Logo, speichern Sie es als PDF und hinterlegen Sie es im Reiter <em>Konfig.</em> unter „Briefbogen hinterlegen“.</p>
-    </details>
-    
-    <details>
-        <summary><strong>Wie setze ich die Rechnungsnummern für das neue Jahr zurück?</strong></summary>
-        <p>Wechseln Sie im Reiter <em>Konfig.</em> einfach das „Aktuelle Rechnungsjahr“ und korrigieren Sie darunter die „Letzte Rechnungs-Nr.“ einmalig händisch auf den Startwert (z.B. RE-27-000).</p>
-    </details>
-    
-    <details>
-        <summary><strong>Wie erstelle ich eine XRechnung für Behörden?</strong></summary>
-        <p>Tragen Sie bei der Rechnungserstellung in das Feld „E-Mail / Leitweg-ID“ die Leitweg-ID ein und setzen Sie das „Endpoint-Schema“ auf <code>0204</code>.</p>
-    </details>
-    
-    <details>
-        <summary><strong>Das Programm startet nicht mehr oder ist gesperrt. Was tun?</strong></summary>
-        <p>Wenn eine Firma gesperrt ist (Lock), wurde das Programm evtl. unsanft beendet oder ein anderer Arbeitsplatz greift darauf zu. Beim Versuch, den Reiter zu wechseln, erscheint ein Hinweisfenster, in dem Sie den „Lock entfernen“ können.</p>
-    </details>
-
-    <!-- TEIL 2: Anwenderhandbuch -->
-    <h1 style="background-color: #1f538d; color: #ffffff; padding: 12px 20px; border-radius: 8px; margin-top: 60px; text-align: left; font-size: 1.6em;">TEIL 2: Anwenderhandbuch</h1>
-
-    <h2 id="kap6">6. Die Benutzeroberfläche (Tabs) im Detail</h2>
-    <p><em>Tipp: Sie können zwischen allen Reitern schnell über die Tastatur wechseln. Halten Sie dazu die <strong>Alt-Taste</strong> gedrückt und tippen Sie den in eckigen Klammern markierten Buchstaben der Tab-Überschrift (z. B. [E]).</em></p>
-    
-    <h3>📝 [E]RSTELLEN (Ausgangsrechnungen schreiben)</h3>
-    <p>Hier erfassen und generieren Sie Ihre eigenen Ausgangsrechnungen an Kunden inkl. automatischer Steuerberechnung.</p>
-    
-    <h3>📥 ER[F]ASSEN (Eingangsrechnungen prüfen)</h3>
-    <p>Haltautomatisierte Prüfung, Erfassung und Archivierung von Rechnungen Ihrer Lieferanten (Prüfung nach EN 16931 / § 14 UStG).</p>
-    
-    <h3>📊 [A]USGANG (Ausgangsjournal)</h3>
-    <p>Auswertung der geschriebenen Rechnungen als PDF, CSV oder DATEV-Export.</p>
-    
-    <h3>📊 E[I]NGANG (Eingangsjournal & Verwaltung)</h3>
-    <p>Durchsuchen, Verwalten und Auswerten der erfassten Eingangsrechnungen (Storno-Funktion inklusive).</p>
-    
-    <h3>⚙️ [K]onfig. (Einstellungen & Stammdaten)</h3>
-    <p>Zentrale Konfiguration Ihrer Firmen, Nummernkreise, DATEV-Konten und Stammdaten mit hilfreichen Tooltips.</p>
-    
-    <h3>ℹ️ Info (Hilfe & Statistik)</h3>
-    <p>Dokumentation, Version, Statistiken und Update-Suche.</p>
-
-    <h2 id="kap7">7. Schritt-für-Schritt: ZUGFeRD-Rechnung erstellen & Eingabefelder bedienen</h2>
-    <p>Der Reiter <strong>📝 [E]RSTELLEN</strong> führt Sie komfortabel durch die Erfassung einer gesetzlich konformen E-Rechnung.</p>
-
-    <h3>Schritt 1: Kopf- und Kundendaten (Eingabefelder)</h3>
-    <p>Im linken Bereich füllen Sie die Stammdaten der Rechnung aus. Das Programm vergibt Datum und Rechnungsnummer automatisch (diese lassen sich aber überschreiben).</p>
-    <ul>
-        <li><strong>Pflichtfelder:</strong> <em>Rechnungs-Nr.</em>, <em>Rechnungsdatum</em>, <em>Fälligkeit</em>, <em>Kunde Name</em>, <em>Straße</em>, <em>PLZ Ort</em>, die <em>E-Mail / Leitweg-ID</em> sowie <em>Ihr Zeichen</em> und <em>Lz. Kopf</em>. Ohne diese Kerninformationen ist das Erzeugen einer gültigen strukturierten e-Rechnung unzulässig. <strong>Das Programm überwacht diese Pflichtfelder in Echtzeit: Unterhalb der Netto-/Brutto-Summen zeigt eine Live-Fehleranzeige direkt an, welche Angaben noch fehlen. Zudem werden fehlerhafte Eingabefelder sofort mit einem roten Rahmen markiert.</strong></li>
-        <li><strong>Optionale Felder:</strong> <em>Kunden-Nr.</em> sowie <em>Unser Zeichen</em> (Aktenzeichen).</li>
-        <li><strong>Datenspeicherung (Kunden):</strong> Wenn Sie die Checkbox <em>„Kunde speichern/updaten“</em> aktivieren, wird der Kunde beim Klick auf „Erstellen“ automatisch in Ihrer CSV-Datenbank gespeichert. Zukünftig können Sie den Kunden dann über das 🔍-Lupensymbol schnell suchen und laden.</li>
-    </ul>
-
-    <p><strong>Tipp zur Korrektur von Eingaben (Undo / Redo):</strong><br>
-    In den manuellen Erfassungsmasken und Eingabefeldern steht Ihnen eine komfortable Verlaufskontrolle zur Verfügung. Versehentliche Änderungen in Text- und Eingabefeldern können Sie jederzeit unkompliziert mit <strong>Strg + Z</strong> (Rückgängig) widerrufen und mit <strong>Strg + Y</strong> (Wiederholen) wiederherstellen.</p>
-
-    <div class="warning-box">
-        <strong>⚠️ WICHTIGER HINWEIS ZUR ADRESSERFASSUNG (ORT):</strong><br>
-        Für eine formell gültige ZUGFeRD-/XRechnung nach dem Standard EN 16931 ist der <strong>Ort des Rechnungsempfängers zwingend erforderlich</strong> (Feld: Buyer City, BT-52). Achten Sie bei der Dateneingabe darauf, dass die Bestandteile "Straße" und "Ort" strikt getrennt in die dafür vorgesehenen Felder eingetragen werden. Auch wenn der Ortsteil optisch bereits in der Straße vorkommen sollte, <strong>muss</strong> der eigentliche Ortsname zusätzlich im Feld "PLZ Ort" stehen, da der Datensatz sonst von Rechnungsportalen (z.B. von Behörden) abgelehnt wird.
-    </div>
-
-    <h3>Schritt 2: Texte & Vorlagen bearbeiten & Formatierungshilfen</h3>
-    <p>Klicken Sie auf den Button <strong>„📝 Texte & Vorlagen bearbeiten (Alt+T)“</strong>. Hier können Sie wiederkehrende Textbausteine definieren:</p>
-    <ul>
-        <li><em>Header</em> (Über der Adresse), <em>Einleitung</em>, <em>Rechnungsvermerk</em>, <em>Zahlungsbedingungen</em>, <em>Vor Gruß</em> und <em>Gruß</em>.</li>
-        <li><strong>Vorlagen speichern:</strong> Wenn Sie z. B. spezielle Texte für eine „Vorschussrechnung“ benötigen, tragen Sie die Texte ein und klicken unten auf <strong>„➕ Als neue Vorlage...“</strong>.</li>
-        <li>Zurück im Hauptfenster können Sie über das Dropdown-Menü <strong>„Textvorlage“</strong> jederzeit zwischen Ihren gespeicherten Szenarien wechseln.</li>
-    </ul>
-    <p><strong>Formatierung & Umbrüche in Textvorlagen:</strong></p>
-    <ul>
-        <li><strong>Harter Zeilenumbruch:</strong> Nutzen Sie <code>&lt;br/&gt;</code> für Umbrüche ohne zusätzlichen Absatzabstand.</li>
-        <li><strong>Bedingte Trennzeichen (Soft Hyphens):</strong> Nutzen Sie <code>&amp;shy;</code> (z.B. <code>Rechnungs&amp;shy;nummer</code>), damit das Wort nur bei Bedarf am Zeilenende getrennt wird.</li>
-        <li><strong>Textauszeichnung:</strong> Formatierungen wie <code>&lt;b&gt;Fett&lt;/b&gt;</code> oder <code>&lt;i&gt;Kursiv&lt;/i&gt;</code> werden unterstützt.</li>
-        <li><strong>Blocksatz:</strong> Die Textabschnitte für <em>Einleitung</em> und <em>Vor-Gruß</em> werden im PDF vollautomatisch im sauberen Blocksatz formatiert.</li>
-    </ul>
-
-    <h3>Schritt 3: Positionen erfassen</h3>
-    <p>Klicken Sie rechts auf <strong>„+ Position hinzufügen“</strong>.</p>
-    <ul>
-        <li><strong>Pflichtfeld:</strong> <em>Bezeichnung</em>.</li>
-        <li>Menge, Einzelpreis und Steuersatz (19%, 7% oder 0%) sind vorausgefüllt, können aber jederzeit angepasst werden. Über das Dropdown-Feld bei der Bezeichnung können Sie zudem zuvor in den Einstellungen importierte oder gespeicherte Produkte abrufen.</li>
-    </ul>
-
-    <h3>Schritt 4: Vorschau & Generierung</h3>
-    <p>Unter der Liste der Positionen sehen Sie die berechneten Gesamtbeträge. Ihnen stehen nun verschiedene Aktionen zur Verfügung:</p>
-    <ul>
-        <li><strong>Testrechnung:</strong> Erzeugt eine reine <em>Vorschau</em>. Es wird keine Rechnungsnummer blockiert/vergeben und kein Journaleintrag geschrieben. Ideal zur optischen Endkontrolle.</li>
-        <li><strong>Zugpferdrechnung erstellen (Alt+P):</strong> Die empfohlene Standard-Funktion für Geschäftskunden. Generiert ein sichtbares PDF mit integrierten XML-Daten, verbucht den Vorgang im Journal und zählt die Rechnungsnummer eins hoch.</li>
-        <li><strong>XRechnung & Begleit-PDF:</strong> Primär für Behörden (Leitweg-ID im Feld "E-Mail" erforderlich). Erzeugt die reine XML-Datei für das Behördenportal und ein Begleit-PDF für Ihre eigenen Akten.</li>
-    </ul>
-    <h3>Schritt 5: Letzte Rechnung nachträglich ändern (Alt+L)</h3>
-    <p>Sollte Ihnen unmittelbar nach der Generierung ein Fehler auffallen (z. B. ein Tippfehler in der Adresse oder ein falscher Preis), können Sie über das Tastenkürzel <strong>Alt+L</strong> die Daten der zuletzt geschriebenen Rechnung wieder in die Eingabemaske laden. Wenn Sie die Rechnung nach der Korrektur erneut generieren, wird die bestehende PDF-Datei überschrieben.</p>
-    
-    <div class="warning-box">
-        <strong>⚠️ WICHTIGE STEUERRECHTLICHE BEDENKEN (GoBD):</strong><br>
-        Grundsätzlich gilt: Sobald eine Rechnung an den Kunden versendet wurde, darf sie <strong>unter keinen Umständen</strong> mehr einfach überschrieben oder rückwirkend geändert werden! In einem solchen Fall verlangt der Gesetzgeber zwingend die Erstellung einer formalen Stornorechnung (Gutschrift) und danach das Ausstellen einer völlig neuen Rechnung mit einer neuen fortlaufenden Nummer.<br><br>
-        Das einfache Überschreiben der bestehenden Rechnungsnummer ist <strong>ausschließlich</strong> für den Fall gedacht, dass Ihnen der Fehler noch vor dem Versand auffällt. Um den strengen Anforderungen der Finanzverwaltung (Unveränderbarkeit nach GoBD) dennoch gerecht zu werden, greift das Programm hier schützend ein: Jeder Überschreibvorgang wird manipulationssicher im Hintergrund protokolliert (siehe Kapitel 17).
-    </div>
-    <h3 id="kap7-rc">Sonderfall: Ausgangsrechnungen im Reverse-Charge-Verfahren (EU &amp; Drittland)</h3>
-    <p>Wenn Sie Leistungen an Geschäftskunden (B2B) im <strong>EU-Ausland</strong> oder in einem <strong>Drittland</strong> (z. B. Schweiz, USA, Großbritannien) abrechnen, greift in der Regel die Umkehr der Steuerschuldnerschaft (<em>Reverse Charge</em> nach § 13b UStG / § 3a Abs. 2 UStG). Sie dürfen in diesem Fall <strong>keine deutsche Umsatzsteuer</strong> ausweisen.</p>
-
-    <h4>So füllen Sie die Felder im Reiter [E]RSTELLEN korrekt aus:</h4>
-    <table class="cheat-sheet">
-        <tr>
-            <th>Feld in der Maske</th>
-            <th>EU-Ausland (B2B)</th>
-            <th>Drittland (z. B. CH, US, GB)</th>
-        </tr>
-        <tr>
-            <td><strong>Land (z.B. DE, AT, US)</strong></td>
-            <td>2-stelliger ISO-Code des EU-Landes (z. B. <code>AT</code>, <code>FR</code>, <code>NL</code>)</td>
-            <td>2-stelliger ISO-Code des Drittlandes (z. B. <code>CH</code>, <code>US</code>, <code>GB</code>)</td>
-        </tr>
-        <tr>
-            <td><strong>Reverse Charge</strong></td>
-            <td>Auf <code>EU</code> stellen</td>
-            <td>Auf <code>Drittland</code> stellen</td>
-        </tr>
-        <tr>
-            <td><strong>Kunde USt-IdNr.</strong></td>
-            <td><strong>Pflichtfeld!</strong> Gültige EU-USt-IdNr. des Kunden (z. B. <code>ATU12345678</code>). Die Live-Validierung sperrt die Erstellung, solange dieses Feld leer ist.</td>
-            <td><strong>Optional / leer lassen</strong> (Unternehmen im Drittland besitzen keine EU-USt-IdNr.).</td>
-        </tr>
-        <tr>
-            <td><strong>Steuer (%) in Positionen</strong></td>
-            <td>Zwingend <strong><code>0</code></strong> (0 % USt.). Beim Umstellen des Dropdowns bietet das Programm an, alle Positionen automatisch auf 0 % zu setzen.</td>
-            <td>Zwingend <strong><code>0</code></strong> (0 % USt.). Auch hier stellt das Programm neue Positionen automatisch auf 0 %.</td>
-        </tr>
-    </table>
-
-    <div class="highlight">
-        <strong>Was das Programm im Hintergrund automatisch erledigt:</strong><br>
-        <ul>
-            <li><strong>PDF-Pflichthinweis:</strong> Unterhalb des Rechnungsbetrags wird bei <code>EU</code> automatisch der gesetzliche Hinweis <em>„Steuerschuldnerschaft des Leistungsempfängers (Reverse Charge gem. § 13b UStG / Art. 196 MwStSystRL)“</em> samt USt-IdNr. des Empfängers angedruckt. Bei <code>Drittland</code> erscheint <em>„Nicht steuerbare Leistung im Drittland (Reverse Charge)“</em>.</li>
-            <li><strong>EN 16931 XML (ZUGFeRD / XRechnung):</strong> Das System setzt normkonform den Steuer-Kategoriecode <code>AE</code> inkl. Befreiungsgrund <code>VATEX-EU-AE</code> (bei EU) bzw. <code>O</code> / <code>VATEX-EU-O</code> (bei Drittland) und überträgt die Käufer-USt-IdNr. im Block <code>BuyerTradeParty</code>.</li>
-            <li><strong>Ausgangsjournal &amp; DATEV:</strong> Die Rechnung wird im Journal mit dem jeweiligen Reverse-Charge-Status markiert und beim DATEV-Export automatisch auf die hinterlegten EU- bzw. Drittland-Erlöskonten verbucht.</li>
-        </ul>
-    </div>
-    <h2 id="kap8">8. Auswertungen (Tab AUSGANG) & Einstellungen (Tab Konfig.)</h2>
-    
-    <h3>Die Auswertungsmöglichkeiten (Tab 📊 [A]USGANG)</h3>
-    <p>Hier werten Sie alle im aktuellen Jahr geschriebenen Rechnungen aus. Wählen Sie Monat und Jahr, um folgende Berichte zu generieren:</p>
-    <ul>
-        <li><strong>📄 Journal als PDF:</strong> Erstellt eine saubere, druckbare Übersichtstabelle aller Ausgangsrechnungen inklusive Gesamtnettoumsatz und detailliert aufgeschlüsselter Steuerbeträge.</li>
-        <li><strong>📊 Journal als CSV:</strong> Exportiert die Rechnungsdaten tabellarisch für die problemlose Weiterverarbeitung in Microsoft Excel oder ähnlichen Werkzeugen.</li>
-        <li><strong>📈 DATEV-Export:</strong> Generiert eine formatierte ASCII-Datei für die Kanzleisoftware Ihres Steuerberaters. Rechnungen mit verschiedenen Steuersätzen werden vollautomatisch centgenau zerlegt (Steuer-Splitting) und mit den korrekten Soll/Haben-Kennzeichen verbucht.</li>
-        <li><strong>🛡️ Audit-Log PDF:</strong> Erstellt ein formatierbares PDF-Revisionsprotokoll aller vorgenommenen Änderungen und Löschungen (inkl. erzwungener Begründungen) für das ausgewählte Jahr.</li>
-        <li><strong>📈 Visuelles Business-Dashboard:</strong> Öffnet ein interaktives Grafik-Fenster mit Kennzahlen für das ausgewählte Geschäftsjahr (über das integrierte Jahr-Dropdown oben rechts frei umschaltbar). Es zeigt einen monatlichen Netto-Umsatzverlauf, die Top-5-Kunden mit direkten Namens- und Betragseinblendungen in den Balken sowie eine grafische Gegenüberstellung von eingenommener Umsatzsteuer, gezahlter Vorsteuer und der resultierenden Zahllast – jeweils direkt mit exakten, gut lesbaren Zahlenwerten über den Säulen versehen.</li>
-    </ul>
-
-    <h3>Einstellungsmöglichkeiten & Gefahrenhinweise (Tab ⚙️ [K]onfig.)</h3>
-    <p>Im Reiter Konfiguration verwalten Sie Ihre Firmen, Nummernkreise, Briefbögen und DATEV-Sachkonten. Die Oberfläche ist in übersichtliche „Karten“ unterteilt. <strong>Bitte beachten Sie folgende Besonderheiten und Gefahren:</strong></p>
-    
-    <div class="warning-box">
-        <strong>⚠️ VORSICHT BEI DATENVERLUST-RISIKEN:</strong><br>
-        <ul>
-            <li><strong>🧹 Daten leeren:</strong> Dieser Button im Bereich Profilverwaltung löscht <em>unwiderruflich alle geschriebenen Rechnungen, Rechnungs-PDFs und Journale</em> der aktiven Firma! Nutzen Sie diese Funktion nur, wenn Sie eine Testfirma zurücksetzen möchten. Stammdaten (Kunden/Produkte/Vorlagen) bleiben glücklicherweise erhalten.</li>
-            <li><strong>🗑 Profil löschen:</strong> Entfernt die komplette Firma restlos aus der Konfiguration.</li>
-            <li><strong>Rechnungsnummer korrigieren:</strong> Ein manueller Eingriff in den Zählerstand (z. B. ein Zurücksetzen der Nummer) kann dazu führen, dass bei der nächsten Rechnungserstellung alte Rechnungen ungewollt überschrieben werden, wenn die Nummer im Ordner bereits vergeben wurde.</li>
-        </ul>
-    </div>
-    
-    <p><strong>Wichtige ungefährliche Konfigurationen:</strong></p>
-    <ul>
-        <li><strong>DATEV-Konten:</strong> Weisen Sie dem Programm mit, welche Sachkonten (SKR03 / SKR04) für den Buchhaltungs-Export genutzt werden sollen.</li>
-        <li><strong>Briefbogen hinterlegen:</strong> Hier wählen Sie Ihr PDF mit Firmenlogo, das künftig im Hintergrund auf alle ausgehenden Rechnungen gedruckt wird.</li>
-        <li><strong>Firmendaten:</strong> Tragen Sie Ihre IBAN, Bankdaten und Kontaktdaten ein und aktivieren Sie bei Bedarf den Andruck eines <em>Girocodes</em> (QR-Code zum automatischen Bezahlen per Banking-App).</li>
-        <li><strong>Stammdaten visuell verwalten:</strong> Über den Button <em>„👥 Kunden & Artikel visuell verwalten“</em> öffnen Sie eine Tabellenansicht mit Live-Suche. Hier können Sie Ihren Kundenstamm und Ihre Produktdatenbank (inkl. Einheiten und Steuersätzen) komfortabel durchsuchen, bearbeiten, anlegen oder löschen. Änderungen stehen nach dem Speichern sofort systemweit zur Verfügung. (Massenimporte per CSV sind weiterhin über die separaten Import-Buttons möglich).</li>
-    </ul>
-
-    <h2 id="kap9">9. Rechnungsformate (ZUGFeRD & XRechnung)</h2>
-    <p>Das Programm unterstützt:</p>
-    <ul>
-        <li><strong>Testrechnung:</strong> Erstellt eine reine Vorschau-PDF ohne Rechnungsnummer und ohne Journaleintrag im temporären Verzeichnis. Ideal, um das Aussehen vorab zu prüfen. Das Programm bleibt zur weiteren Bearbeitung geöffnet.</li>
-        <li><strong>ZUGFeRD:</strong> Erzeugt eine Hybrid-PDF, die eine XML-Datei beinhaltet.</li>
-        <li><strong>XRechnung:</strong> Erzeugt eine reine XML-Datei für das Behörden-Portal und als Beilage ein gesondertes, lesbares Begleit-PDF.</li>
-        <li><strong>Papierrechnung:</strong> Erzeugt eine rein visuelle PDF ohne eingebettete XML-Daten (nur als Übergangslösung).</li>
-    </ul>
-
-    <h2 id="kap10">10. Eingangsrechnungen erfassen und auswerten</h2>
-    <p>Legen Sie neue Eingangsrechnungen Ihrer Lieferanten im Netzwerk in den Ordner <code>reneu</code>. Klicken Sie im Programm auf "Nächste Eingangsrechnung prüfen". Das Programm prüft diese automatisiert. Fehlerhafte Belege werden mit einer genauen Fehlermeldung abgewiesen. Nach der erfolgreichen Erfassung wird der Beleg im Archiv (<code>rchn</code>) gespeichert und automatisch fortlaufend im Eingangs-Journal (<code>eausw</code>) vermerkt.</p>
-    <h3 id="kap10-rc">Eingangsrechnungen im Reverse-Charge-Verfahren (EU &amp; Drittland)</h3>
-    <p>Erhalten Sie eine Rechnung von einem Unternehmer aus dem <strong>EU-Ausland</strong> oder einem <strong>Drittland</strong> (z. B. Software-Abos aus Irland oder den USA), weist der Lieferant auf der Rechnung <strong>0 % Umsatzsteuer</strong> aus. Als deutscher Unternehmer schulden Sie die deutsche Umsatzsteuer nach § 13b UStG und können sie bei Vorsteuerabzugsberechtigung gleichzeitig wieder als Vorsteuer abziehen.</p>
-
-    <h4>1. Elektronische Eingangsrechnungen (ZUGFeRD / XRechnung)</h4>
-    <ul>
-        <li><strong>Automatische Erkennung:</strong> Beim Prüfen liest das Programm das Land des Lieferanten sowie den XML-Steuercode <code>AE</code> (Reverse Charge) automatisch aus. Ist das Lieferantenland nicht <code>DE</code> und die Steuer <code>0,00 €</code>, schlägt das System automatisch <code>EU</code> oder <code>Drittland</code> vor.</li>
-        <li><strong>Unterschiedliche Pflichtprüfung:</strong> Bei <strong>EU-Rechnungen</strong> prüft das Programm zwingend, ob die USt-IdNr. des Lieferanten vorhanden ist (fehlt sie, wird ein Prüffehler gemeldet). Bei <strong>Drittland-Rechnungen</strong> wird das Fehlen einer EU-USt-IdNr. ausdrücklich toleriert.</li>
-        <li><strong>Kontrolle vor dem Archivieren:</strong> Im Bestätigungsfenster sehen Sie die Zeile <em>„Land / Reverse Charge“</em> und können den Status über das Dropdown <strong>Reverse Charge</strong> (<code>Nein</code>, <code>EU</code>, <code>Drittland</code>) bei Bedarf korrigieren.</li>
-    </ul>
-
-    <h4>2. Manuelle Erfassung (Standard-PDF, Scan oder Sonstiges)</h4>
-    <p>Füllen Sie die Eingabemaske für manuelle Belege wie folgt aus:</p>
-    <table class="cheat-sheet">
-        <tr>
-            <th>Feld in der Maske</th>
-            <th>Ausfüllhinweis für Reverse Charge (EU &amp; Drittland)</th>
-        </tr>
-        <tr>
-            <td><strong>Lieferanten-Land</strong></td>
-            <td>2-stelligen ISO-Ländercode des Ausstellers eintragen (z. B. <code>IE</code> für Irland, <code>NL</code> für Niederlande, <code>US</code> für USA, <code>CH</code> für Schweiz).</td>
-        </tr>
-        <tr>
-            <td><strong>Reverse Charge</strong></td>
-            <td>Für EU-Mitgliedstaaten <code>EU</code> wählen; für alle Länder außerhalb der EU (z. B. USA, Schweiz, UK) <code>Drittland</code> wählen.</td>
-        </tr>
-        <tr>
-            <td><strong>Steuersatz (%)</strong></td>
-            <td>Wird bei Auswahl von <code>EU</code> oder <code>Drittland</code> automatisch auf <strong><code>0</code></strong> gestellt. <strong>Belassen Sie diesen Wert auf <code>0</code>!</strong></td>
-        </tr>
-        <tr>
-            <td><strong>Nettobetrag (€)</strong></td>
-            <td>Den auf der Rechnung ausgewiesenen Rechnungsbetrag eintragen.</td>
-        </tr>
-        <tr>
-            <td><strong>Umsatzsteuer (€)</strong></td>
-            <td>Leer lassen oder <strong><code>0,00</code></strong> eintragen (der Lieferant hat keine deutsche USt. berechnet).</td>
-        </tr>
-        <tr>
-            <td><strong>Bruttobetrag (€)</strong></td>
-            <td>Entspricht dem Nettobetrag (wird automatisch übernommen, wenn das Feld leer bleibt).</td>
-        </tr>
-    </table>
-
-    <div class="warning-box">
-        <strong>⚠️ WICHTIGER HINWEIS ZUM STEUERSATZ BEI EINGANGSRECHNUNGEN:</strong><br>
-        Tragen Sie bei einer Reverse-Charge-Eingangsrechnung <strong>niemals</strong> 19 % oder eine selbst errechnete Umsatzsteuer in das Feld <em>„Umsatzsteuer (€)“</em> ein! Auf dem Beleg steht 0 % Steuer – daher sind Netto und Brutto identisch.<br><br>
-        Die Berechnung von 19 % Umsatzsteuer und gleichzeitig 19 % Vorsteuer nach § 13b UStG übernimmt automatisch die Buchhaltungssoftware (DATEV) anhand der speziellen Reverse-Charge-Aufwandskonten, die beim DATEV-Export übergeben werden.
-    </div>
+import json
+import shutil
+from config import get_resource_path, get_program_dir, get_appdata_dir
 
 
-    <h2 id="kap11">11. Jahreswechsel</h2>
-    <p>Ändern Sie in den "Einstellungen" einfach das "Aktuelle Rechnungsjahr" im Dropdown oder legen Sie ein neues Firmenprofil für das neue Jahr an. Eine Anpassung der letzten Rechnungsnummer (z. B. auf 000 für den Neubeginn) kann dort ebenfalls vorgenommen werden.</p>
+def _source_signature() -> dict:
+    files = ["handbuch.html", "changelog.html"]
+    sig = {}
+    for name in files:
+        p = get_resource_path(os.path.join("html", name))
+        try:
+            sig[name] = os.path.getmtime(p)
+        except OSError:
+            sig[name] = 0.0
+    return sig
 
-    <!-- TEIL 3: Administration & IT -->
-    <h1 style="background-color: #1f538d; color: #ffffff; padding: 12px 20px; border-radius: 8px; margin-top: 60px; text-align: left; font-size: 1.6em;">TEIL 3: Administration & IT</h1>
 
-    <h2 id="kap12">12. Installation, Ordnerstruktur & File-Locking</h2>
-    <p>Das Programm trennt strikt zwischen Programmdateien (Installation), lokalen Arbeitsplatz-Einstellungen (AppData) und Firmendaten (Daten-Grundpfad auf dem Netzlaufwerk). In den Firmendaten legt das Programm automatisch alle relevanten Ordner für Journale (<code>aausw</code>, <code>eausw</code>) und Archive an.</p>
-    
-    <h3>Integrierte Profil-Backups & Datensicherheit</h3>
-    <p>In der Konfigurationsoberfläche (Reiter <strong>Konfig.</strong>) können Sie per Knopfdruck ein ZIP-Archiv der aktiven Firma anlegen lassen und wiederherstellen. Die Wiederherstellung kann in die geöffnete oder in eine neue Firma erfolgen.</p>
-    
-    <div class="warning-box">
-        <strong>⚠️ WICHTIGER HINWEIS ZUR DATENSICHERHEIT:</strong><br>
-        Diese integrierte Backup-Funktion stellt lediglich eine <em>zusätzliche Sicherungsmöglichkeit</em> für den einzelnen Arbeitsplatz dar. Sie entbindet Sie keinesfalls von der Pflicht, die Programm- und Netzwerkdaten (Ihren kompletten Daten-Grundpfad) regelmäßig durch externe und professionelle System-Backups zu sichern!
-    </div>
-    
-    <div class="highlight">
-        <strong>🛡️ Admin-Hinweise zum Netzwerkbetrieb & File-Locking:</strong><br>
-        - Das Programm nutzt Sperrdateien (<code>erechnung.lock</code> und <code>erfassung.lock</code>) im Firmenverzeichnis, um gleichzeitige Schreibkonflikte im Netzwerk zu verhindern.<br>
-        - <strong>Absturzsichere CSV-Speicherung (Atomic Writes):</strong> Um Korruptionen im Netzlaufwerk bei plötzlichen Verbindungsabbrüchen oder Stromausfällen auszuschließen, werden Änderungen an Kunden- und Produktdatenbanken neuerdings atomar (über temporäre Zwischendateien und anschließendes unteilbares Ersetzen im Dateisystem) gesichert.<br>
-        - Sollte ein Arbeitsplatz abstürzen, erkennt das System verwaiste Locks und erlaubt nach einer Sicherheitswarnung das manuelle Entfernen der Sperre ("Lock entfernen").<br>
-        - Lokale Konfigurationen landen sicher in <code>%LOCALAPPDATA%\SokoIur_eRechnung</code>, was UAC-Berechtigungskonflikte ausschließt.
-    </div>
+def get_doku_target_dir() -> str:
+    """Zielverzeichnis für generierte HTML-/MD-Doku im Programmpfad."""
+    return os.path.join(get_program_dir(), "html")
 
-    <h2 id="kap13">13. Mandanten & Datenbanken (Firmendaten)</h2>
-    <p>Sie können im Reiter "Konfig." beliebig viele verschiedene Firmenprofile verwalten. Das Programm synchronisiert neue Firmen automatisch über den geteilten Daten-Grundpfad an alle Arbeitsplätze im Netzwerk.</p>
 
-    <h2 id="kap14">14. DATEV-Export & Buchhaltung</h2>
-    <p>SokoIur eRechnung bietet eine integrierte Exportfunktion für die Finanzbuchhaltung (Stapelverarbeitung im ASCII-CSV / EXTF-Format).</p>
-    
-    <div class="warning-box">
-        <strong style="color: #d9534f;">WICHTIGER HINWEIS (BETA-FUNKTION):</strong><br>
-        Die DATEV-Exportfunktionen wurden bisher nicht abschließend in einer produktiven DATEV-Umgebung getestet. Bitte übergeben Sie Daten zunächst probeweise mit Testdaten an Ihren Steuerberater, um den fehlerfreien Import (Feldzuordnungen, 7 Pflichtspalten, Längenbeschränkungen) sicherzustellen.
-    </div>
+def _sync_doc_assets(target_dir: str) -> None:
+    """Kopiert alle Bilddateien (z. B. .png) aus dem HTML-Ressourcenordner in das Zielverzeichnis."""
+    src_html_dir = get_resource_path("html")
+    if not src_html_dir or not os.path.isdir(src_html_dir):
+        return
 
-    <h3>Konfiguration (SKR03 / SKR04) & Automatisches Steuer-Splitting</h3>
-    <p>Im Reiter <strong>⚙️ Konfig.</strong> können Sie über <strong>„📈 DATEV-Konten“</strong> Standardkonten für SKR03/SKR04 laden. Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt, anteilig zurückgerechnet und mit intelligent vergebenen Soll/Haben-Kennzeichen (S/H) versehen.</p>
-    <h3>Reverse-Charge-Konten im DATEV-Export</h3>
-    <p>Rechnungen mit aktivem Reverse-Charge-Kennzeichen (<code>EU</code> oder <code>Drittland</code>) werden beim DATEV-Export nicht auf die regulären 0%-Konten gebucht, sondern automatisch auf eigene Sachkonten geroutet (Standardwerte im SKR03):</p>
-    <ul>
-        <li><strong>Ausgangsrechnungen (Erlöse):</strong> Konto <code>8336</code> für EU-Leistungen (§ 13b) und Konto <code>8338</code> für nicht steuerbare Drittland-Leistungen.</li>
-        <li><strong>Eingangsrechnungen (Aufwand):</strong> Automatikkonto <code>3123</code> für EU-Eingangsrechnungen (§ 13b, 19 % USt/VSt) und <code>3125</code> für Drittland-Eingangsrechnungen (§ 13b, 19 % USt/VSt).</li>
-    </ul>
-    <p><em>Hinweis:</em> Prüfen Sie die Kontonummern vor dem produktiven Einsatz gemeinsam mit Ihrem Steuerberater, da je nach Leistungsart (z. B. sonstige Leistung vs. innergemeinschaftlicher Erwerb von Waren) unterschiedliche Konten erforderlich sein können.</p>
-    <h2 id="kap15">15. Import-Formate (CSV)</h2>
-    <p>Alle CSV-Dateien müssen semikolongetrennt (<code>;</code>) und im Format UTF-8 vorliegen (bei ANSI-Dateien aus Excel erfolgt eine automatische Reparatur).</p>
-    
-    <h3>Kundendaten Importieren</h3>
-    <p>Die Import-Datei muss folgende Kopfzeile exakt aufweisen (ohne Zeilenumbruch):</p>
-    <code>Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme</code>
-    
-    <h3>Produktdaten Importieren</h3>
-    <p>Die Import-Datei muss folgende Kopfzeile exakt aufweisen:</p>
-    <code>Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz</code>
-    
-    <h3>Rechnungsentwürfe via CLI (rechnung.csv)</h3>
-    <p>Die <code>rechnung.csv</code> für den externen CLI-Aufruf benötigt feste Spalten. Die Kopfdaten werden in jeder Zeile wiederholt, lediglich die Positionsdaten ändern sich je Zeile.</p>
+    allowed_ext = {".png", ".webp", ".jpg", ".jpeg"}
+    try:
+        for fname in os.listdir(src_html_dir):
+            ext = os.path.splitext(fname)[1].lower()
+            if ext not in allowed_ext:
+                continue
+            src_path = os.path.join(src_html_dir, fname)
+            dst_path = os.path.join(target_dir, fname)
+            if os.path.isfile(src_path):
+                try:
+                    if os.path.abspath(src_path) != os.path.abspath(dst_path):
+                        shutil.copy2(src_path, dst_path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
-    <h2 id="kap16">16. Programmaufruf & Kommandozeile (CLI)</h2>
-    
-    <h3>Tastenkürzel-Übersicht (GUI):</h3>
-    <ul>
-        <li><code>Alt + E</code> &rarr; Zum Reiter ERSTELLEN wechseln</li>
-        <li><code>Alt + F</code> &rarr; Zum Reiter ERFASSEN wechseln</li>
-        <li><code>Alt + A</code> &rarr; Zum Reiter AUSGANG wechseln</li>
-        <li><code>Alt + I</code> &rarr; Zum Reiter EINGANG wechseln</li>
-        <li><code>Alt + K</code> &rarr; Zum Reiter Konfig. wechseln</li>
-        <li><code>Alt + L</code> &rarr; Letzte Rechnungs-CSV laden</li>
-        <li><code>Alt + T</code> &rarr; Texte bearbeiten (Header, Einleitung, Gruß)</li>
-        <li><code>Alt + P</code> &rarr; ZUGFeRD-Rechnung generieren, öffnen & beenden</li>
-        <li><code>Strg + Z</code> &rarr; Eingabe in Text- und Eingabefeldern rückgängig machen (Undo)</li>
-        <li><code>Strg + Y</code> &rarr; Rückgängig gemachte Eingabe wiederholen (Redo)</li>
-    </ul>
 
-    <h3>Die Kommandozeilenparameter (CLI Cheat-Sheet)</h3>
-    <table class="cheat-sheet">
-        <tr>
-            <th>Parameter</th>
-            <th>Beschreibung / Verwendung</th>
-        </tr>
-        <tr>
-            <td><code>--auto</code></td>
-            <td>Startet die Rechnungserstellung vollautomatisch unsichtbar im Hintergrund.</td>
-        </tr>
-        <tr>
-            <td><code>--edit</code></td>
-            <td>Startet die GUI zur manuellen Nachbearbeitung (enthält Schutz vor versehentlichem Schließen).</td>
-        </tr>
-        <tr>
-            <td><code>--profil "Name"</code></td>
-            <td>Wählt das Firmenprofil aus (bricht bei nicht existierendem Profil sicherheitshalber ab).</td>
-        </tr>
-        <tr>
-            <td><code>--renr "Nummer"</code></td>
-            <td>Überschreibt die in der CSV enthaltene Rechnungsnummer.</td>
-        </tr>
-        <tr>
-            <td><code>--rechnung "Pfad"</code></td>
-            <td>Pfad zur einzulesenden <code>rechnung.csv</code> (z. B. Export-Datei aus Fremdsoftware).</td>
-        </tr>
-        <tr>
-            <td><code>--kopie "Pfad"</code></td>
-            <td>Zusätzliches Zielverzeichnis für eine Kopie der generierten Rechnung.</td>
-        </tr>
-    </table>
+def ensure_doku_files(target_dir: str = None, version_string: str = "1.000", force: bool = False) -> dict:
+    """
+    Schreibt Hilfe-, Changelog-, Body- und Markdown-Dateien bevorzugt in `target_dir`
+    (Programmpfad/html) und weicht bei fehlenden Schreibrechten auf `get_appdata_dir()` aus.
+    """
+    primary_dir = target_dir or get_doku_target_dir()
+    fallback_dir = get_appdata_dir()
 
-    <h2 id="kap17">17. Revisionssicheres Archiv & GoBD-Audit-Log</h2>
-    
-    <h3>Das GoBD Audit-Log (Verfahrensdokumentation)</h3>
-    <p>Um den strengen Anforderungen der GoBD an Nachvollziehbarkeit und Unveränderbarkeit (vgl. Rz. 58 und Rz. 107-111) zu genügen, führt das Programm automatisch getrennte Audit-Logs für den Ausgangs- und Eingangsbereich. Diese finden Sie im Netzwerkordner unter <code>audit/&lt;Jahr&gt;</code>.</p>
-    
-    <h4>Wann werden welche Einträge protokolliert?</h4>
-    <p>Das System schreibt in folgenden Situationen automatisch einen unveränderlichen Eintrag in das Audit-Log:</p>
-    <ul>
-        <li><strong>Neuerstellung (Eingang & Ausgang):</strong> Sobald eine Ausgangsrechnung generiert (Aktion: <em>Erstellt</em>) oder eine Eingangsrechnung erfasst wird. Das Log verzeichnet dabei präzise und überschneidungsfrei, auf welchem Weg die Rechnung erzeugt wurde: durch einen normalen Programmstart (Modus: <code>GUI</code>), durch manuelle Nachbearbeitung nach Aufruf durch ein Fremdprogramm (Modus: <code>CLI (--edit)</code>) oder vollautomatisiert im Hintergrund durch die Kommandozeile (Modus: <code>CLI (--auto)</code>).</li>
-        <li><strong>Änderung / Überschreiben (Ausgang):</strong> Wird die Maske für eine bereits vergebene Rechnungsnummer im Reiter "ERSTELLEN" erneut aufgerufen und die generierte Rechnung überschrieben (Aktion: <em>Geändert</em>), schlägt das System sofort Alarm. Da eine rückwirkende Änderung von Belegen buchhalterisch höchst kritisch ist (Gefahr der Steuerverkürzung), protokolliert das System diesen Vorgang zum Schutz der fortlaufenden Nummernkreise lückenlos. Sie sollten (bzw. müssen, falls in den Einstellungen erzwungen) diese Korrektur mit einer klaren Bemerkung (z. B. <em>"Tippfehler in der Adresse korrigiert; Original hatte das Haus noch nicht verlassen"</em>) begründen. So können Sie dem Betriebsprüfer Jahre später plausibel nachweisen, warum eine bereits vergebene Nummer in der Datenbank modifiziert wurde.</li>
-        <li><strong>Löschung / Storno (Eingang):</strong> Wird ein bereits verbuchter Beleg vom Nutzer nachträglich wieder aus dem Eingangsjournal gelöscht bzw. storniert (Aktion: <em>Gelöscht</em>).</li>
-    </ul>
+    chosen_dir = primary_dir
+    try:
+        os.makedirs(primary_dir, exist_ok=True)
+        test_file = os.path.join(primary_dir, ".write_test")
+        with open(test_file, "w", encoding="utf-8") as tf:
+            tf.write("ok")
+        os.remove(test_file)
+    except OSError:
+        chosen_dir = fallback_dir
+        os.makedirs(chosen_dir, exist_ok=True)
 
-    <h4>Konfiguration und Export</h4>
-    <ul>
-        <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen (Reiter Konfig.) können Sie die Option "GoBD: Begründungszwang bei Änderung/Löschung" aktivieren. Das Programm zwingt den Anwender dann bei jeder Datenänderung (Überschreiben) oder Löschung zur Eingabe eines Revisionsgrundes. Dieser Grund wird unveränderlich mit dem Log-Eintrag verknüpft. Dies dient bei Betriebsprüfungen als lückenloser Nachweis über die Historie.</li>
-        <li><strong>Exportfunktion:</strong> In den Reitern für Ausgang und Eingang lässt sich das zugehörige jahresbasierte Audit-Log jederzeit komfortabel über den Button "🛡️ Audit-Log PDF" als übersichtliche PDF-Tabelle für den Prüfer generieren.</li>
-    </ul>
+    paths = {
+        "hilfe_html": os.path.join(chosen_dir, "SokoIur_Hilfe.html"),
+        "snippet_html": os.path.join(chosen_dir, "html.txt"),
+        "changelog_html": os.path.join(chosen_dir, "changelog.html"),
+        "changelog_snippet": os.path.join(chosen_dir, "clg.txt"),
+        "hilfe_md": os.path.join(chosen_dir, "SokoIur_Hilfe.md"),
+        "changelog_md": os.path.join(chosen_dir, "changelog.md"),
+    }
+    meta_path = os.path.join(chosen_dir, "doku_meta.json")
+    current_sig = _source_signature()
 
-    <p>Zur Erfüllung der GoBD wird <em>zusätzlich</em> empfohlen, die generierten Verzeichnisse (<code>rchn</code> für den Eingang und <code>are</code> für den Ausgang) automatisch in einen <strong>WORM-Onlinespeicher</strong> (Write Once, Read Many; z.B. via Nextcloud) zu synchronisieren, der eine nachträgliche Veränderung durch Nutzer oder Ransomware technisch ausschließt.</p>
+    needs_update = force or not all(os.path.exists(p) for p in paths.values())
+    if not needs_update and os.path.exists(meta_path):
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            if meta.get("version") != str(version_string) or meta.get("sources") != current_sig:
+                needs_update = True
+        except Exception:
+            needs_update = True
 
-    <h2 id="kap18">18. E-Mail-Versand & Thunderbird-Integration</h2>
-    <p>Das Programm unterstützt den automatisierten E-Mail-Versand von Rechnungen über <strong>Microsoft Outlook</strong>, <strong>Mozilla Thunderbird</strong> oder den klassischen Standard-Mailclient (<code>mailto</code> + Explorer-Auswahl).</p>
-    
-    <h3>Konfiguration im Reiter ⚙️ Konfig.</h3>
-    <p>Im Einstellungsbereich können Sie den bevorzugten E-Mail-Client auswählen und den Pfad zur <code>thunderbird.exe</code> hinterlegen. Zudem stehen Ihnen zwei dedizierte Konfigurationsfelder zur Verfügung:</p>
-    <ul>
-        <li><strong>Standard E-Mail Text (Body):</strong> Der Anschreibetext, der beim Erstellen der E-Mail verwendet wird.</li>
-        <li><strong>E-Mail Footer / Signatur:</strong> Ein optionaler Footer, der unter den Text gesetzt wird.</li>
-    </ul>
+    if needs_update:
+        doku_html = get_doku_html(version_string)
+        changelog_html = get_changelog_html(version_string)
 
-    <h3>Automatisches Zusammenspiel mit Thunderbird-Signaturen</h3>
-    <p>Bei der Verwendung von Mozilla Thunderbird nutzt das System eine robuste Schnittstelle per Kommandozeilenparameter (<code>-compose</code> mit Parameterliste). 
-    <br><strong>Besonderheit beim Footer:</strong> Wenn Sie im Programm einen E-Mail-Footer hinterlegt haben, wird dieser angehängt. Ist in Thunderbird selbst im Standardkonto bereits eine Signatur hinterlegt, erkennt das System dies intelligent, sodass der Footer nur bei Bedarf ergänzt wird, um doppelte Signaturen zu vermeiden. 
-    <br>Das E-Mail-Fenster öffnet sich in Thunderbird sofort als voll editierbarer und versandbereiter Entwurf inklusive des korrekten Absenders, des vollständigen mehrzeiligen Textes, der Empfängeradresse und der frisch generierten ZUGFeRD-PDF im Anhang.</p>
+        with open(paths["hilfe_html"], "w", encoding="utf-8") as f:
+            f.write(doku_html)
+        with open(paths["snippet_html"], "w", encoding="utf-8") as f:
+            f.write(_extract_body(doku_html, "<p>Handbuch-Inhalt konnte nicht extrahiert werden.</p>"))
 
-    <h2 id="kap19">19. GitHub & Updates</h2>
-    <p>Quellcode und Releases sind im offiziellen GitHub-Repository unter <a href="https://github.com/JSoko/SokoIur-eRechnung-Zugferd" target="_blank">https://github.com/JSoko/SokoIur-eRechnung-Zugferd</a> einsehbar. Über die integrierte Update-Funktion wird die neue Version direkt in Ihr Netzlaufwerk geladen, um die Verteilung an alle Arbeitsplätze zu erleichtern.</p>
+        with open(paths["changelog_html"], "w", encoding="utf-8") as f:
+            f.write(changelog_html)
+        with open(paths["changelog_snippet"], "w", encoding="utf-8") as f:
+            f.write(_extract_body(changelog_html, "<p>Changelog-Inhalt konnte nicht extrahiert werden.</p>"))
 
-    <h2 id="kap20">20. Schlagwortverzeichnis (Index)</h2>
-    <div style="column-count: 2; column-gap: 40px; margin-top: 10px;">
-        <p><strong>B</strong><br>
-        <a href="#kap1">Briefbogen hinterlegen</a><br>
-        <a href="#kap14">Buchhaltung</a></p>
-        <p><strong>D</strong><br>
-        <a href="#kap1">Daten-Speicherort</a><br>
-        <a href="#kap12">Daten-Speicherort (Admin)</a><br>
-        <a href="#kap2">Datenschutz</a><br>
-        <a href="#kap14">DATEV-Export</a></p>
-        <p><strong>E</strong><br>
-        <a href="#kap18">E-Mail-Footer & Signatur</a><br>
-        <a href="#kap18">E-Mail-Versand & Thunderbird</a><br>
-        <a href="#kap10">Eingangsrechnungen prüfen</a><br>
-        <a href="#kap3">E-Rechnungspflicht</a></p>
-        <p><strong>G</strong><br>
-        <a href="#kap3">Girocode (QR-Code)</a><br>
-        <a href="#kap17">GoBD Audit-Log</a></p>
-        <p><strong>I</strong><br>
-        <a href="#kap15">Import (Kunden & Produkte)</a></p>
-        <p><strong>J</strong><br>
-        <a href="#kap11">Jahreswechsel</a><br>
-        <a href="#kap6">Journale (Ausgang / Eingang)</a></p>
-        <p><strong>L</strong><br>
-        <a href="#kap3">Leitweg-ID (Use Case)</a><br>
-        <a href="#kap4">Leitweg-ID (Glossar)</a><br>
-        <a href="#kap7">Live-Validierung (Eingabefelder)</a></p>
-        <p><strong>M</strong><br>
-        <a href="#kap13">Mandanten & Firmenprofile</a></p>
-        <p><strong>N</strong><br>
-        <a href="#kap12">Netzwerkbetrieb & File-Locking</a></p>
-        <p><strong>R</strong><br>
-        <a href="#kap7-rc">Reverse Charge (Ausgangsrechnungen)</a><br>
-        <a href="#kap10-rc">Reverse Charge (Eingangsrechnungen)</a></p>
-        <p><strong>S</strong><br>
-        <a href="#kap7">Standardtexte & Textvorlagen</a><br>
-        <a href="#kap3">Stornorechnung</a></p>
-        <p><strong>T</strong><br>
-        <a href="#kap16">Tastenkürzel (Shortcuts)</a><br>
-        <a href="#kap7">Testrechnung</a></p>
-        <p><strong>U</strong><br>
-        <a href="#kap7">Undo / Redo (Strg+Z / Strg+Y)</a></p>
-        <p><strong>X</strong><br>
-        <a href="#kap9">XRechnung (Format)</a><br>
-        <a href="#kap4">XRechnung (Glossar)</a></p>
-        <p><strong>Z</strong><br>
-        <a href="#kap9">ZUGFeRD (Format)</a><br>
-        <a href="#kap4">ZUGFeRD (Glossar)</a></p>
-    </div>
-    <hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">
-    <p style="text-align: center; color: #666; font-size: 0.9em;">
-        &copy; Joachim Sokolowski, Offenbacher Str. 99, 63263 Neu-Isenburg
-    </p>
-    <br><br><br>
-    </div> <!-- Ende der main-content -->
-</body>
-</html>"""
+        with open(paths["hilfe_md"], "w", encoding="utf-8") as f:
+            f.write(html_to_md(doku_html))
+        with open(paths["changelog_md"], "w", encoding="utf-8") as f:
+            f.write(html_to_md(changelog_html))
 
-def get_doku_body_html(version_string):
-    full_html = get_doku_html(version_string)
+        try:
+            with open(meta_path, "w", encoding="utf-8") as f:
+                json.dump({"version": str(version_string), "sources": current_sig}, f, indent=2)
+        except Exception:
+            pass
+
+    _sync_doc_assets(chosen_dir)
+    return paths
+
+
+def _load_template(filename: str, version_string: str) -> str:
+    pfad = get_resource_path(os.path.join("html", filename))
+    with open(pfad, "r", encoding="utf-8") as f:
+        html = f.read()
+    return html.replace("__VERSION__", str(version_string))
+
+
+def get_doku_html(version_string: str) -> str:
+    return _load_template("handbuch.html", version_string)
+
+
+def get_changelog_html(version_string: str) -> str:
+    return _load_template("changelog.html", version_string)
+
+
+def _extract_body(full_html: str, fallback_msg: str) -> str:
     start_marker = "<body>"
     end_marker = '<hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">'
     start_pos = full_html.find(start_marker)
     end_pos = full_html.find(end_marker)
     if start_pos != -1 and end_pos != -1:
         return full_html[start_pos + len(start_marker):end_pos].strip()
-    return "<p>Handbuch-Inhalt konnte nicht extrahiert werden.</p>"
+    return fallback_msg
 
 
-def get_changelog_html(version_string):
-    return rf"""<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Changelog - SokoIur eRechnung</title>
-    <style>
-        html {{ background-color: #e9ecef; }}
-        body {{ font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.7; color: #333; max-width: 900px; margin: 40px auto; padding: 50px 60px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.08); }}
-        h1 {{ color: #1f538d; text-align: center; margin-bottom: 5px; font-size: 2.2em; }}
-        p.version {{ text-align: center; color: #6c757d; margin-top: 0; margin-bottom: 40px; }}
-        h2 {{ color: #1f538d; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-top: 50px; font-size: 1.6em; }}
-        h3 {{ margin-top: 25px; margin-bottom: 10px; color: #0066cc; font-size: 1.1em; text-transform: uppercase; letter-spacing: 0.5px; }}
-        ul {{ padding-left: 20px; }}
-        li {{ margin-bottom: 12px; font-size: 15px; }}
-        code {{ background: #f1f3f5; padding: 3px 6px; border-radius: 4px; font-family: 'Consolas', monospace; color: #d63384; font-size: 0.95em; }}
-        @media (max-width: 768px) {{ body {{ margin: 10px; padding: 20px; }} }}
-    </style>
-</head>
-<body>
-    <h1>Changelog – SokoIur eRechnung</h1>
-    <p><strong>Aktuelle Version: {version_string}</strong></p>
-  
-    
-    <h2>Version 2.000289 <span class="date">(18. November 2026)</span></h2>
-    <h3>✨ Reverse Charge (EU &amp; Drittland) für Ein- und Ausgangsrechnungen</h3>
-    <ul>
-        <li><strong>Ausgangsrechnungen (ERSTELLEN):</strong> Neue Felder für <em>Land</em>, <em>Reverse Charge</em> (Nein / EU / Drittland) und <em>Kunde USt-IdNr.</em> inkl. Live-Pflichtprüfung bei EU-Reverse-Charge, automatischer 0%-Umstellung, gesetzlichen PDF-Hinweisen sowie EN-16931-XML-Codes (<code>AE</code> / <code>VATEX-EU-AE</code> bzw. <code>O</code> / <code>VATEX-EU-O</code>).</li>
-        <li><strong>Eingangsrechnungen (ERFASSEN):</strong> Automatische Reverse-Charge-Erkennung im XML-Parser (Unterschiedliche USt-IdNr.-Prüfung für EU vs. Drittland) sowie manuelle Auswahl in der Erfassungsmaske.</li>
-        <li><strong>DATEV-Export &amp; Handbuch:</strong> Getrennte DATEV-Sachkonten für EU- und Drittland-Reverse-Charge im Ein- und Ausgang sowie ausführliche Ausfüllanleitung im Handbuch (Kapitel 7, 10 und 14).</li>
-    </ul>
-    <h3>✨ Automatisierter E-Mail-Versand & Thunderbird-Integration</h3>
-    <ul>
-        <li><strong>Konfigurierbarer E-Mail-Body & Footer:</strong> In den Firmeneinstellungen (Reiter <em>Konfig.</em>) wurden zwei neue Konfigurationsfelder für den Standard-E-Mail-Text sowie den E-Mail-Footer / Signatur hinzugefügt.</li>
-        <li><strong>Robuste Thunderbird-Schnittstelle:</strong> Der E-Mail-Versand über Mozilla Thunderbird wurde auf eine saubere Parameter-Liste über `subprocess.Popen` umgestellt. Dadurch werden Zeilenumbrüche, der volle Text, Empfänger, Betreff und der PDF-Anhang in modernen Thunderbird-Versionen absolut fehlerfrei und im Klartext übergeben.</li>
-        <li><strong>Intelligente Signatur-Erkennung:</strong> Der im Programm hinterlegte Footer wird nahtlos eingebunden. Ist in Thunderbird im Standardkonto bereits eine eigene Signatur aktiv, ergänzt das System den Text intelligent, um doppelte Footer zu vermeiden.</li>
-    </ul>
-
-    <h3>✨ Live-Validierung & Visuelle Fehleranzeige in der Erfassungsmaske</h3>
-    <ul>
-        <li><strong>Live-Fehleranzeige unter den Summen:</strong> Im Reiter <em>[E]RSTELLEN</em> wurde direkt unter der Netto-/Brutto-Gesamtanzeige ein dynamisches Ausgabefeld integriert. Dieses prüft bei jedem Tastendruck in Echtzeit, ob alle Pflichtfelder (Kundenname, Straße, getrennte PLZ und Ort) korrekt ausgefüllt sind.</li>
-        <li><strong>Sofortige rote Rahmen-Markierung:</strong> Unvollständige oder fehlende Pflichtfelder werden nun in der Eingabemaske direkt rot umrandet, sobald der Benutzer tippt oder eine Aktion ausführt.</li>
-        <li><strong>Strikte Erstellungs-Sperre:</strong> Der Klick auf Rechnungsgenerierungs-Buttons (Zugpferdrechnung, XRechnung, Papier-PDF) bricht nun sofort und ohne Umwege ab, wenn noch Pflichtfehler vorliegen. Die Rechnung kann erst generiert werden, wenn das Live-Ausgabefeld grünes Licht gibt.</li>
-        <li><strong>Absturzsichere CSV-Speicherung (Atomic Writes):</strong> Das Speichern von Kunden- und Artikeldaten im Netzwerk wurde durch einen atomaren Schreibmechanismus (Zwischenspeicherung via Temp-Datei und anschließender Ersetzung per <code>os.replace</code>) erweitert. Dadurch wird eine Beschädigung der CSV-Dateien bei plötzlichen Netzwerk- oder Stromausfällen technisch ausgeschlossen.</li>
-        <li><strong>Undo/Redo-Verlauf (Strg+Z / Strg+Y):</strong> In der manuellen Erfassungsmaske können Änderungen an Kopfdaten und Positionen nun wie in einem Editor rückgängig gemacht oder wiederholt werden.</li>
-    </ul>
-    <h3>✨ XML-Validierung & XRechnung (EN 16931)</h3>
-    <ul>
-        <li><strong>Exakte kaufmännische Rundung:</strong> Ein tiefliegendes Problem der Fließkomma-Arithmetik (IEEE 754) wurde behoben. Beträge und Steuern werden nun über eine zentrale Funktion kaufmännisch exakt auf 2 Nachkommastellen gerundet. Dies löst XRechnungs-Validierungsfehler wie <code>[BR-CO-10]</code> (Summe Nettobetrag) und <code>[BR-CO-14]</code> (Summe Mehrwertsteuer).</li>
-        <li><strong>Bereinigung leerer XML-Elemente:</strong> Optionale Felder ohne Inhalt (wie z.B. Leitweg-ID, Kundennummer oder Aktenzeichen) erzeugen nun keine leeren XML-Tags mehr. Dies behebt den Validierungsfehler <code>[PEPPOL-EN16931-R008]</code>.</li>
-        <li><strong>Pflichtfeldprüfung Ort (Buyer City):</strong> Gemäß EN 16931 (BT-52) ist der Ort des Rechnungsempfängers zwingend vorgeschrieben. Fehlt der Ort in der Eingabemaske, fügt das System zur Vermeidung des Fehlers <code>[BR-DE-8]</code> nun automatisch den Platzhalter "Fehlt" in das XML ein (im Handbuch wurde ein entsprechender Warnhinweis zur korrekten Dateneingabe ergänzt).</li>
-        <li><strong>Dynamische Hilfe-Generierung:</strong> Das Handbuch und das Changelog werden beim Klick nun bei jedem Aufruf dynamisch neu geschrieben. Zuvor wurden HTML-Dateien aus Vorversionen im Cache behalten, wodurch Neuerungen nach einem Update unsichtbar blieben.</li>
-    </ul>
-    
-    <h3>✨ User Experience (UX) & Stabilität</h3>
-    <ul>
-        <li><strong>Netzwerkweite Statistiken (Info-Tab):</strong> Die Programm- und Belegstatistiken im Info-Reiter (F1) wurden deutlich erweitert. Neben der aktiven Firma werden nun asynchron im Hintergrund die Gesamtdaten aller im Netzwerk hinterlegten Firmen ausgelesen und angezeigt.</li>
-        <li><strong>Splash-Screen Fix:</strong> Ein kritischer Fehler beim Programmstart wurde behoben. Wenn das Programm aufgrund einer existierenden Netzwerk-Sperre (Lock-Datei) oder beim ersten Start (Ordner-Abfrage) blockierte, wurde die entsprechende Fehlermeldung/Abfrage hinter dem Startbildschirm (Splash-Screen) versteckt. Der Splash-Screen wird bei Dialogen nun sofort beendet.</li>
-        <li><strong>Tab-Fokus nach Firmenwechsel:</strong> Wechselt man in der Header-Leiste das Firmenprofil, springt die Ansicht nun automatisch wieder auf den Tab "ERSTELLEN", da ansonsten der Inhalt des vorherigen Tabs unsichtbar bleiben konnte.</li>
-    </ul>
-
-    <h2>Version 2.000229 <span class="date">(17. November 2026)</span></h2>
-    <h3>✨ Neue Funktionen & Verbesserungen</h3>
-    <ul>
-        <li><strong>Erweitertes Business-Dashboard:</strong> 
-            <ul>
-                <li><strong>Geschäftsjahresauswahl:</strong> Das Dashboard besitzt nun ein integriertes Jahr-Dropdown, mit dem direkt im Fenster zwischen den Geschäftsjahren gewechselt werden kann.</li>
-                <li><strong>Direkte Wert-Einblendungen:</strong> Kundennamen und Umsätze werden nun direkt in den Balken der Top-5-Kunden angezeigt; die Steuer-Übersicht zeigt die exakten Beträge als direkte Zahlen-Labels über den Säulen.</li>
-            </ul>
-        </li>
-        <li><strong>Visuelle Stammdatenverwaltung:</strong> Im Reiter "Konfig." gibt es den Button "👥 Kunden & Artikel visuell verwalten" zur komfortablen Pflege per Live-Suche und Tabellenansicht (inkl. passender ZUGFeRD-Dropdowns für Einheiten und Steuersätze).</li>
-        <li><strong>Testrechnung-Button:</strong> In der Eingabemaske kann eine Vorschau-PDF ohne Nummernvergabe oder Journaleintrag erzeugt werden.</li>
-    </ul>
-    
-    <p><strong>Umfassendes Architektur-Update (Under the Hood)</strong><br>
-    Das komplette Programm wurde nach dem <em>Single Responsibility Principle</em> modularisiert, um die Wartbarkeit, Stabilität und zukünftige Erweiterbarkeit zu sichern. Der ehemals monolithische Code ist nun in saubere, spezialisierte Einzeldateien unterteilt:</p>
-    
-    <h3>✨ 1. Daten & Kernfunktionen</h3>
-    <ul>
-        <li><strong>config.py:</strong> Zentrale Verwaltung aller Pfade, Konstanten und Einstellungen.</li>
-        <li><strong>crud.py:</strong> (Create, Read, Update, Delete) – Zentrales Modul für alle Lese- und Schreibzugriffe auf die CSV-Datenbanken und lokale Dateien.</li>
-        <li><strong>utils.py:</strong> Übergreifende Hilfsfunktionen und Formatierer (z.B. Datums- und Zahlenberechnung).</li>
-        <li><strong>audit.py:</strong> Zentrale Protokollierung (GoBD-Compliance).</li>
-    </ul>
-
-    <h3>✨ 2. PDF & XML Engine (Geschäftslogik)</h3>
-    <ul>
-        <li><strong>pdf_builder.py:</strong> Ausschließlich für das optische Zeichnen des PDF-Layouts zuständig (ReportLab).</li>
-        <li><strong>xml_processor.py:</strong> Generiert strikt die maschinenlesbaren XML-Strukturen nach EN 16931 (ZUGFeRD/XRechnung).</li>
-        <li><strong>pdf_zugferd.py:</strong> Fungiert nun als "Dirigent", der das optische Layout und die XML-Daten zusammenführt und die fertige e-Rechnung packt.</li>
-    </ul>
-
-    <h3>✨ 3. Benutzeroberfläche (GUI)</h3>
-    <p>Die riesige Hauptdatei wurde aufgelöst. Jeder Reiter der Oberfläche hat nun seine eigene, übersichtliche Datei:</p>
-    <ul>
-        <li><strong>gui_utils.py:</strong> Allgemeine grafische Werkzeuge (z.B. Hover-Texte / Tooltips).</li>
-        <li><strong>tab_manuell.py:</strong> Steuert den Reiter "Erstellen" (Manuelle Rechnungseingabe).</li>
-        <li><strong>tab_erfassen.py:</strong> Steuert den Reiter "Erfassen" (Eingangsrechnungen verarbeiten).</li>
-        <li><strong>tab_auswertungen.py:</strong> Steuert die Reiter "Ausgang" und "Eingang" (Journale und Auswertungen).</li>
-        <li><strong>tab_einstellungen.py:</strong> Steuert den Reiter "Konfig." (Einstellungen).</li>
-        <li><strong>tab_hilfe.py:</strong> Steuert den Reiter "Info & Hilfe".</li>
-        <li><strong>updater.py:</strong> Die reine Logik für die automatischen P2P- und Online-Updates.</li>
-    </ul>
-    <h2>Version 2.000221</h2>
-    <h3>✨ Bugfixes & Journale</h3>
-    <ul>
-        <li><strong>Korrektur bei Rechnungsänderungen:</strong> Wenn eine Rechnung überschrieben wurde, entstand im Ausgangsjournal (<code>reYYYYMM.csv</code>) bisher fälschlicherweise ein doppelter Eintrag für dieselbe Rechnungsnummer. Das System überschreibt nun die alte Zeile im Journal sauber, sodass die Summenauswertungen und DATEV-Exporte korrekt bleiben. Die Historie der Änderung wird weiterhin lückenlos im GoBD Audit-Log erfasst.</li>
-    </ul>
-    <h3>✨ UI/UX-Verbesserungen</h3>
-    <ul>
-        <li><strong>Responsive Buttons in Auswertungen:</strong> Ein Darstellungsproblem wurde behoben, bei dem die zahlreichen neuen Export-Buttons in den Reitern für Ausgangs- und Eingangsjournale auf schmalen Bildschirmen rechts abgeschnitten wurden. Die Buttons ordnen sich nun flexibel in einem mehrzeiligen Raster (2x2) an und skalieren sicher mit der Fensterbreite.</li>
-        <li><strong>Pfad-Ansicht erweitert:</strong> In den Einstellungen ("Aktive Pfade der aktuellen Firma") wurde der Speicherort für das GoBD-Audit-Log ergänzt. Zusätzlich verfügt nun jeder dort gelistete Pfad über einen direkten Explorer-Button (📂), mit dem sich das jeweilige Windows-Verzeichnis komfortabel per Klick öffnen lässt.</li>
-    </ul>
-    <h3>✨ GoBD-Konformität & Audit-Log</h3>
-    <ul>
-        <li><strong>Audit-Log Duplikate behoben:</strong> Ein Fehler wurde korrigiert, bei dem die Rechnungserstellung aus der Benutzeroberfläche heraus fälschlicherweise einen zweiten Protokolleintrag der Hintergrund-Engine erzeugte. Das System trennt beim Schreiben des GoBD Audit-Logs nun lückenlos und überschneidungsfrei zwischen den drei Startmodi: reguläre GUI (<code>GUI</code>), Fremdaufruf mit manueller Nachbearbeitung (<code>CLI (--edit)</code>) und vollautomatische Hintergrundgenerierung (<code>CLI (--auto)</code>).</li>
-        <li><strong>Audit-Log als PDF exportieren:</strong> In den Auswertungs-Reitern (Ausgang und Eingang) wurde jeweils ein neuer Button ("🛡️ Audit-Log PDF") integriert. Damit lässt sich das im Hintergrund geschriebene GoBD-Revisionsprotokoll auf Knopfdruck als sauberes, tabellarisches Querformat-PDF für den Wirtschaftsprüfer oder das Finanzamt generieren und anzeigen.</li>
-        <li><strong>Automatisches Audit-Log:</strong> Zur Einhaltung der gesetzlichen Vorschriften (Nachvollziehbarkeit und Unveränderbarkeit gemäß GoBD) erstellt das Programm nun für jede Firma jahresbasierte Audit-Logs getrennt für Ein- und Ausgangsrechnungen.</li>
-        <li><strong>Nachweis der Arbeitsplätze:</strong> Das Log erfasst transparent, von welchem PC aus und über welchen Modus (GUI, --edit oder --auto) eine Rechnung erstellt, geändert oder gelöscht wurde.</li>
-        <li><strong>Konfigurierbarer Begründungszwang:</strong> In den Einstellungen lässt sich nun ein Begründungszwang aktivieren. Anwender müssen bei der Löschung oder Modifikation einer bestehenden Rechnung einen Revisionsgrund eintragen, der revisionssicher in das Log geschrieben wird.</li>
-    </ul>
-    <h3>✨ Netzwerk & Updates</h3>
-    <ul>
-        <li><strong>Optimierter P2P-Update-Prozess:</strong> Wenn das Programm auf ein Update prüft, wird nun <em>zuerst</em> das verbundene Netzwerklaufwerk abgefragt. Liegt dort bereits eine aktualisierte Version bereit (z. B. weil ein anderer Arbeitsplatz das Update bereits durchgeführt hat), wird diese sofort verwendet. Das Programm verbindet sich nur noch dann mit dem Online-Server (erech.6078.de), wenn im lokalen Netz kein neueseres Update existiert, was den Traffic drastisch reduziert und den Vorgang stark beschleunigt.</li>
-        <li><strong>Automatische Update-Verteilung (P2P-Ansatz):</strong> Wenn das Programm auf einem Arbeitsplatz gestartet wird und die ausführbare Datei neuer ist als die im zentralen Netzwerkordner hinterlegte Update-Datei (<code>SokoIur_eRechnung_Update.exe</code>), wird diese nun automatisch aktualisiert. So können manuell eingespielte Updates von einem Client automatisch an alle anderen Arbeitsplätze im Netzwerk verteilt werden.</li>
-    </ul>
-    <h3>📚 Handbuch & Dokumentation</h3>
-    <ul>
-        <li><strong>Erweiterung der GoBD-Dokumentation:</strong> Das Administratorhandbuch (Kapitel 17) wurde um eine detaillierte Aufschlüsselung erweitert, in der genau dokumentiert ist, welche Aktionen (Neu, Geändert, Gelöscht) und welche Modi (GUI vs. CLI) zu einem Eintrag im GoBD Audit-Log führen.</li>
-    </ul>
-    <h2>Version 2.000206</h2>
-    <h3>✨ Neue Funktionen & Datensicherheit</h3>
-    <ul>
-        <li><strong>Firmendaten Backup & Restore:</strong> Im Reiter "Konfig." lassen sich nun Sicherungsarchive (ZIP) der aktiven Firma erstellen. Die Benennung der Backup-Dateien erfolgt automatisch inkl. Zeitstempel. Über die Restore-Funktion können die Daten bei Bedarf in die aktuell geöffnete oder eine neu anzulegende Firma importiert werden.</li>
-    </ul>
-
-    <h2>Version 2.000151</h2>
-    <h3>✨ UI/UX-Verbesserungen & Einstellungen</h3>
-    <ul>
-        <li><strong>Schnellnavigation (Shortcuts):</strong> Die Tastenkürzel für den direkten Wechsel der Reiter (z. B. Alt+E für Erstellen) werden nun platzsparend und visuell elegant durch eckige Klammern um den jeweiligen Buchstaben der Tab-Überschrift (z. B. [E]RSTELLEN) signalisiert.</li>
-        <li><strong>Umbenennung:</strong> Der Reiter „Einstellungen“ wurde in „Konfig.“ (Tastenkürzel Alt+K) umbenannt, um die Tab-Leiste kompakt zu halten.</li>
-        <li><strong>Modernes Karten-Design:</strong> Der Reiter „Einstellungen“ wurde komplett überarbeitet und in übersichtliche Themen-Karten (Cards) unterteilt.</li>
-        <li><strong>Hover-Erklärungen (Tooltips):</strong> Wichtige Buttons und Checkboxen in den Einstellungen sind nun mit hilfreichen Tooltips versehen, die beim Darüberfahren mit der Maus Erklärungen einblenden.</li>
-        <li><strong>DATEV-Konten Manager:</strong> Der Konfigurations-Button für die DATEV-Kontenrahmen (SKR03/SKR04) ist nun prominent im Bereich der Stammdaten integriert.</li>
-    </ul>
-    <h2>Version 2.000150</h2>
-    <h3>✨ Kommandozeile (CLI) & Fremdprogramm-Integration</h3>
-    <ul>
-        <li><strong>Strikte Profil-Validierung:</strong> Wird das Programm über <code>--auto</code> oder <code>--edit</code> mit einem nicht existierenden Firmennamen aufgerufen, bricht es nun mit einer klaren Fehlermeldung ab. Zuvor wurde fälschlicherweise das Standardprofil herangezogen.</li>
-        <li><strong>Sicherheitswarnung bei Abbruch:</strong> Wird die GUI über den Parameter <code>--edit</code> von einem Drittsystem aufgerufen, erscheint nun ein spezifischer Warnhinweis, wenn der Nutzer das Fenster ohne Rechnungserstellung (Beenden / X) schließen möchte. Dies beugt verwaisten Rechnungsnummern im Drittsystem vor.</li>
-        <li><strong>Saubere Textfelder:</strong> Beim CLI-gesteuerten Einlesen einer temporären Rechnungs-CSV werden alte Anmerkungen (Zusatztexte) aus dem regulären Firmenbetrieb nun korrekt ignoriert, sodass eine saubere Maske zur Verfügung steht.</li>
-    </ul>
-    <h2>Version 2.000146</h2>
-    <h3>✨ Neue Funktionen & Datenverwaltung</h3>
-    <ul>
-        <li><strong>Firma leeren:</strong> Eine neue Funktion in den Einstellungen ermöglicht es, alle erfassten Buchungen, Rechnungen und Journale einer Firma vollständig zurückzusetzen. Stammdaten (Kunden, Produkte, Briefbogen) sowie alle Textvorlagen (Header, Einleitung, Gruß, Zusatztexte) bleiben dabei unberührt.</li>
-        <li><strong>CSV-Import für Kunden:</strong> Kundendaten können nun per CSV importiert werden. Anhand der Kundennummer werden bestehende Einträge automatisch überschrieben und aktualisiert, neue Kunden werden angehängt.</li>
-        <li><strong>CSV-Import für Produkte:</strong> Produktdaten können ab sofort aus einer CSV-Datei importiert und an den bestehenden Stamm angehängt werden.</li>
-        <li><strong>Dokumentation:</strong> Das Handbuch wurde um die genauen Import-Formate (Kopfzeilen) für Kunden und Produkte ergänzt.</li>
-    </ul>
-
-    <h2>Version 2.000134</h2>
-    <h3>✨ DATEV-Export & Buchhaltung</h3>
-    <ul>
-        <li><strong>Automatisierter DATEV-Export:</strong> In den Reitern „Ausgang“ und „Eingang“ können nun vollautomatisch DATEV-konforme ASCII-CSV-Dateien (Stapelverarbeitung) für den Steuerberater erzeugt werden.</li>
-        <li><strong>Steuer-Splitting:</strong> Rechnungen mit unterschiedlichen Steuersätzen werden beim DATEV-Export automatisch centgenau zerlegt und auf die jeweils passenden Sachkonten aufgeteilt. Die Soll/Haben-Kennzeichen (S/H) werden vom System intelligent vergeben.</li>
-        <li><strong>DATEV-Konfigurationsmanager:</strong> Im Reiter „Einst.“ wurde ein Manager für die DATEV-Buchhaltung hinzugefügt. Per Knopfdruck lassen sich hier die Standardkonten für den Kontenrahmen <strong>SKR03</strong> oder <strong>SKR04</strong> laden oder individuelle Aufwands-, Erlös- und Sammelkonten pflegen.</li>
-    </ul>
-
-    <h3>✨ Journale & Auswertungen</h3>
-    <ul>
-        <li><strong>Neue Export-Möglichkeiten:</strong> In den Reitern „Ausgang“ und „Eingang“ wurden Buttons für den direkten CSV-Export hinzugefügt. Journale lassen sich nun auf Knopfdruck wahlweise als PDF (für den Ausdruck) oder als CSV (für den Import in Fremdsysteme oder Excel) generieren.</li>
-        <li><strong>Automatischer Start:</strong> Nach der Generierung wird das erzeugte Journal (egal ob PDF oder CSV) nun direkt in der jeweiligen Standardanwendung Ihres Computers geöffnet, sodass lange Lade-Rückmeldungen entfallen.</li>
-        <li><strong>Klarere Ordnerstruktur:</strong> Zur besseren logischen Trennung wurden die systemseitigen Journal-Ordner von <code>ausw</code> auf <code>aausw</code> (Ausgangsauswertungen) und von <code>einj</code> auf <code>eausw</code> (Eingangsauswertungen) umbenannt. Die entsprechenden Pfade werden bei neuen Profilen automatisch korrekt gesetzt.</li>
-        <li><strong>Bugfix PDF-Engine:</strong> Ein iterativer Fehler bei der Erzeugung des Ausgangsjournals (PDF) wurde behoben, der durch falsch übergebene String-Variablen auftreten konnte.</li>
-    </ul>
-
-    <h3>✨ Bugfixes & CLI-Verbesserungen</h3>
-    <ul>
-        <li><strong>Firmendaten (Falzmarken):</strong> Ein Fehler beim Speichern der Firmendaten wurde behoben. Das Feld 'Falzmarken' wurde korrekt in die Datenbankstruktur aufgenommen, sodass Änderungen nun fehlerfrei gesichert werden.</li>
-        <li><strong>CLI/Edit-Modus (Temp-Dateien):</strong> Wird die GUI über ein Fremdprogramm mit einer temporären CSV-Datei aufgerufen, überschreibt diese nicht mehr fälschlicherweise den Pfad der echten Rechnungsdatenbank.</li>
-        <li><strong>Briefbogen-Ladefehler:</strong> Der Briefbogen wird nun auch im Edit-Modus (bei externen Aufrufen) immer zuverlässig und direkt aus dem echten Firmen-Profil geladen, anstatt im Temp-Ordner gesucht zu werden.</li>
-        <li><strong>CLI-Parameter --renr:</strong> Übergebene Rechnungsnummern aus Fremdprogrammen überschreiben in der GUI nun korrekt den alten Wert aus der CSV-Datei. Unnötige Duplikats-Warnungen bei der automatisierten Rechnungserstellung wurden beseituteigt.</li>
-        <li><strong>Einstellungen (Beispielaufruf):</strong> Der CLI-Beispielbefehl in den Einstellungen lässt sich nun markieren und herauskopieren (Read-Only Feld). Er aktualisiert sich zudem in Echtzeit, sobald die letzte Rechnungsnummer manuell korrigiert wird.</li>
-        <li><strong>Code-Bereinigung:</strong> Unbenutzte Code-Fragmente wurden zur Fehlervermeidung aus den GUI-Modulen entfernt.</li>
-    </ul>
-
-    <h3>📚 Dokumentation & Handbuch-Erweiterung</h3>
-    <ul>
-        <li><strong>Funktionsübersicht & Anwendungsfälle:</strong> Das integrierte Handbuch wurde um das neue Kapitel 3.3 ("Programmfunktionen, Verwendungsszenarien & Anwendungsfälle") erweitert. Die Unterschiede zwischen der Rechnungsstellung an Behörden (XRechnung via Leitweg-ID / ZRE-Portal) und an Geschäftskunden gemäß der kommenden E-Rechnungspflicht 2025-2028 (ZUGFeRD via E-Mail) werden klar herausgestellt.</li>
-        <li><strong>DATEV-Export Dokumentation:</strong> Das Handbuch (Kapitel 12) wurde um eine ausführliche technische Dokumentation der neuen DATEV-Exportfunktionen inkl. ausdrücklichem <strong>Beta-Warnhinweis</strong> (Testlauf mit Steuerberater erforderlich) erweitert.</li>
-    </ul>
-
-    <h2>10.11.2026</h2>
-    <h3>✨ Neue Funktionen & XML-Korrekturen</h3>
-    <ul>
-        <li><strong>Automatische UTF-8-Konvertierung:</strong> Werden fehlerhaft codierte Rechnungs-CSVs über die Kommandozeile oder die GUI geladen, repariert und konvertiert das Programm diese nun vollautomatisch in das benötigte UTF-8-Format.</li>
-        <li><strong>Referenzen normkonform getrennt:</strong> Das Feld "Ihr Zeichen" (KundeAktenzeichen) wird als echte Leitweg-Referenz (BuyerReference BT-13) übergeben. Das interne Feld "Unser Zeichen" (Aktenzeichen) wird standardkonform als Rechnungsnotiz (IncludedNote) in die XML geschrieben.</li>
-        <li><strong>Kommandozeilen-Erweiterung:</strong> Das Kunden-Aktenzeichen kann nun per Parameter <code>--kunde-az</code> gesetzt werden.</li>
-    </ul>
-
-    <h2>09.11.2026</h2>
-    <h3>📚 Dokumentation & Handbuch-Erweiterung</h3>
-    <ul>
-        <li><strong>Revisionssichere Archivierung (Kapitel 11.8):</strong> Das Handbuch wurde um ein dediziertes Kapitel zur revisionssicheren Archivierung nach GoBD in Kombination mit Nextcloud & WORM-Speichern ergänzt.</li>
-    </ul>
-    <h3>⚡ Performance & Fehlerbehebungen (Bugfixes)</h3>
-    <ul>
-        <li><strong>Statistik-Korrektur:</strong> Die Zählung der erstellten Ausgangsrechnungen im Reiter „Info“ wurde korrigiert.</li>
-        <li><strong>Performance-Boost im Eingangsordner:</strong> Das Einlesen und Prüfen von Eingangsrechnungen wurde extrem beschleunigt (Caching der Journal-Datenbasis).</li>
-    </ul>
-    <h3>🛠 System & Architektur</h3>
-    <ul>
-        <li><strong>Neues Update-System:</strong> Die Update-Prüfung erfolgt nun über erech.6078.de. Updates werden automatisch in das Netzlaufwerk kopiert.</li>
-        <li><strong>AppData-Nutzung:</strong> Lokale Konfigurationsdateien werden ab sofort sicher im Windows-Benutzerverzeichnis (<code>%LOCALAPPDATA%</code>) abgelegt, was UAC-Berechtigungskonflikte behebt.</li>
-    </ul>
-
-    <hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">
-</body>
-</html>"""
-
-def get_doku_body_html(version_string):
-    full_html = get_doku_html(version_string)
-    start_marker = "<body>"
-    end_marker = '<hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">'
-    start_pos = full_html.find(start_marker)
-    end_pos = full_html.find(end_marker)
-    if start_pos != -1 and end_pos != -1:
-        return full_html[start_pos + len(start_marker):end_pos].strip()
-    return "<p>Handbuch-Inhalt konnte nicht extrahiert werden.</p>"
+def get_doku_body_html(version_string: str) -> str:
+    return _extract_body(
+        get_doku_html(version_string),
+        "<p>Handbuch-Inhalt konnte nicht extrahiert werden.</p>",
+    )
 
 
-def get_changelog_body_html(version_string):
-    full_html = get_changelog_html(version_string)
-    start_marker = "<body>"
-    end_marker = '<hr style="border: 0; border-top: 1px solid #ddd; margin: 40px 0 20px 0;">'
-    start_pos = full_html.find(start_marker)
-    end_pos = full_html.find(end_marker)
-    if start_pos != -1 and end_pos != -1:
-        return full_html[start_pos + len(start_marker):end_pos].strip()
-    return "<p>Changelog-Inhalt konnte nicht extrahiert werden.</p>"
+def get_changelog_body_html(version_string: str) -> str:
+    return _extract_body(
+        get_changelog_html(version_string),
+        "<p>Changelog-Inhalt konnte nicht extrahiert werden.</p>",
+    )
 
-def html_to_md(html_text):
-    body_match = re.search(r'<body>(.*?)</body>', html_text, re.DOTALL | re.IGNORECASE)
+
+def html_to_md(html_text: str) -> str:
+    body_match = re.search(r"<body>(.*?)</body>", html_text, re.DOTALL | re.IGNORECASE)
     text = body_match.group(1) if body_match else html_text
-    
-    # Inhaltsverzeichnis entfernen
-    text = re.sub(r'<div class="toc">.*?</div>', '', text, flags=re.DOTALL | re.IGNORECASE)
-    
-    # Umwandlung von <h1 style="..."> in ## (bzw. #)
-    text = re.sub(r'<h1[^>]*>(.*?)</h1>', r'# \1\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<h2[^>]*>(.*?)</h2>', r'## \1\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<h3[^>]*>(.*?)</h3>', r'### \1\n', text, flags=re.IGNORECASE)
-    
-    text = re.sub(r'<strong[^>]*>(.*?)</strong>', r'**\1**', text, flags=re.IGNORECASE)
-    text = re.sub(r'<b[^>]*>(.*?)</b>', r'**\1**', text, flags=re.IGNORECASE)
-    text = re.sub(r'<em[^>]*>(.*?)</em>', r'*\1*', text, flags=re.IGNORECASE)
-    text = re.sub(r'<code[^>]*>(.*?)</code>', r'`\1`', text, flags=re.IGNORECASE)
-    text = re.sub(r'<a[^>]*href="(.*?)"[^>]*>(.*?)</a>', r'[\2](\1)', text, flags=re.IGNORECASE)
-    text = re.sub(r'<li[^>]*>(.*?)</li>', r'* \1\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<p[^>]*>(.*?)</p>', r'\1\n\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<hr[^>]*>', '---\n', text, flags=re.IGNORECASE)
-    text = re.sub(r'<[^>]+>', '', text)
-    
-    text = text.replace('&nbsp;', ' ').replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>')
-    text = text.replace('&copy;', '©').replace('&rarr;', '->')
-    text = re.sub(r'\n{3,}', '\n\n', text)
+
+    text = re.sub(r'<div class="toc">.*?</div>', "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"<h1[^>]*>(.*?)</h1>", r"# \1\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<h2[^>]*>(.*?)</h2>", r"## \1\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<h3[^>]*>(.*?)</h3>", r"### \1\n", text, flags=re.IGNORECASE)
+
+    text = re.sub(r"<strong[^>]*>(.*?)</strong>", r"**\1**", text, flags=re.IGNORECASE)
+    text = re.sub(r"<b[^>]*>(.*?)</b>", r"**\1**", text, flags=re.IGNORECASE)
+    text = re.sub(r"<em[^>]*>(.*?)</em>", r"*\1*", text, flags=re.IGNORECASE)
+    text = re.sub(r"<code[^>]*>(.*?)</code>", r"`\1`", text, flags=re.IGNORECASE)
+    text = re.sub(r'<a[^>]*href="(.*?)"[^>]*>(.*?)</a>', r"[\2](\1)", text, flags=re.IGNORECASE)
+    text = re.sub(r"<li[^>]*>(.*?)</li>", r"* \1\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<br\s*/?>", "\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<p[^>]*>(.*?)</p>", r"\1\n\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<hr[^>]*>", "---\n", text, flags=re.IGNORECASE)
+    text = re.sub(r"<[^>]+>", "", text)
+
+    text = (
+        text.replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&copy;", "©")
+        .replace("&rarr;", "->")
+    )
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
-def get_doku_md(version_string):
+
+def get_doku_md(version_string: str) -> str:
     return html_to_md(get_doku_html(version_string))
 
-def get_changelog_md(version_string):
+
+def get_changelog_md(version_string: str) -> str:
     return html_to_md(get_changelog_html(version_string))

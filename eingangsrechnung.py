@@ -262,6 +262,13 @@ def delete_journal_entry(
                     deleted_files.append(os.path.basename(lese_pdf))
                 except Exception:
                     pass
+            begleit_pdf = os.path.join(os.path.dirname(arch_file), f"{er_nr}_Begleit.pdf")
+            if os.path.isfile(begleit_pdf):
+                try:
+                    os.remove(begleit_pdf)
+                    deleted_files.append(os.path.basename(begleit_pdf))
+                except Exception:
+                    pass
 
         if rebearb_base_folder and os.path.isdir(rebearb_base_folder):
             quell_name = target.get("Quelldatei", "")

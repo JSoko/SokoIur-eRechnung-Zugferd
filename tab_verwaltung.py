@@ -128,7 +128,7 @@ class TabVerwaltungMixin:
         primary_key = "Name" if mode == "Kunden" else "Bezeichnung"
         
         if not self.vw_entries[primary_key].get().strip(): 
-            return messagebox.showwarning("Fehler", f"Das Feld '{primary_key}' darf nicht leer sein.", parent=self.vw_popup)
+            return self.show_warning("Fehler", f"Das Feld '{primary_key}' darf nicht leer sein.", parent=self.vw_popup)
             
         new_data = {k: entry.get().strip() for k, entry in self.vw_entries.items()}
         
@@ -151,7 +151,7 @@ class TabVerwaltungMixin:
         if not val: 
             return
         
-        if messagebox.askyesno("Löschen", f"Soll '{val}' wirklich gelöscht werden?", parent=self.vw_popup):
+        if self.ask_yes_no("Löschen", f"Soll '{val}' wirklich gelöscht werden?", parent=self.vw_popup):
             if mode == "Kunden": 
                 loesche_kunde(self.p_config.get("kunden_csv"), val)
             else: 

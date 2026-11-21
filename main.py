@@ -25,7 +25,11 @@ from config import init_config, speichere_config, LOCK_FILE
 from crud import ensure_utf8_csv
 from pdf_zugferd import run_auto_generation
 from gui_app import App
-from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
+from hilfe_texte import ensure_doku_files, get_doku_target_dir
+from config import get_app_version
+
+v_string = get_app_version()
+ensure_doku_files(get_doku_target_dir(), v_string)
 
 def main():
     # 2. Kommandozeilenparameter definieren und auslesen
@@ -60,46 +64,18 @@ def main():
     # 3. Datenbank / Konfiguration initialisieren
     config = init_config()
     
-    # --- HTML-Hilfsdatei & Snippet beim Programmstart automatisch im AppData-Ordner aktualisieren ---
+    # 3b. Hilfsdateien (Handbuch, Changelog, Markdown) im AppData-Ordner aktuell halten
     try:
-        from hilfe_texte import get_doku_html, get_doku_body_html, get_changelog_html, get_changelog_body_html, get_doku_md, get_changelog_md
+        from hilfe_texte import ensure_doku_files
         from config import get_appdata_dir, get_app_version
-        
+
         v_string = get_app_version()
-        last_version = config.get("last_run_version", "")
-        
-        if v_string != last_version:
-            app_dir = get_appdata_dir()
-            
-            hilfe_pfad = os.path.join(app_dir, "SokoIur_Hilfe.html")
-            snippet_pfad = os.path.join(app_dir, "html.txt")
-            changelog_pfad = os.path.join(app_dir, "changelog.html")
-            clg_pfad = os.path.join(app_dir, "clg.txt")
-            
-            hilfe_md_pfad = os.path.join(app_dir, "SokoIur_Hilfe.md")
-            changelog_md_pfad = os.path.join(app_dir, "changelog.md")
-            
-            with open(hilfe_pfad, "w", encoding="utf-8") as f_html:
-                f_html.write(get_doku_html(v_string))
-            with open(snippet_pfad, "w", encoding="utf-8") as f_snippet:
-                f_snippet.write(get_doku_body_html(v_string))
-                
-            with open(changelog_pfad, "w", encoding="utf-8") as f_clg_html:
-                f_clg_html.write(get_changelog_html(v_string))
-            with open(clg_pfad, "w", encoding="utf-8") as f_clg_txt:
-                f_clg_txt.write(get_changelog_body_html(v_string))
-                
-            with open(hilfe_md_pfad, "w", encoding="utf-8") as f_md:
-                f_md.write(get_doku_md(v_string))
-            with open(changelog_md_pfad, "w", encoding="utf-8") as f_clg_md:
-                f_clg_md.write(get_changelog_md(v_string))
-                
-            # Nach erfolgreicher Erstellung die Version in der Config vermerken und speichern
+        ensure_doku_files(get_appdata_dir(), v_string)
+        if config.get("last_run_version") != v_string:
             config["last_run_version"] = v_string
             speichere_config(config)
-                
     except Exception as e:
-        print(f"Konnte Hilfsdateien beim Start nicht erstellen: {e}")
+        print(f"Konnte Hilfsdateien beim Start nicht aktualisieren: {e}")
     
     config["cli_no_open"] = args.no_open
     config["cli_no_girocode"] = args.no_girocode

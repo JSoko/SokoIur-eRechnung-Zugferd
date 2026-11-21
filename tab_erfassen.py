@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from decimal import Decimal
 from datetime import datetime
 import customtkinter as ctk
@@ -16,9 +17,149 @@ from config import *
 from utils import *
 from crud import *
 from audit import write_audit_log
-from gui_utils import create_tooltip
+from gui_utils import create_tooltip, setup_auto_scrollbar, update_scrollable_visibility
 
 class TabErfassenMixin:
+    def _open_copy_in_temp(self, path):
+        """Kopiert den Beleg aus dem Eingangsordner nach Temp und öffnet dort die Kopie."""
+        if not path or not os.path.exists(path):
+            return self.show_warning("Datei fehlt", f"Die Datei wurde nicht gefunden:\n{path}")
+
+        try:
+            temp_view_dir = os.path.join(tempfile.gettempdir(), "SokoIur_eRechnung_Ansicht")
+            os.makedirs(temp_view_dir, exist_ok=True)
+
+            base_name = os.path.basename(path)
+            name_ohne_ext, ext = os.path.splitext(base_name)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            temp_copy_path = os.path.join(temp_view_dir, f"{name_ohne_ext}_{ts}{ext}")
+
+            shutil.copy2(path, temp_copy_path)
+            os.startfile(temp_copy_path)
+        except Exception as e:
+            self.show_error("Fehler", f"Kopie in Temp konnte nicht geöffnet werden:\n{e}")
+
+    def _is_non_zugferd_pdf(self, path: str) -> bool:
+        """Prüft, ob path eine PDF-Datei ohne eingebettetes ZUGFeRD/Factur-X-XML ist."""
+        if not path or not os.path.isfile(path):
+            return False
+        if os.path.splitext(path)[1].lower() != ".pdf":
+            return False
+        from eingangsrechnung import detect_invoice
+        kind, _, _ = detect_invoice(path)
+        return kind != "ZUGFeRD"
+
+    def _get_non_zugferd_pdfs(self, files: list, exclude_path: str = None) -> list:
+        ex_abs = os.path.abspath(exclude_path) if exclude_path else None
+        result = []
+        for f in files:
+            if ex_abs and os.path.abspath(f) == ex_abs:
+                continue
+            if self._is_non_zugferd_pdf(f):
+                result.append(f)
+        return result
+
+    def _get_xml_candidates(self, files: list, exclude_path: str = None) -> list:
+        ex_abs = os.path.abspath(exclude_path) if exclude_path else None
+        result = []
+        for f in files:
+            if ex_abs and os.path.abspath(f) == ex_abs:
+                continue
+            if os.path.splitext(f)[1].lower() == ".xml":
+                result.append(f)
+        return result
+
+    def _pick_xml_and_process(self, pdf_path: str, xml_candidates: list, parent=None):
+        """Ordnet pdf_path als Begleit-PDF einer gewählten XML-Datei zu und öffnet die XML-Erfassung."""
+        if not xml_candidates:
+            return self.show_warning("Keine XML-Datei", "Im Eingangsordner liegt keine XML-Datei vor.", parent=parent)
+
+        def start_with_xml(chosen_xml: str):
+            self._attached_accompanying_pdf = pdf_path
+            self._attached_accompanying_xml = chosen_xml
+            self.process_next_incoming(specific_path=chosen_xml)
+
+        if len(xml_candidates) == 1:
+            return start_with_xml(xml_candidates[0])
+
+        dlg = ctk.CTkToplevel(parent or self)
+        dlg.title("XRechnung (XML) auswählen")
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(dlg)
+        self.center_window(dlg, 520, 320)
+        dlg.transient(parent or self)
+        dlg.grab_set()
+
+        ctk.CTkLabel(
+            dlg,
+            text=f"Begleit-PDF: {os.path.basename(pdf_path)}\nBitte wählen Sie die zugehörige XRechnung (XML):",
+            justify="left",
+            font=("Helvetica", 12, "bold"),
+        ).pack(padx=15, pady=(12, 8), anchor="w")
+
+        scroll = ctk.CTkScrollableFrame(dlg)
+        scroll.pack(fill="both", expand=True, padx=15, pady=5)
+        setup_auto_scrollbar(scroll)
+
+        for x_path in xml_candidates:
+            def _choose(p=x_path):
+                dlg.destroy()
+                start_with_xml(p)
+
+            self.create_button(
+                scroll,
+                text=os.path.basename(x_path),
+                anchor="w",
+                fg_color="#444",
+                hover_color="#666",
+                command=_choose,
+            ).pack(fill="x", pady=3)
+
+        update_scrollable_visibility(scroll)
+
+    def _pick_accompanying_pdf_for_xml(self, xml_path: str, pdf_candidates: list, on_selected_callback, parent=None):
+        """Wählt für xml_path ein Begleit-PDF aus und übergibt es an on_selected_callback(pdf_path)."""
+        if not pdf_candidates:
+            return self.show_warning("Keine PDF-Datei", "Im Eingangsordner liegt kein passendes Begleit-PDF vor.", parent=parent)
+
+        if len(pdf_candidates) == 1:
+            return on_selected_callback(pdf_candidates[0])
+
+        dlg = ctk.CTkToplevel(parent or self)
+        dlg.title("Begleit-PDF auswählen")
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(dlg)
+        self.center_window(dlg, 520, 320)
+        dlg.transient(parent or self)
+        dlg.grab_set()
+
+        ctk.CTkLabel(
+            dlg,
+            text=f"XRechnung: {os.path.basename(xml_path)}\nBitte wählen Sie das zugehörige Begleit-PDF:",
+            justify="left",
+            font=("Helvetica", 12, "bold"),
+        ).pack(padx=15, pady=(12, 8), anchor="w")
+
+        scroll = ctk.CTkScrollableFrame(dlg)
+        scroll.pack(fill="both", expand=True, padx=15, pady=5)
+        setup_auto_scrollbar(scroll)
+
+        for p_path in pdf_candidates:
+            def _choose(p=p_path):
+                dlg.destroy()
+                on_selected_callback(p)
+
+            self.create_button(
+                scroll,
+                text=os.path.basename(p_path),
+                anchor="w",
+                fg_color="#444",
+                hover_color="#666",
+                command=_choose,
+            ).pack(fill="x", pady=3)
+
+        update_scrollable_visibility(scroll)
+    
     def build_erfassen_tab(self):
         if not hasattr(self, 'skipped_incoming_files'):
             self.skipped_incoming_files = set()
@@ -43,11 +184,11 @@ class TabErfassenMixin:
         btn_next_in = self.create_button(btn_bar, text="📥 Nächste Eingangsrechnung prüfen", command=self.process_next_incoming, fg_color="#1f538d", hover_color="#14375d", height=36, width=260)
         btn_next_in.pack(side="left", padx=6)
         create_tooltip(btn_next_in, "Prüft die oberste Datei im Eingangsordner auf gesetzliche \nVorgaben und startet den Erfassungsprozess.")
-        
+
         btn_ref_in = self.create_button(btn_bar, text="🔄 Liste aktualisieren", command=self.refresh_incoming_list, fg_color="#444", hover_color="#666", height=36, width=160)
         btn_ref_in.pack(side="left", padx=6)
         create_tooltip(btn_ref_in, "Sucht nach neu hinzugefügten Dateien im Eingangsordner.")
-        
+
         btn_open_in = self.create_button(btn_bar, text="📂 Ordner öffnen", command=self.open_incoming_folder, fg_color="#444", hover_color="#666", height=36, width=140)
         btn_open_in.pack(side="left", padx=6)
         create_tooltip(btn_open_in, "Öffnet den Ordner (reneu) im Windows-Explorer, \num Dateien per Drag & Drop hineinzuziehen.")
@@ -55,6 +196,7 @@ class TabErfassenMixin:
         ctk.CTkLabel(f, text="Wartende Belege im Eingangsordner:", font=("Helvetica", 13, "bold")).pack(pady=(8, 2))
         self.incoming_scroll = ctk.CTkScrollableFrame(f, height=220)
         self.incoming_scroll.pack(fill="both", expand=True, padx=20, pady=5)
+        setup_auto_scrollbar(self.incoming_scroll)
 
         ctk.CTkLabel(
             f,
@@ -72,14 +214,14 @@ class TabErfassenMixin:
             except Exception:
                 subprocess.Popen(['explorer', folder])
         else:
-            messagebox.showwarning("Ordner fehlt", f"Der Ordner existiert noch nicht:\n{folder}")
+            self.show_warning("Ordner fehlt", f"Der Ordner existiert noch nicht:\n{folder}")
 
     def _open_file_external(self, path):
         if os.path.exists(path):
             try:
                 os.startfile(path)
             except Exception as e:
-                messagebox.showerror("Fehler", f"Datei konnte nicht geöffnet werden:\n{e}")
+                self.show_error("Fehler", f"Datei konnte nicht geöffnet werden:\n{e}")
 
     def _remove_duplicate_source_file(self, path):
         """Entfernt eine als Duplikat erkannte Datei aus reneu (oder verschiebt sie nach rebearb)."""
@@ -98,7 +240,7 @@ class TabErfassenMixin:
     def refresh_incoming_list(self):
         if not hasattr(self, 'incoming_scroll'):
             return
-        from eingangsrechnung import check_duplicate_incoming
+        from eingangsrechnung import check_duplicate_incoming, load_all_journal_entries
 
         for w in self.incoming_scroll.winfo_children():
             w.destroy()
@@ -107,6 +249,7 @@ class TabErfassenMixin:
         folder = self.p_config.get('eingangsordner', '')
         if not folder or not os.path.isdir(folder):
             ctk.CTkLabel(self.incoming_scroll, text="Eingangsordner noch nicht angelegt.", text_color="gray").pack(pady=15)
+            update_scrollable_visibility(self.incoming_scroll)
             return
 
         waiting_list = self.p_config.get('eingang_loesch_warteliste', []) or []
@@ -127,12 +270,10 @@ class TabErfassenMixin:
             if len(all_files) > len(files):
                 hinweis += f" ({len(all_files) - len(files)} bereits erfasste Datei(en) warten auf automatische Löschung nach Schließen des PDF-Viewers)."
             ctk.CTkLabel(self.incoming_scroll, text=hinweis, text_color="gray", wraplength=680).pack(pady=15)
+            update_scrollable_visibility(self.incoming_scroll)
             return
 
-        from eingangsrechnung import check_duplicate_incoming, load_all_journal_entries
-
         journal_folder = self.p_config.get('eingangsjournal_ordner', '')
-        
         alle_journale = load_all_journal_entries(journal_folder)
 
         for idx, fpath in enumerate(files):
@@ -140,8 +281,7 @@ class TabErfassenMixin:
             row.pack(fill="x", pady=2, padx=4)
             fname = os.path.basename(fpath)
             is_skipped = fpath in getattr(self, 'skipped_incoming_files', set())
-            
-            # NEU: Die Variable "alle_journale" per Parameter 'entries' übergeben
+
             is_dup, dup_reason, dup_rec = check_duplicate_incoming(
                 fpath, journal_folder, waiting_list, entries=alle_journale
             )
@@ -165,21 +305,30 @@ class TabErfassenMixin:
                     row, text="🗑 Duplikat entfernen", width=140, fg_color="#b30000", hover_color="#800000",
                     command=lambda p=fpath: self._remove_duplicate_source_file(p)
                 ).pack(side="right", padx=4, pady=4)
-
+            xml_files = self._get_xml_candidates(files, exclude_path=fpath)
+            if self._is_non_zugferd_pdf(fpath) and xml_files:
+                btn_begleit = self.create_button(
+                    row, text="Begleitpdf", width=95, fg_color="#6b4c9a", hover_color="#52387a",
+                    command=lambda p=fpath, x_list=xml_files: self._pick_xml_and_process(p, x_list)
+                )
+                btn_begleit.pack(side="right", padx=4, pady=4)
+                create_tooltip(btn_begleit, "Diese datei als Begleitpdf zu einer XRechnung (XML) zuordnen")
             self.create_button(
                 row, text="👁 Öffnen", width=80, fg_color="#555", hover_color="#777",
-                command=lambda p=fpath: self._open_file_external(p)
+                command=lambda p=fpath: self._open_copy_in_temp(p)
             ).pack(side="right", padx=4, pady=4)
             self.create_button(
                 row, text="Prüfen", width=90, fg_color="#1f538d", hover_color="#14375d",
                 command=lambda p=fpath: self.process_next_incoming(specific_path=p)
             ).pack(side="right", padx=4, pady=4)
 
+        update_scrollable_visibility(self.incoming_scroll)
+
     def process_next_incoming(self, specific_path=None):
         from eingangsrechnung import detect_invoice, parse_einvoice, error_notice, check_duplicate_incoming
         folder = self.p_config.get('eingangsordner', '')
         if not os.path.isdir(folder):
-            return messagebox.showwarning('Eingangsordner fehlt', f'Der Eingangsordner existiert nicht:\n{folder}')
+            return self.show_warning('Eingangsordner fehlt', f'Der Eingangsordner existiert nicht:\n{folder}')
 
         self._retry_incoming_deletions()
         waiting_list = self.p_config.get('eingang_loesch_warteliste', []) or []
@@ -191,7 +340,7 @@ class TabErfassenMixin:
         ])
         if not files:
             self.refresh_incoming_list()
-            return messagebox.showinfo('Keine Eingangsrechnungen', f'Im Ordner\n{folder}\nsind keine unbearbeiteten Eingangsrechnungen vorhanden.')
+            return self.show_info('Keine Eingangsrechnungen', f'Im Ordner\n{folder}\nsind keine unbearbeiteten Eingangsrechnungen vorhanden.')
 
         if specific_path and os.path.exists(specific_path):
             path = specific_path
@@ -207,7 +356,7 @@ class TabErfassenMixin:
         # 1. Vorab-Duplikatsprüfung über Datei-Hash / Lösch-Warteliste
         is_dup, dup_msg, _ = check_duplicate_incoming(path, journal_folder, waiting_list)
         if is_dup:
-            if messagebox.askyesno(
+            if self.ask_yes_no(
                 "Bereits erfasste Rechnung erkannt",
                 f"Erneute Erfassung blockiert:\n\n{dup_msg}\n\n"
                 f"Datei im Eingangsordner: {os.path.basename(path)}\n\n"
@@ -225,7 +374,7 @@ class TabErfassenMixin:
             # 2. Inhaltliche Duplikatsprüfung (Lieferant + Externe RE-Nr. + Bruttobetrag)
             is_dup_content, dup_msg_content, _ = check_duplicate_incoming(path, journal_folder, waiting_list, invoice_data=data)
             if is_dup_content:
-                if messagebox.askyesno(
+                if self.ask_yes_no(
                     "Bereits erfasste Rechnung erkannt",
                     f"Erneute Erfassung blockiert:\n\n{dup_msg_content}\n\n"
                     f"Datei im Eingangsordner: {os.path.basename(path)}\n\n"
@@ -261,6 +410,8 @@ class TabErfassenMixin:
     def _show_invoice_error(self, path, kind, data, subject, body):
         d = ctk.CTkToplevel(self)
         d.title('Formelle Prüfung nicht bestanden')
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(d)
         self.center_window(d, 760, 620)
         d.transient(self)
         d.grab_set()
@@ -300,7 +451,7 @@ class TabErfassenMixin:
             d.destroy()
             self._show_other_invoice_form(path, detail="Trotz XML-Prüffehler manuell erfassen", prefill=data)
 
-        self.create_button(bf, text='👁 Datei öffnen', width=130, fg_color='#555', command=lambda: self._open_file_external(path)).pack(side='left', padx=6)
+        self.create_button(bf, text='👁 Datei öffnen', width=130, fg_color='#555', command=lambda: self._open_copy_in_temp(path)).pack(side='left', padx=6)
         self.create_button(bf, text='⏭ Überspringen (Später)', width=180, fg_color='#666', command=skip_and_close).pack(side='left', padx=6)
         self.create_button(bf, text='⚠️ Trotzdem manuell erfassen', width=210, fg_color='#b85c00', command=force_manual).pack(side='left', padx=6)
 
@@ -308,6 +459,8 @@ class TabErfassenMixin:
         from eingangsrechnung import _money
         d = ctk.CTkToplevel(self)
         d.title('Eingangsrechnung prüfen und erfassen')
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(d)
         self.center_window(d, 640, 610)
         d.transient(self)
         d.grab_set()
@@ -340,13 +493,66 @@ class TabErfassenMixin:
         if kind == 'XRechnung':
             ctk.CTkCheckBox(d, text='Lesbare PDF-Leseabschrift im Archiv erstellen', variable=var).pack(pady=12)
 
+        folder = self.p_config.get('eingangsordner', '')
+        waiting_list = self.p_config.get('eingang_loesch_warteliste', []) or []
+        norm_wait = {os.path.abspath(p) for p in waiting_list if p}
+        dir_files = sorted([
+            os.path.join(folder, x) for x in os.listdir(folder)
+            if os.path.isfile(os.path.join(folder, x)) and not x.startswith('.') and os.path.abspath(os.path.join(folder, x)) not in norm_wait
+        ]) if os.path.isdir(folder) else []
+
+        pdf_candidates = self._get_non_zugferd_pdfs(dir_files, exclude_path=path)
+
+        preset_pdf = getattr(self, "_attached_accompanying_pdf", None)
+        preset_xml = getattr(self, "_attached_accompanying_xml", None)
+        if preset_pdf and preset_xml and os.path.abspath(preset_xml) == os.path.abspath(path) and os.path.exists(preset_pdf):
+            selected_begleit_pdf = {"path": preset_pdf}
+        else:
+            selected_begleit_pdf = {"path": None}
+
+        lbl_begleit_status = ctk.CTkLabel(
+            d,
+            text=f"Zugeordnetes Begleit-PDF: {os.path.basename(selected_begleit_pdf['path'])}" if selected_begleit_pdf["path"] else "Zugeordnetes Begleit-PDF: keines",
+            text_color="gray",
+        )
+
+        def on_begleit_chosen(chosen_pdf):
+            selected_begleit_pdf["path"] = chosen_pdf
+            lbl_begleit_status.configure(
+                text=f"Zugeordnetes Begleit-PDF: {os.path.basename(chosen_pdf)}",
+                text_color="#208000",
+            )
+
+        if kind == 'XRechnung' and pdf_candidates:
+            btn_begleit_in = self.create_button(
+                d,
+                text="Begleit-PDF",
+                width=140,
+                fg_color="#6b4c9a",
+                hover_color="#52387a",
+                command=lambda p=path, c_list=pdf_candidates: self._pick_accompanying_pdf_for_xml(
+                    p, c_list, on_begleit_chosen, parent=d
+                ),
+            )
+            btn_begleit_in.pack(pady=(6, 2))
+            create_tooltip(btn_begleit_in, "DIeser X-Rechnung eine Begleit-Pdf zuordnen. Maßgeblich ist die XRechnungs-xml")
+            lbl_begleit_status.pack(pady=(0, 4))
+
         def yes():
             data["reverse_charge"] = combo_rc_in.get()
             if kind == 'XRechnung':
                 self.p_config['xrechnung_leseabschrift'] = bool(var.get())
                 speichere_config(self.config)
+            begleit_pdf = selected_begleit_pdf["path"]
+            self._attached_accompanying_pdf = None
+            self._attached_accompanying_xml = None
             d.destroy()
-            self._archive_incoming(path, kind, data, xml, bool(var.get()) if kind == 'XRechnung' else False, True)
+            self._archive_incoming(
+                path, kind, data, xml,
+                bool(var.get()) if kind == 'XRechnung' else False,
+                True,
+                accompanying_pdf_path=begleit_pdf,
+            )
 
         def skip():
             self.skipped_incoming_files.add(path)
@@ -355,7 +561,7 @@ class TabErfassenMixin:
 
         bf = ctk.CTkFrame(d, fg_color='transparent')
         bf.pack(pady=20)
-        self.create_button(bf, text='👁 Beleg ansehen', command=lambda: self._open_file_external(path), width=140, fg_color='#555').pack(side='left', padx=6)
+        self.create_button(bf, text='👁 Beleg ansehen', command=lambda: self._open_copy_in_temp(path), width=140, fg_color='#555').pack(side='left', padx=6)
         self.create_button(bf, text='Nein – zurückstellen', command=skip, width=160, fg_color='#666').pack(side='left', padx=6)
         self.create_button(bf, text='Ja – jetzt erfassen', command=yes, width=200, fg_color='#208000').pack(side='left', padx=6)
 
@@ -363,15 +569,16 @@ class TabErfassenMixin:
         from eingangsrechnung import _d, normalize_date_de, check_duplicate_incoming
         d = ctk.CTkToplevel(self)
         d.title('Sonstige Eingangsrechnung erfassen')
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(d)
         self.center_window(d, 640, 760)
         d.transient(self)
         d.grab_set()
 
         ctk.CTkLabel(d, text='Erfassung einer Rechnung (Manuelle Ergänzung)', font=('Helvetica', 14, 'bold')).pack(pady=(12, 4))
         ctk.CTkLabel(d, text=f"Datei: {os.path.basename(path)} ({detail})", text_color="gray").pack(pady=(0, 8))
-
-        self.create_button(d, text="👁 Originaldatei zur Ansicht öffnen", width=240, fg_color="#555", command=lambda: self._open_file_external(path)).pack(pady=4)
-
+        self.create_button(d, text="👁 Originaldatei zur Ansicht öffnen", width=240, fg_color="#555", command=lambda: self._open_copy_in_temp(path)).pack(pady=4)
+        
         kind = ctk.StringVar(value='PDF-Rechnung')
         ff = ctk.CTkFrame(d, fg_color='transparent')
         ff.pack(pady=6)
@@ -432,14 +639,14 @@ class TabErfassenMixin:
             norm_date = normalize_date_de(raw_date)
 
             if not supplier:
-                return messagebox.showwarning('Angabe fehlt', 'Bitte geben Sie den Namen des Lieferanten ein.', parent=d)
+                return self.show_warning('Angabe fehlt', 'Bitte geben Sie den Namen des Lieferanten ein.', parent=d)
             if not re.match(r'^\d{2}\.\d{2}\.\d{4}$', norm_date):
-                return messagebox.showwarning('Datumsformat', 'Bitte geben Sie ein gültiges Rechnungsdatum ein (z. B. 15.03.2026).', parent=d)
+                return self.show_warning('Datumsformat', 'Bitte geben Sie ein gültiges Rechnungsdatum ein (z. B. 15.03.2026).', parent=d)
             rc_val = combo_rc_manual.get()
             tax_id_val = entry_tax_id.get().strip()
 
             if rc_val == "EU" and not tax_id_val:
-                return messagebox.showwarning(
+                return self.show_warning(
                     'USt-IdNr. fehlt',
                     'Bei einer EU-Reverse-Charge-Rechnung muss die USt-IdNr. des Lieferanten angegeben werden.',
                     parent=d
@@ -456,7 +663,7 @@ class TabErfassenMixin:
             rate_factor = rate_dec / Decimal('100.00')
 
             if not net_str and not gross_str:
-                return messagebox.showwarning('Angabe fehlt', 'Bitte mindestens Netto oder Brutto eingeben.', parent=d)
+                return self.show_warning('Angabe fehlt', 'Bitte mindestens Netto oder Brutto eingeben.', parent=d)
 
             if net_str and not tax_str and not gross_str:
                 tax = (net * rate_factor).quantize(Decimal('0.01'))
@@ -472,7 +679,7 @@ class TabErfassenMixin:
                 tax = gross - net
 
             if abs((net + tax) - gross) > Decimal('0.05'):
-                return messagebox.showwarning(
+                return self.show_warning(
                     'Rechenfehler',
                     f'Netto ({net} €) + Steuer ({tax} €) stimmt nicht mit Brutto ({gross} €) überein!',
                     parent=d
@@ -503,7 +710,7 @@ class TabErfassenMixin:
                 invoice_data=data
             )
             if is_dup:
-                return messagebox.showerror(
+                return self.show_error(
                     'Duplikat erkannt',
                     f'Diese Rechnung kann nicht erneut erfasst werden:\n\n{dup_msg}',
                     parent=d
@@ -522,7 +729,7 @@ class TabErfassenMixin:
         self.create_button(bf, text='Abbrechen / Zurückstellen', command=skip, fg_color='#666', width=180).pack(side='left', padx=6)
         self.create_button(bf, text='Als Eingangsrechnung erfassen', command=save, fg_color='#208000', width=220).pack(side='left', padx=6)
 
-    def _archive_incoming(self, path, kind, data, xml, make_pdf, vat_checked):
+    def _archive_incoming(self, path, kind, data, xml, make_pdf, vat_checked, accompanying_pdf_path=None):
         from eingangsrechnung import (
             next_number, write_journal, make_readable_pdf, _d, _money,
             normalize_date_de, file_sha256, check_duplicate_incoming
@@ -536,7 +743,7 @@ class TabErfassenMixin:
             invoice_data=data
         )
         if is_dup:
-            messagebox.showerror("Bereits erfasst", f"Erfassung abgebrochen, da die Rechnung bereits existiert:\n\n{dup_msg}")
+            self.show_error("Bereits erfasst", f"Erfassung abgebrochen, da die Rechnung bereits existiert:\n\n{dup_msg}")
             self.refresh_incoming_list()
             return
 
@@ -570,6 +777,24 @@ class TabErfassenMixin:
                 self.p_config['eingang_loesch_warteliste'] = wait
 
         shutil.copy2(work_target if os.path.exists(work_target) else path, archive_main)
+        if accompanying_pdf_path and os.path.isfile(accompanying_pdf_path):
+            begleit_arch = os.path.join(arch, f"{nr}_Begleit.pdf")
+            begleit_work_name = os.path.basename(accompanying_pdf_path)
+            begleit_work_target = os.path.join(work, begleit_work_name)
+            if os.path.exists(begleit_work_target):
+                begleit_work_target = os.path.join(work, f"{nr}_{begleit_work_name}")
+            try:
+                shutil.move(accompanying_pdf_path, begleit_work_target)
+            except Exception:
+                shutil.copy2(accompanying_pdf_path, begleit_work_target)
+                wait = self.p_config.get('eingang_loesch_warteliste', []) or []
+                if accompanying_pdf_path not in wait:
+                    wait.append(accompanying_pdf_path)
+                    self.p_config['eingang_loesch_warteliste'] = wait
+            shutil.copy2(
+                begleit_work_target if os.path.exists(begleit_work_target) else accompanying_pdf_path,
+                begleit_arch,
+            )
 
         if make_pdf:
             readable = os.path.join(arch, nr + '_Leseabschrift.pdf')
@@ -607,7 +832,7 @@ class TabErfassenMixin:
         write_journal(self.p_config['eingangsjournal_ordner'], record)
         self.p_config['letzte_eingangsrechnungsnummer'] = nr
         speichere_config(self.config)
-        
+
         base_data_path = self.config.get("base_data_path", "")
         if base_data_path:
             firm_dir = os.path.join(base_data_path, self.p_config["profil_name"].replace(" ", "_"))
@@ -628,7 +853,7 @@ class TabErfassenMixin:
         self.skipped_incoming_files.discard(path)
         self.refresh_incoming_list()
 
-        messagebox.showinfo(
+        self.show_info(
             'Eingangsrechnung erfasst',
             f'Die Eingangsrechnung {nr} wurde erfolgreich erfasst und archiviert.\n\nArchiv: {archive_main}'
         )

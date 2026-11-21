@@ -59,12 +59,17 @@ LOCK_FILE = "erechnung.lock"
 LOCAL_CONFIG = os.path.join(APP_DIR, "local_config.json")
 
 def get_resource_path(relative_path):
-    try:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
+def get_program_dir():
+    """Gibt das Verzeichnis zurück, in dem die .exe bzw. das Hauptskript liegt."""
+    if getattr(sys, "frozen", False):
+        return os.path.abspath(os.path.dirname(sys.executable))
+    return os.path.abspath(os.path.dirname(__file__))
 
 def get_default_profile(suffix=""):
     s = f"_{suffix}" if suffix else ""
