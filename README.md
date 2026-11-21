@@ -7,7 +7,8 @@ Kompilieren mit
 
 `pyinstaller  --noconfirm --onefile --windowed --icon "SokoIur.ico" --add-data "SokoIur.ico;." --name "SokoIur_eRechnung" main.py`
 
-<img width="1200" height="1096" alt="image" src="https://github.com/user-attachments/assets/1744e5fb-d7f8-4827-8114-61c516adb296" />
+<img width="1216" height="995" alt="image" src="https://github.com/user-attachments/assets/ef533f87-8a55-477c-b2f4-ad0d11cf0a2e" />
+
 
 
 
