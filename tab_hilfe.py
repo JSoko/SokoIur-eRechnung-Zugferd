@@ -10,8 +10,6 @@ import webbrowser
 from datetime import datetime
 from config import get_appdata_dir
 import hilfe_texte
-from hilfe_texte import ensure_doku_files
-
 
 def _get_doku_dir() -> str:
     if getattr(sys, "frozen", False):
@@ -166,9 +164,12 @@ class TabHilfeMixin:
 
     def open_html_help(self):
         try:
-            version = getattr(self, "current_version", "1.000")
-            html_content = hilfe_texte.get_doku_html(version)
-            self._write_and_open_doc("SokoIur_Hilfe.html", html_content, "Hilfe")
+            out_path = hilfe_texte.get_hilfe_html_path()
+            if hasattr(os, "startfile"):
+                os.startfile(out_path)
+            else:
+                doc_url = os.path.abspath(out_path).replace("\\", "/")
+                webbrowser.open(f"file:///{doc_url}")
         except Exception as e:
             messagebox.showerror(
                 "Fehler",

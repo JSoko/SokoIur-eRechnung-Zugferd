@@ -12,6 +12,7 @@ eingebunden. Zudem steuert dieses Modul das wichtige Lock-Management
 Bearbeitung derselben Firma zu verhindern.
 """
 import customtkinter as ctk
+import tkinter as tk
 import tkinter.messagebox as messagebox
 from tkinter import filedialog
 import os
@@ -114,8 +115,6 @@ class App(
         dialog.geometry(f"{width}x{height}+{x}+{y}")
 
     def _show_custom_dialog(self, title, message, kind="info", buttons=("OK",), default_index=0, parent=None):
-        import tkinter as tk
-
         anchor = self._popup_parent(parent)
         dlg = ctk.CTkToplevel(anchor if anchor is not self else self)
         dlg.title(title)
@@ -351,22 +350,61 @@ class App(
             with open(lock_file, "w") as f:
                 f.write(str(os.getpid()))
             self.current_lock_files[lock_name] = lock_file
-        except:
+        except Exception:
             pass
 
     def unlock_firm(self, lock_name=None):
         if not hasattr(self, "current_lock_files"):
             self.current_lock_files = {}
-        locks_to_remove = [lock_name] if lock_name else list(self.current_lock_files.keys())
 
-        for lname in locks_to_remove:
-            lfile = self.current_lock_files.get(lname)
-            if lfile and os.path.exists(lfile):
+        candidates = []
+        if lock_name:
+            if self.current_lock_files.get(lock_name):
+                candidates.append((lock_name, self.current_lock_files.get(lock_name)))
+            p = self.get_firm_lock_path(lock_name)
+            if p:
+                candidates.append((lock_name, p))
+        else:
+            for lname, lfile in list(self.current_lock_files.items()):
+                if lfile:
+                    candidates.append((lname, lfile))
+            for default_lock in ("erechnung.lock", "erfassung.lock"):
+                p = self.get_firm_lock_path(default_lock)
+                if p:
+                    candidates.append((default_lock, p))
+
+        seen = set()
+        for lname, lfile in candidates:
+            norm = os.path.abspath(lfile)
+            if norm in seen:
+                continue
+            seen.add(norm)
+
+            if os.path.exists(lfile):
+                # Nur eigene Lockdateien (oder unlesbare/verwaiste) entfernen
+                can_remove = True
                 try:
-                    os.remove(lfile)
-                except:
+                    with open(lfile, "r") as f:
+                        content = f.read().strip()
+                    if content and content.isdigit() and content != str(os.getpid()):
+                        can_remove = False
+                except Exception:
                     pass
-            self.current_lock_files[lname] = None
+
+                if can_remove:
+                    for _ in range(5):
+                        try:
+                            os.remove(lfile)
+                            break
+                        except PermissionError:
+                            time.sleep(0.05)
+                        except FileNotFoundError:
+                            break
+                        except Exception:
+                            break
+
+            if lname in self.current_lock_files:
+                self.current_lock_files[lname] = None
 
     def lock_firm(self, p_dict, lock_name="erechnung.lock"):
         base_path = self.config.get("base_data_path")
@@ -394,7 +432,7 @@ class App(
                         f"Die Firma '{p_dict['profil_name']}' wird aktuell bearbeitet ({lock_name}).",
                     )
                     return False
-            except:
+            except Exception:
                 return False
 
         try:
@@ -402,7 +440,7 @@ class App(
                 f.write(str(os.getpid()))
             self.current_lock_files[lock_name] = lock_file
             return True
-        except:
+        except Exception:
             return True
 
     def check_and_handle_lock(self, target_tab, lock_name="erechnung.lock"):
@@ -426,7 +464,7 @@ class App(
                 if content == str(os.getpid()):
                     self.current_lock_files[lock_name] = lock_file
                     return True
-            except:
+            except Exception:
                 pass
 
             dlg = ctk.CTkToplevel(self)
@@ -479,7 +517,7 @@ class App(
             elif result["action"] == "force":
                 try:
                     os.remove(lock_file)
-                except:
+                except Exception:
                     pass
                 break
             else:
@@ -512,7 +550,6 @@ class App(
                     )
 
     def _create_glass_tab_button(self, parent, full_label, shortcut_char, command):
-        import tkinter as tk
         import tkinter.font as tkfont
 
         canvas = tk.Canvas(parent, height=38, highlightthickness=0, bd=0, cursor="hand2")
@@ -546,7 +583,6 @@ class App(
             h = max(canvas.winfo_height(), 36)
             is_dark = ctk.get_appearance_mode().lower() == "dark"
 
-            # Parent-Hintergrundfarbe übernehmen für saubere abgerundete Ecken
             try:
                 parent_bg = parent._apply_appearance_mode(ctk.ThemeManager.theme["CTk"]["fg_color"])
             except Exception:
@@ -575,16 +611,12 @@ class App(
                     txt_col = "#1e293b"
                     accent_col = "#1f538d"
 
-            # Äußere Glas-Kachel
             _round_rect(canvas, 1, 1, w - 2, h - 2, 10, fill=fill_col, outline=border_col, width=1.2)
-            # Feine obere Lichtkante (Glas-Reflexion)
             canvas.create_line(10, 3, w - 10, 3, fill=top_gloss, width=1)
 
-            # Aktiver Indikator-Balken unten
             if active:
                 canvas.create_line(14, h - 4, w - 14, h - 4, fill=accent_col, width=2)
 
-            # Text mit gezielt unterstrichenem Shortcut-Buchstaben zeichnen
             idx_u = -1
             if shortcut_char and len(shortcut_char) == 1:
                 idx_u = full_label.lower().find(shortcut_char.lower())
@@ -620,7 +652,6 @@ class App(
         for w in self.header_container.winfo_children():
             w.destroy()
 
-        # Linker Bereich: Firmenauswahl auf gleicher Höhe wie die Tabs
         f_firm = ctk.CTkFrame(self.header_container, fg_color="transparent")
         f_firm.pack(side="left", padx=(0, 12))
 
@@ -638,7 +669,6 @@ class App(
         self.combo_profile.set(self.p_config["profil_name"])
         self.combo_profile.pack(side="left")
 
-        # Rechter Bereich: Glas-Tab-Buttons mit unterstrichenen Shortcuts
         f_tabs = ctk.CTkFrame(self.header_container, fg_color="transparent")
         f_tabs.pack(side="left", fill="x", expand=True)
 
@@ -752,11 +782,11 @@ class App(
         saved_geometry = self.config.get("window_geometry", "950x700")
         win_state = self.config.get("window_state", "normal")
 
-        if win_state != "zoomed":
+        # Immer zuerst die Normalgeometrie ohne zusätzliche CustomTkinter-DPI-Skalierung setzen
+        try:
+            tk.Tk.geometry(self, saved_geometry)
+        except Exception:
             self.geometry(saved_geometry)
-
-        if win_state == "zoomed":
-            self.after(50, lambda: self.state("zoomed"))
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
@@ -909,7 +939,7 @@ class App(
                                 "Netzwerk-Daten gefunden",
                                 f"Es wurden {len(net_profiles)} bereits bestehende Firmen im Netzwerklaufwerk gefunden und in Ihre lokale Ansicht übernommen!",
                             )
-                except:
+                except Exception:
                     pass
 
             self.setup_firm_folders(self.p_config, show_message=not firmen_gefunden)
@@ -978,6 +1008,12 @@ class App(
         self.show_tab(self.name_manuell, run_change_logic=False)
 
         self._initializing = False
+        if win_state == "zoomed":
+            self.after(100, lambda: self.state("zoomed") if self.winfo_exists() else None)
+
+        if self.config.get("background_update_check", False) and hasattr(self, "schedule_background_update_check"):
+            self._bg_update_scheduled = True
+            self.after(65000, self.schedule_background_update_check)
 
         if start_in_edit:
             import_pfad = self.config.get("cli_override_rechnung_csv")
@@ -1089,7 +1125,7 @@ class App(
 
             create_csv_if_missing(
                 p_dict["firma_csv"],
-                "FirmaName;Strasse;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Kontoinhaber;Email;Telefon",
+                "FirmaName;Strasse;Absenderzeile;PLZ;Ort;Land;UStId;Steuernummer;BankName;IBAN;BIC;Kontoinhaber;Email;Telefon",
             )
             create_csv_if_missing(
                 p_dict["rechnung_csv"],
@@ -1103,7 +1139,6 @@ class App(
             for f in ["zusatz_csv", "gruss_csv", "vor_gruss_csv", "header_csv", "einleitung_csv"]:
                 create_csv_if_missing(p_dict[f], "")
 
-    
     def on_profile_switch(self, wahl):
         for i, p in enumerate(self.config["profiles"]):
             if p["profil_name"] == wahl:
@@ -1133,7 +1168,6 @@ class App(
 
     def add_profile(self):
         from config import get_default_profile
-        import time
 
         d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         self.apply_window_icon(d_name)
@@ -1243,6 +1277,17 @@ class App(
         self.entry_r_nr.delete(0, "end")
         self.entry_r_nr.insert(0, berechne_naechste_rechnungsnummer(self.p_config.get("letzte_rechnungsnummer", "")))
 
+        if self.p_config.get("default_lz_heute", False) and hasattr(self, "entry_lz_kopf"):
+            self.entry_lz_kopf.delete(0, "end")
+            self.entry_lz_kopf.insert(0, heute.strftime("%Y-%m-%d"))
+
+        if self.p_config.get("default_ihr_zeichen_dash", False) and hasattr(self, "entry_k_az"):
+            self.entry_k_az.delete(0, "end")
+            self.entry_k_az.insert(0, "-")
+
+        if hasattr(self, "check_live_validation"):
+            self.check_live_validation()
+
     def on_closing(self, skip_warning=False):
         if not skip_warning:
             if getattr(self, "start_in_edit", False):
@@ -1266,26 +1311,30 @@ class App(
 
         self.update_idletasks()
 
-        if self.state() == "zoomed":
+        current_state = self.state()
+        if current_state == "zoomed":
             self.config["window_state"] = "zoomed"
         else:
             self.config["window_state"] = "normal"
-            w = self.winfo_width()
-            h = self.winfo_height()
-            x = self.winfo_x()
-            y = self.winfo_y()
+            if current_state != "iconic":
+                w = self.winfo_width()
+                h = self.winfo_height()
+                x = self.winfo_x()
+                y = self.winfo_y()
+                if w > 100 and h > 100:
+                    self.config["window_geometry"] = f"{w}x{h}+{x}+{y}"
 
-            if w > 100 and h > 100:
-                self.config["window_geometry"] = f"{w}x{h}+{x}+{y}"
+        try:
+            speichere_config(self.config)
+        except Exception:
+            pass
 
         try:
             self.unlock_firm()
-        except:
+        except Exception:
             pass
 
         self.destroy()
-        import sys
-
         sys.exit(0)
 
     def center_window(self, dialog, width, height):

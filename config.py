@@ -115,13 +115,15 @@ def get_default_profile(suffix=""):
         "datev_aufwand_0": "3200",
         "datev_kreditor": "70000",
         "audit_reason_required": False,
+        "default_lz_heute": False,
+        "default_ihr_zeichen_dash": False,
         "email_versand_methode": "Keine",  # Optionen: "Keine", "Outlook", "Thunderbird"
         "thunderbird_pfad": r"C:\Program Files\Mozilla Thunderbird\thunderbird.exe"
     }
     
 
 def init_config():
-    config = {"window_geometry": "950x850", "terms_accepted": False, "base_data_path": "", "active_profile_index": 0}
+    config = {"window_geometry": "950x850", "terms_accepted": False, "base_data_path": "", "active_profile_index": 0, "background_update_check": False}
     if os.path.exists(LOCAL_CONFIG):
         try:
             with open(LOCAL_CONFIG, 'r', encoding='utf-8') as f:
@@ -153,7 +155,8 @@ def speichere_config(config):
         "cli_open_pdf": config.get("cli_open_pdf", False),
         "cli_keep_open": config.get("cli_keep_open", False),
         "cli_no_open": config.get("cli_no_open", False),
-        "last_run_version": config.get("last_run_version", "")
+        "last_run_version": config.get("last_run_version", ""),
+        "background_update_check": bool(config.get("background_update_check", False))
     }
     with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(local_data, f, indent=4)

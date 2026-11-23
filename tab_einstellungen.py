@@ -236,15 +236,24 @@ class TabEinstellungenMixin:
                 self.entry_cli.configure(state="readonly")
 
     def edit_letzte_eingangs_nr(self):
-        d = ctk.CTkInputDialog(text="Neue letzte Eingangsrechnungsnummer eingeben (z. B. ER260001):", title="Eingangsrechnungsnummer korrigieren")
+        d = ctk.CTkInputDialog(
+            text="Neue letzte Eingangsrechnungsnummer eingeben (z. B. ER260000 oder ER2600000):",
+            title="Eingangsrechnungsnummer korrigieren"
+        )
         if hasattr(self, "apply_window_icon"):
             self.apply_window_icon(d)
         val = d.get_input()
         if val and val.strip():
-            self.p_config["letzte_eingangsrechnungsnummer"] = val.strip()
+            neue_nr = val.strip().upper()
+            if not re.match(r"^ER\d{6,}$", neue_nr):
+                return self.show_warning(
+                    "Ungültiges Format",
+                    "Bitte geben Sie die Nummer im Format ER + 2-stelliges Jahr + mindestens 4-stelliger Zähler ein (z. B. ER260000 oder ER2600000)."
+                )
+            self.p_config["letzte_eingangsrechnungsnummer"] = neue_nr
             speichere_config(self.config)
             if hasattr(self, "lbl_letzte_er_nr"):
-                self.lbl_letzte_er_nr.configure(text=val.strip())
+                self.lbl_letzte_er_nr.configure(text=neue_nr)
 
     def choose_briefbogen(self):
         import shutil
@@ -310,6 +319,53 @@ class TabEinstellungenMixin:
 
         btn_restore = self.create_button(f_prof_btns2, text="📂 Firmendaten restore", width=150, command=self.restore_profile_data, fg_color="#444", hover_color="#666")
         btn_restore.pack(side="left", padx=10)
+        def toggle_default_lz_heute():
+            self.p_config["default_lz_heute"] = bool(self.chk_default_lz_heute.get())
+            speichere_config(self.config)
+            if hasattr(self, "entry_lz_kopf") and self.entry_lz_kopf.winfo_exists():
+                if self.p_config["default_lz_heute"] and not self.entry_lz_kopf.get().strip():
+                    self.entry_lz_kopf.insert(0, datetime.now().strftime("%Y-%m-%d"))
+                elif not self.p_config["default_lz_heute"] and self.entry_lz_kopf.get().strip() == datetime.now().strftime("%Y-%m-%d"):
+                    self.entry_lz_kopf.delete(0, "end")
+                if hasattr(self, "check_live_validation"):
+                    self.check_live_validation()
+
+        def toggle_default_ihr_zeichen():
+            self.p_config["default_ihr_zeichen_dash"] = bool(self.chk_default_ihr_zeichen_dash.get())
+            speichere_config(self.config)
+            if hasattr(self, "entry_k_az") and self.entry_k_az.winfo_exists():
+                if self.p_config["default_ihr_zeichen_dash"] and not self.entry_k_az.get().strip():
+                    self.entry_k_az.insert(0, "-")
+                elif not self.p_config["default_ihr_zeichen_dash"] and self.entry_k_az.get().strip() == "-":
+                    self.entry_k_az.delete(0, "end")
+                if hasattr(self, "check_live_validation"):
+                    self.check_live_validation()
+
+        f_prof_checks = ctk.CTkFrame(f_prof_card, fg_color="transparent")
+        f_prof_checks.pack(fill="x", padx=15, pady=(0, 8))
+
+        self.chk_default_lz_heute = ctk.CTkCheckBox(
+            f_prof_checks,
+            text="Leistungszeitraum standardmäßig heute",
+            command=toggle_default_lz_heute,
+        )
+        self.chk_default_lz_heute.pack(anchor="w", pady=(0, 4))
+        if self.p_config.get("default_lz_heute", False):
+            self.chk_default_lz_heute.select()
+        else:
+            self.chk_default_lz_heute.deselect()
+
+        self.chk_default_ihr_zeichen_dash = ctk.CTkCheckBox(
+            f_prof_checks,
+            text="Ihr Zeichen standardmäßig -",
+            command=toggle_default_ihr_zeichen,
+        )
+        self.chk_default_ihr_zeichen_dash.pack(anchor="w")
+        if self.p_config.get("default_ihr_zeichen_dash", False):
+            self.chk_default_ihr_zeichen_dash.select()
+        else:
+            self.chk_default_ihr_zeichen_dash.deselect()
+
         ctk.CTkButton(
             f_prof_card,
             text="👥 Kunden & Artikel visuell verwalten",
@@ -454,6 +510,32 @@ class TabEinstellungenMixin:
         else:
             self.chk_audit_reason.deselect()
 
+        def toggle_bg_update():
+            enabled = bool(self.chk_bg_update.get())
+            self.config["background_update_check"] = enabled
+            speichere_config(self.config)
+            if enabled and hasattr(self, "schedule_background_update_check") and not getattr(self, "_bg_update_scheduled", False):
+                self._bg_update_scheduled = True
+                self.after(65000, self.schedule_background_update_check)
+
+        self.chk_bg_update = ctk.CTkCheckBox(
+            f_num_grid,
+            text="Im Hintergrund nach Updates suchen",
+            command=toggle_bg_update,
+        )
+        self.chk_bg_update.grid(row=8, column=0, columnspan=3, pady=(5, 5), sticky="w")
+        create_tooltip(
+            self.chk_bg_update,
+            "Prüft frühestens 1 Minute nach Programmstart im Hintergrund, ob heute\n"
+            "bereits eine Instanz im Netzwerk nach Updates gesucht hat. Wenn nein,\n"
+            "wird der Updateserver geprüft und eine neuere Version nur ins\n"
+            "Netzwerkverzeichnis geladen (ohne sofortige Installation).",
+        )
+        if self.config.get("background_update_check", False):
+            self.chk_bg_update.select()
+        else:
+            self.chk_bg_update.deselect()
+
         # --- KARTE 4: Speicherorte ---
         f_path_card = ctk.CTkFrame(scroll_main, fg_color=card_fg, corner_radius=10)
         f_path_card.pack(fill="x", pady=10, padx=10)
@@ -579,15 +661,57 @@ class TabEinstellungenMixin:
         d_edit.title("Firmendaten bearbeiten")
         if hasattr(self, "apply_window_icon"):
             self.apply_window_icon(d_edit)
-        self.center_window(d_edit, 500, 550)
+        self.center_window(d_edit, 520, 610)
         d_edit.transient(self)
         d_edit.grab_set()
 
         pfad_firma = self.p_config.get("firma_csv", "firma.csv")
         f_daten = lade_firma(pfad_firma)
 
+        MAX_ABSENDER_LEN = 75
+
         e_name = self.create_input(d_edit, "Firma Name")
         e_name.insert(0, f_daten.get('FirmaName', ''))
+
+        # Extra Erfassungsfeld für kompakte Absenderzeile im Briefumschlag-Sichtfenster
+        f_abs = ctk.CTkFrame(d_edit, fg_color="transparent")
+        f_abs.pack(fill="x", padx=10, pady=3)
+        ctk.CTkLabel(f_abs, text="Absender (Fenster)", width=120, anchor="w").pack(side="left")
+        e_absender = ctk.CTkEntry(
+            f_abs,
+            placeholder_text="Optional: Kurzname für Briefumschlag-Sichtfenster (leer = Firma Name)"
+        )
+        e_absender.pack(side="left", fill="x", expand=True, padx=(10, 5))
+        e_absender.insert(0, (f_daten.get('Absenderzeile', '') or '')[:MAX_ABSENDER_LEN])
+
+        lbl_abs_count = ctk.CTkLabel(f_abs, text=f"0/{MAX_ABSENDER_LEN}", width=48, anchor="e", text_color="gray")
+        lbl_abs_count.pack(side="right")
+
+        def _enforce_absender_limit(_event=None):
+            val = e_absender.get()
+            if len(val) > MAX_ABSENDER_LEN:
+                pos = e_absender.index("insert")
+                e_absender.delete(0, "end")
+                e_absender.insert(0, val[:MAX_ABSENDER_LEN])
+                try:
+                    e_absender.icursor(min(pos, MAX_ABSENDER_LEN))
+                except Exception:
+                    pass
+                val = e_absender.get()
+            lbl_abs_count.configure(
+                text=f"{len(val)}/{MAX_ABSENDER_LEN}",
+                text_color="#b85c00" if len(val) >= MAX_ABSENDER_LEN - 5 else "gray"
+            )
+
+        e_absender.bind("<KeyRelease>", _enforce_absender_limit)
+        _enforce_absender_limit()
+        create_tooltip(
+            e_absender,
+            "Kompakter Absendername für die kleine Adresszeile über der Empfängeranschrift\n"
+            "im Briefumschlag-Sichtfenster (max. 75 Zeichen inkl. Straße, PLZ & Ort).\n"
+            "Wenn leer, wird automatisch 'Firma Name' verwendet."
+        )
+
         e_str = self.create_input(d_edit, "Straße")
         e_str.insert(0, f_daten.get('Strasse', ''))
         e_plz = self.create_input(d_edit, "PLZ")
@@ -608,6 +732,7 @@ class TabEinstellungenMixin:
         e_bic.insert(0, f_daten.get('BIC', ''))
         e_inhaber = self.create_input(d_edit, "Kontoinhaber")
         e_inhaber.insert(0, f_daten.get('Kontoinhaber', ''))
+
         f_giro = ctk.CTkFrame(d_edit, fg_color="transparent")
         f_giro.pack(fill="x", padx=10, pady=3)
         ctk.CTkLabel(f_giro, text="", width=120).pack(side="left")
@@ -636,15 +761,27 @@ class TabEinstellungenMixin:
         def save():
             name, plz, ort, iban = e_name.get().strip(), e_plz.get().strip(), e_ort.get().strip(), e_iban.get().strip()
             ustid, stnr = e_ustid.get().strip(), e_stnr.get().strip()
+            absender_kurz = e_absender.get().strip()[:MAX_ABSENDER_LEN]
             if not name or not plz or not ort or not iban or (not ustid and not stnr):
                 return self.show_warning("Fehler", "Zwingend: Name, PLZ, Ort, IBAN, USt-Id ODER Steuernummer", parent=d_edit)
 
             speichere_firma(pfad_firma, {
-                'FirmaName': name, 'Strasse': e_str.get().strip(), 'PLZ': plz, 'Ort': ort, 'Land': e_land.get().strip(),
-                'UStId': ustid, 'Steuernummer': stnr, 'BankName': e_bank.get().strip(), 'IBAN': iban, 'BIC': e_bic.get().strip(),
-                'Kontoinhaber': e_inhaber.get().strip(), 'Girocode': '1' if chk_giro.get() else '0',
+                'FirmaName': name,
+                'Absenderzeile': absender_kurz,
+                'Strasse': e_str.get().strip(),
+                'PLZ': plz,
+                'Ort': ort,
+                'Land': e_land.get().strip(),
+                'UStId': ustid,
+                'Steuernummer': stnr,
+                'BankName': e_bank.get().strip(),
+                'IBAN': iban,
+                'BIC': e_bic.get().strip(),
+                'Kontoinhaber': e_inhaber.get().strip(),
+                'Girocode': '1' if chk_giro.get() else '0',
                 'Falzmarken': '1' if chk_falz.get() else '0',
-                'Email': e_mail.get().strip(), 'Telefon': e_tel.get().strip()
+                'Email': e_mail.get().strip(),
+                'Telefon': e_tel.get().strip()
             })
             self.show_info("Gespeichert", "Firmendaten wurden aktualisiert!", parent=d_edit)
             d_edit.destroy()

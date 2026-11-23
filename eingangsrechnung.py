@@ -20,15 +20,16 @@ from reportlab.lib.pagesizes import A4, landscape
 
 
 JOURNAL_FIELDS = [
-   "Interne ER-Nr.",
+    "Interne ER-Nr.",
     "Eingangsdatum",
     "Rechnungsdatum",
     "Lieferant",
     "Lieferant_Land",
-    "Lieferant_UStId",     # NEU
+    "Lieferant_UStId",
     "Externe Rechnungsnummer",
     "Format",
     "Reverse_Charge",
+    "Konto",
     "Netto",
     "MwSt_19",
     "MwSt_7",
@@ -40,6 +41,228 @@ JOURNAL_FIELDS = [
     "Dateihash",
 ]
 
+def get_aufwandskonto_options(p_config: dict) -> list[str]:
+    """Liefert die konfigurierten Aufwandskonten (19%, 7%, 0%) passend zum Kontenrahmen (SKR03/SKR04)."""
+    p_config = p_config or {}
+    skr = str(p_config.get("datev_kontenrahmen", "SKR03")).strip().upper()
+    defaults = (
+        {"19": "5400", "7": "5300", "0": "5200"}
+        if skr == "SKR04"
+        else {"19": "3400", "7": "3300", "0": "3200"}
+    )
+    k19 = str(p_config.get("datev_aufwand_19") or defaults["19"]).strip()
+    k7 = str(p_config.get("datev_aufwand_7") or defaults["7"]).strip()
+    k0 = str(p_config.get("datev_aufwand_0") or defaults["0"]).strip()
+
+    options = []
+    for val in (
+        f"{k19} ({skr} 19%)",
+        f"{k7} ({skr} 7%)",
+        f"{k0} ({skr} 0%)",
+    ):
+        if val not in options:
+            options.append(val)
+    return options
+
+
+def suggest_aufwandskonto(data: dict, p_config: dict) -> str:
+    """Schlägt anhand der Steuerdaten und des Kontenrahmens ein Aufwandskonto vor."""
+    p_config = p_config or {}
+    skr = str(p_config.get("datev_kontenrahmen", "SKR03")).strip().upper()
+    defaults = (
+        {"19": "5400", "7": "5300", "0": "5200"}
+        if skr == "SKR04"
+        else {"19": "3400", "7": "3300", "0": "3200"}
+    )
+    k19 = str(p_config.get("datev_aufwand_19") or defaults["19"]).strip()
+    k7 = str(p_config.get("datev_aufwand_7") or defaults["7"]).strip()
+    k0 = str(p_config.get("datev_aufwand_0") or defaults["0"]).strip()
+
+    taxes = data.get("taxes") or {}
+    has_19 = False
+    has_7 = False
+    for rate_key, amt in taxes.items():
+        try:
+            r_num = float(str(rate_key).replace(",", "."))
+            a_num = float(_d(amt))
+        except Exception:
+            continue
+        if abs(a_num) > 0.001:
+            if abs(r_num - 19.0) < 0.1:
+                has_19 = True
+            elif abs(r_num - 7.0) < 0.1:
+                has_7 = True
+
+    if has_19 and not has_7:
+        return f"{k19} ({skr} 19%)"
+    if has_7 and not has_19:
+        return f"{k7} ({skr} 7%)"
+    if _d(data.get("tax", "0")) == Decimal("0.00") and _d(data.get("net", "0")) != Decimal("0.00"):
+        return f"{k0} ({skr} 0%)"
+    return f"{k19} ({skr} 19%)"
+
+
+def extract_account_number(konto_str: str) -> str:
+    """Extrahiert aus z. B. '3400 (SKR03 19%)' oder '4980 Bürobedarf' die reine Kontonummer '3400'."""
+    s = str(konto_str or "").strip()
+    if not s:
+        return ""
+    m = re.match(r"^(\d{3,8})\b", s)
+    return m.group(1) if m else s.split()[0]
+
+def suggest_aufwandskonto(data: dict, p_config: dict) -> str:
+    """
+    Schlägt anhand der Steuerdaten und des gewählten Kontenrahmens (SKR03 / SKR04)
+    ein Aufwandskonto für die Eingangsrechnung vor.
+    """
+    p_config = p_config or {}
+    skr = str(p_config.get("datev_kontenrahmen", "SKR03")).strip().upper()
+
+    defaults = (
+        {"19": "5400", "7": "5300", "0": "5200"}
+        if skr == "SKR04"
+        else {"19": "3400", "7": "3300", "0": "3200"}
+    )
+
+    k19 = str(p_config.get("datev_aufwand_19") or defaults["19"]).strip()
+    k7 = str(p_config.get("datev_aufwand_7") or defaults["7"]).strip()
+    k0 = str(p_config.get("datev_aufwand_0") or defaults["0"]).strip()
+
+    taxes = data.get("taxes") or {}
+    # Prüfen, ob Steuerbeträge > 0 bei 19% oder 7% vorliegen
+    has_19 = False
+    has_7 = False
+    for rate_key, amt in taxes.items():
+        try:
+            r_num = float(str(rate_key).replace(",", "."))
+            a_num = float(_d(amt))
+        except Exception:
+            continue
+        if abs(a_num) > 0.001:
+            if abs(r_num - 19.0) < 0.1:
+                has_19 = True
+            elif abs(r_num - 7.0) < 0.1:
+                has_7 = True
+
+    if has_19 and has_7:
+        return f"Gemischt ({skr}: {k19} / {k7})"
+    if has_19:
+        return f"{k19} ({skr} 19%)"
+    if has_7:
+        return f"{k7} ({skr} 7%)"
+
+    # Fallback: falls kein Steuerbetrag > 0 erkannt wurde (z. B. 0% / Reverse Charge / Steuerbefreiung)
+    if _d(data.get("tax", "0")) == Decimal("0.00") and _d(data.get("net", "0")) != Decimal("0.00"):
+        return f"{k0} ({skr} 0%)"
+
+    return f"{k19} ({skr} 19%)"
+
+def extract_invoice_data_from_pdf(pdf_path: str) -> tuple[dict, list[str]]:
+    """
+    Versucht, aus einem Standard-PDF (ohne XML) Rechnungsdaten heuristisch auszulesen.
+    Gibt (prefill_dict, hinweise_list) zurück.
+    """
+    prefill = {
+        "supplier": "",
+        "supplier_country": "DE",
+        "supplier_tax_id": "",
+        "number": "",
+        "date": "",
+        "net": "",
+        "tax": "",
+        "gross": "",
+        "reverse_charge": "Nein",
+    }
+    hinweise = []
+
+    if not pdf_path or not os.path.isfile(pdf_path):
+        return prefill, ["PDF-Datei nicht gefunden."]
+
+    try:
+        reader = PdfReader(pdf_path)
+        page_texts = []
+        for page in reader.pages:
+            txt = page.extract_text() or ""
+            if txt.strip():
+                page_texts.append(txt)
+        full_text = "\n".join(page_texts)
+    except Exception as e:
+        return prefill, [f"PDF-Text konnte nicht gelesen werden: {e}"]
+
+    lines = [re.sub(r"\s+", " ", ln).strip() for ln in full_text.splitlines() if ln.strip()]
+    if not lines:
+        return prefill, [
+            "Kein auslesbarer Text im PDF gefunden (vermutlich ein Scan/Bild-PDF). Bitte Daten manuell eintragen."
+        ]
+
+    # 1. Lieferant: erste sinnvolle Zeile oben (keine reine Nummer/Datum/Überschrift)
+    for ln in lines[:8]:
+        low = ln.lower()
+        if any(k in low for k in ("rechnung", "invoice", "seite ", "datum", "iban", "bic", "ust-id", "steuernr")):
+            continue
+        if len(ln) >= 3 and not re.fullmatch(r"[\d\s.,:/-]+", ln):
+            prefill["supplier"] = ln[:120]
+            break
+
+    # 2. Rechnungsnummer
+    nr_patterns = [
+        r"(?:rechnungs?(?:-\s*)?(?:nr\.?|nummer)|invoice\s*(?:no\.?|#|number)|beleg-?\s*nr\.?)\s*[:#]?\s*([A-Z0-9][A-Z0-9/_-]{2,30})",
+    ]
+    for pat in nr_patterns:
+        m = re.search(pat, full_text, flags=re.IGNORECASE)
+        if m:
+            cand = m.group(1).strip(" .,:;")
+            if cand.lower() not in ("datum", "vom", "am", "betrag"):
+                prefill["number"] = cand
+                break
+
+    # 3. Rechnungsdatum (bevorzugt nahe "Rechnungsdatum" / "Datum", sonst erstes Datum im Text)
+    m_re_dat = re.search(
+        r"(?:rechnungsdatum|belegdatum|datum|invoice\s*date)\s*[:.]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4})",
+        full_text,
+        flags=re.IGNORECASE,
+    )
+    if m_re_dat:
+        prefill["date"] = normalize_date_de(m_re_dat.group(1))
+    else:
+        m_any_dat = re.search(r"\b(\d{2}\.\d{2}\.\d{4})\b", full_text)
+        if m_any_dat:
+            prefill["date"] = normalize_date_de(m_any_dat.group(1))
+
+    # 4. USt-IdNr.
+    m_ust = re.search(r"\b([A-Z]{2}\s?\d{7,13})\b", full_text)
+    if m_ust:
+        raw_ust = m_ust.group(1).replace(" ", "").upper()
+        prefill["supplier_tax_id"] = raw_ust
+        if len(raw_ust) >= 2 and raw_ust[:2].isalpha():
+            prefill["supplier_country"] = raw_ust[:2]
+
+    # 5. Beträge (Netto, Steuer, Brutto) über Schlüsselwörter suchen
+    amount_re = r"(\d{1,3}(?:[.\s]\d{3})*,\d{2}|\d+\.\d{2})"
+    for ln in lines:
+        low = ln.lower()
+        amounts = re.findall(amount_re, ln)
+        if not amounts:
+            continue
+        val_str = str(_d(amounts[-1]))
+        if not prefill["gross"] and any(k in low for k in ("brutto", "gesamtbetrag", "rechnungssumme", "zahlbetrag", "endbetrag", "total")):
+            prefill["gross"] = val_str
+        elif not prefill["net"] and any(k in low for k in ("netto", "nettobetrag", "zwischensumme", "subtotal")):
+            prefill["net"] = val_str
+        elif not prefill["tax"] and any(k in low for k in ("mwst", "ust", "umsatzsteuer", "steuer")):
+            prefill["tax"] = val_str
+
+    # 6. Reverse-Charge-Indizien
+    if any(k in full_text.lower() for k in ("reverse charge", "steuerschuldnerschaft des leistungsempfängers", "§ 13b")):
+        prefill["reverse_charge"] = "EU" if prefill["supplier_country"] not in ("", "DE") else "Drittland"
+
+    erkannte = [k for k, v in prefill.items() if v and k != "supplier_country" and v != "Nein"]
+    if not erkannte:
+        hinweise.append("Es konnten keine Rechnungsfelder automatisch erkannt werden.")
+    else:
+        hinweise.append(f"Automatisch erkannte Felder: {', '.join(erkannte)}.")
+
+    return prefill, hinweise
 
 def _d(val, default="0.00") -> Decimal:
     """Konvertiert beliebige Eingaben sicher in ein Decimal auf 2 Nachkommastellen."""
@@ -95,18 +318,23 @@ def normalize_date_de(date_str: str) -> str:
             continue
     return s
 
-
 def next_number(last_nr: str, year: str) -> str:
-    """Berechnet die nächste interne Eingangsrechnungsnummer (z. B. ER260001)."""
+    """Berechnet die nächste interne Eingangsrechnungsnummer (z. B. ER260001 oder ER2600001)."""
     yy = str(year)[-2:] if len(str(year)) >= 2 else datetime.now().strftime("%y")
     prefix = f"ER{yy}"
-    if last_nr and last_nr.upper().startswith(prefix):
-        m = re.search(r"(\d+)$", last_nr)
-        if m:
-            num = int(m.group(1)) + 1
-            return f"{prefix}{num:04d}"
-    return f"{prefix}0001"
+    clean_last = (last_nr or "").strip().upper()
 
+    if clean_last.startswith(prefix):
+        rest = clean_last[len(prefix):]
+        if rest.isdigit():
+            width = max(4, len(rest))
+            num = int(rest) + 1
+            return f"{prefix}{num:0{width}d}"
+
+    # Bei Jahreswechsel ggf. bisherige Zählerbreite (mind. 4 Stellen) beibehalten
+    m_old = re.match(r"^ER\d{2}(\d+)$", clean_last)
+    width = max(4, len(m_old.group(1))) if m_old else 4
+    return f"{prefix}{1:0{width}d}"
 
 def load_all_journal_entries(journal_base_folder: str) -> list:
     """Liest sämtliche erfassten Eingangsrechnungen aus allen Journal-CSVs ein."""
@@ -747,13 +975,14 @@ def create_journal_pdf(journal_base_folder: str, year: str, month: str, firma_na
             c_obj.setFont("Helvetica-Bold", 9)
             y_h = height - 75
             c_obj.drawString(35, y_h, "ER-Nr.")
-            c_obj.drawString(95, y_h, "RE-Datum")
-            c_obj.drawString(160, y_h, "Lieferant")
-            c_obj.drawString(310, y_h, "Ext. RE-Nr.")
-            c_obj.drawString(410, y_h, "Format")
-            c_obj.drawRightString(520, y_h, "Netto")
-            c_obj.drawRightString(585, y_h, "19% USt")
-            c_obj.drawRightString(645, y_h, "7% USt")
+            c_obj.drawString(90, y_h, "RE-Datum")
+            c_obj.drawString(150, y_h, "Lieferant")
+            c_obj.drawString(285, y_h, "Ext. RE-Nr.")
+            c_obj.drawString(375, y_h, "Format")
+            c_obj.drawString(430, y_h, "Konto")
+            c_obj.drawRightString(530, y_h, "Netto")
+            c_obj.drawRightString(590, y_h, "19% USt")
+            c_obj.drawRightString(648, y_h, "7% USt")
             c_obj.drawRightString(720, y_h, "Brutto")
             c_obj.drawString(735, y_h, "VSt.")
             c_obj.drawString(768, y_h, "Beleg")
@@ -791,15 +1020,17 @@ def create_journal_pdf(journal_base_folder: str, year: str, month: str, firma_na
 
             c_obj.setFont("Helvetica", 8.5)
             c_obj.drawString(35, y, r.get("Interne ER-Nr.", ""))
-            c_obj.drawString(95, y, r.get("Rechnungsdatum", ""))
+            c_obj.drawString(90, y, r.get("Rechnungsdatum", ""))
             lief = r.get("Lieferant", "")
-            c_obj.drawString(160, y, lief[:25] + "..." if len(lief) > 28 else lief)
+            c_obj.drawString(150, y, lief[:22] + "..." if len(lief) > 25 else lief)
             ext_nr = r.get("Externe Rechnungsnummer", "")
-            c_obj.drawString(310, y, ext_nr[:16] + "..." if len(ext_nr) > 18 else ext_nr)
-            c_obj.drawString(410, y, r.get("Format", "")[:10])
-            c_obj.drawRightString(520, y, f"{_money(n)} €")
-            c_obj.drawRightString(585, y, f"{_money(m19)} €")
-            c_obj.drawRightString(645, y, f"{_money(m7)} €")
+            c_obj.drawString(285, y, ext_nr[:14] + "..." if len(ext_nr) > 16 else ext_nr)
+            c_obj.drawString(375, y, r.get("Format", "")[:9])
+            konto_nr = extract_account_number(r.get("Konto", ""))
+            c_obj.drawString(430, y, konto_nr[:8])
+            c_obj.drawRightString(530, y, f"{_money(n)} €")
+            c_obj.drawRightString(590, y, f"{_money(m19)} €")
+            c_obj.drawRightString(648, y, f"{_money(m7)} €")
             c_obj.drawRightString(720, y, f"{_money(b)} €")
             c_obj.drawString(735, y, r.get("Vorsteuer geprüft", ""))
 

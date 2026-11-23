@@ -23,6 +23,123 @@ from gui_utils import create_tooltip, setup_auto_scrollbar, update_scrollable_vi
 
 
 class TabManuellMixin:
+    def open_produkt_search(self, entry_widget=None):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Artikel auswählen")
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(dialog)
+        self.center_window(dialog, 520, 480)
+        dialog.transient(self)
+        dialog.grab_set()
+
+        f_search = ctk.CTkFrame(dialog, fg_color="transparent")
+        f_search.pack(fill="x", padx=10, pady=10)
+
+        ctk.CTkLabel(f_search, text="Artikel-Filter:").pack(side="left")
+        e_search = ctk.CTkEntry(f_search, placeholder_text="Bezeichnung filtern...")
+        e_search.pack(side="left", fill="x", expand=True, padx=10)
+
+        if entry_widget:
+            bisheriger_text = entry_widget.get().strip()
+            if bisheriger_text:
+                e_search.insert(0, bisheriger_text)
+
+        scroll = ctk.CTkScrollableFrame(dialog)
+        scroll.pack(fill="both", expand=True, padx=10, pady=5)
+        setup_auto_scrollbar(scroll)
+
+        def select_produkt(p):
+            if entry_widget is not None:
+                entry_widget.delete(0, "end")
+                entry_widget.insert(0, p.get("Bezeichnung", ""))
+            dialog.destroy()
+
+        current_results = []
+
+        def update_list(event=None):
+            if event and event.keysym in ["Up", "Down", "Return", "Escape"]:
+                return
+
+            term = e_search.get().lower().strip()
+            for w in scroll.winfo_children():
+                w.destroy()
+
+            sorted_prods = sorted(
+                self.produkte_liste or [],
+                key=lambda x: str(x.get("Bezeichnung", "")).strip().lower(),
+            )
+
+            if not term:
+                results = sorted_prods
+            else:
+                starts = [p for p in sorted_prods if term in str(p.get("Bezeichnung", "")).lower() and str(p.get("Bezeichnung", "")).strip().lower().startswith(term)]
+                contains = [p for p in sorted_prods if term in str(p.get("Bezeichnung", "")).lower() and p not in starts]
+                results = starts + contains
+
+            nonlocal current_results
+            current_results = results[:100]
+            btn_list = []
+
+            for p in current_results:
+                bez = p.get("Bezeichnung", "")
+                preis = safe_float(p.get("EinzelpreisNetto", 0))
+                ust = f_num(safe_float(p.get("Steuersatz", 19)))
+                lbl = f"{bez}  |  {f_curr(preis)} netto ({ust}% USt.)"
+                btn = ctk.CTkButton(
+                    scroll,
+                    text=lbl,
+                    anchor="w",
+                    fg_color="#444",
+                    hover_color="#666",
+                    command=lambda p_obj=p: select_produkt(p_obj),
+                )
+                btn.pack(fill="x", pady=2)
+                btn_list.append(btn)
+
+            if not current_results:
+                ctk.CTkLabel(scroll, text="Keine passenden Artikel gefunden.", text_color="gray").pack(pady=15)
+            elif len(results) > 100:
+                ctk.CTkLabel(
+                    scroll,
+                    text=f"... und {len(results) - 100} weitere. Bitte Filter verfeinern.",
+                    text_color="gray",
+                ).pack(pady=5)
+
+            for i, b in enumerate(btn_list):
+                if i < len(btn_list) - 1:
+                    b.bind("<Down>", lambda e, next_b=btn_list[i + 1]: next_b.focus_set())
+                if i > 0:
+                    b.bind("<Up>", lambda e, prev_b=btn_list[i - 1]: prev_b.focus_set())
+                else:
+                    b.bind("<Up>", lambda e: e_search.focus_set())
+                b.bind("<Return>", lambda e, p_obj=current_results[i]: select_produkt(p_obj))
+
+            update_scrollable_visibility(scroll)
+
+        e_search.bind("<KeyRelease>", update_list)
+        dialog.bind("<Escape>", lambda e: dialog.destroy())
+
+        def focus_first_result(event):
+            for w in scroll.winfo_children():
+                if isinstance(w, ctk.CTkButton):
+                    w.focus_set()
+                    return "break"
+
+        e_search.bind("<Down>", focus_first_result)
+
+        def on_enter_search(event):
+            if len(current_results) == 1:
+                select_produkt(current_results[0])
+                return "break"
+            if len(current_results) > 1:
+                return focus_first_result(event)
+
+        e_search.bind("<Return>", on_enter_search)
+        dialog.bind("<Return>", on_enter_search)
+
+        update_list()
+        dialog.after(50, e_search.focus_set)
+
     def _warn(self, title, msg, parent=None):
         if hasattr(self, "show_warning"):
             return self.show_warning(title, msg, parent=parent)
@@ -427,27 +544,7 @@ class TabManuellMixin:
         btn_choose.pack(side="left", fill="x", expand=True, padx=(0, 0))
         create_tooltip(btn_choose, "Lädt eine alte Rechnung oder einen Entwurf aus einer CSV-Datei.")
 
-        # Zeile: "Texte bearbeiten" und "Zu Korrigieren:" halbe-halbe
-        f_texte_row = ctk.CTkFrame(left_frame, fg_color="transparent")
-        f_texte_row.pack(fill="x", padx=1, pady=(1, 1))
-        f_texte_row.columnconfigure(0, weight=1, uniform="texte_split")
-        f_texte_row.columnconfigure(1, weight=2, uniform="texte_split")
-
-        self.create_button(
-            f_texte_row,
-            text="Texte bearbeiten",
-            command=self.open_texte_popup,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 4))
-
-        self.lbl_live_errors = ctk.CTkLabel(
-            f_texte_row,
-            text="",
-            justify="left",
-            font=("Helvetica", 11, "bold"),
-            text_color="#e06666",
-            wraplength=220,
-        )
-        self.lbl_live_errors.grid(row=0, column=1, sticky="ew", padx=(1, 0))
+        # Auswahlbox Textvorlage direkt unter den Lade-Buttons
 
         # Direkt darunter: Auswahlbox Textvorlage
         f_txt_vorlage = ctk.CTkFrame(left_frame, fg_color="transparent")
@@ -515,6 +612,12 @@ class TabManuellMixin:
             self.chk_raten.select()
         create_tooltip(self.chk_raten, "Einen Hinweis auf mögliche Ratenzahlung in die Rechnung aufnehmen")
 
+        self.create_button(
+            left_frame,
+            text="Texte bearbeiten",
+            command=self.open_texte_popup,
+        ).pack(fill="x", padx=10, pady=(8, 4))
+
         # Live-Validierung an Eingabefelder binden (inkl. E-Mail / Leitweg-ID)
         for entry_widget in (
             self.entry_r_nr, self.entry_r_datum, self.entry_f_datum, self.entry_k_name,
@@ -526,6 +629,20 @@ class TabManuellMixin:
 
         self.after(100, self.check_live_validation)
         self.after(120, lambda: update_scrollable_visibility(left_frame))
+
+        # Live-Hinweise rechts oberhalb der Netto-/Brutto-Zeile
+        self.lbl_live_errors = ctk.CTkLabel(
+            right_frame,
+            text="",
+            anchor="w",
+            justify="left",
+            font=("Helvetica", 13, "bold"),
+            text_color="#b30000",
+            fg_color=("#e6e6e6", "#3a3d42"),
+            corner_radius=6,
+            wraplength=480,
+        )
+        self.lbl_live_errors.pack(fill="x", padx=5, pady=(3, 2), ipadx=8, ipady=4)
 
         # Rechnungsergebnisse
         self.lbl_totals_top = ctk.CTkLabel(
@@ -540,10 +657,14 @@ class TabManuellMixin:
         self.lbl_totals_top.pack(fill="x", padx=5, pady=(2, 0))
 
         def _update_top_totals_wrap(event=None):
-            if hasattr(self, "lbl_totals_top") and self.lbl_totals_top.winfo_exists():
-                avail_w = right_frame.winfo_width() - 36
-                if avail_w > 120:
+            if not right_frame.winfo_exists():
+                return
+            avail_w = right_frame.winfo_width() - 36
+            if avail_w > 120:
+                if hasattr(self, "lbl_totals_top") and self.lbl_totals_top.winfo_exists():
                     self.lbl_totals_top.configure(wraplength=avail_w)
+                if hasattr(self, "lbl_live_errors") and self.lbl_live_errors.winfo_exists():
+                    self.lbl_live_errors.configure(wraplength=avail_w)
 
         right_frame.bind("<Configure>", _update_top_totals_wrap, add="+")
         self.after(60, _update_top_totals_wrap)
@@ -931,50 +1052,71 @@ class TabManuellMixin:
         dialog.title("Position bearbeiten" if edit_index is not None else "Neue Position")
         if hasattr(self, "apply_window_icon"):
             self.apply_window_icon(dialog)
-        self.center_window(dialog, 430, 255)
+        self.center_window(dialog, 450, 340)
         dialog.transient(self)
         dialog.grab_set()
-
-        prod_namen = [p['Bezeichnung'] for p in self.produkte_liste]
-
-        def prod_auswahl(wahl):
-            for p in self.produkte_liste:
-                if p['Bezeichnung'] == wahl:
-                    e_menge.delete(0, 'end')
-                    e_menge.insert(0, p.get('Menge', '1'))
-                    e_preis.delete(0, 'end')
-                    e_preis.insert(0, p.get('EinzelpreisNetto', '0'))
-                    e_steuer.delete(0, 'end')
-                    e_steuer.insert(0, p.get('Steuersatz', '19'))
-                    c = p.get('Einheit', 'C62')
-                    for val in EINHEITEN_LISTE:
-                        if c in val or EINHEITEN_MAPPING.get(c, c) in val:
-                            e_einheit.set(val)
-                            break
-                    break
 
         lbl_font = ("Helvetica", 12)
         fld_font = ("Helvetica", 12)
 
+        def apply_produkt_by_name(wahl):
+            wahl_clean = str(wahl or "").strip().lower()
+            for p in (self.produkte_liste or []):
+                if str(p.get("Bezeichnung", "")).strip().lower() == wahl_clean:
+                    menge_raw = str(p.get("Menge", "")).strip() or "1"
+                    preis_raw = str(p.get("EinzelpreisNetto", "")).strip() or "0"
+                    steuer_raw = str(p.get("Steuersatz", "")).strip() or "19"
+
+                    e_menge.delete(0, "end")
+                    e_menge.insert(0, menge_raw)
+                    e_preis.delete(0, "end")
+                    e_preis.insert(0, preis_raw)
+                    e_steuer.delete(0, "end")
+                    e_steuer.insert(0, steuer_raw)
+
+                    c = str(p.get("Einheit", "C62")).strip()
+                    matched_einheit = False
+                    for val in EINHEITEN_LISTE:
+                        if f"({c})" in val or c == val or EINHEITEN_MAPPING.get(c, c) in val:
+                            e_einheit.set(val)
+                            matched_einheit = True
+                            break
+                    if not matched_einheit and c:
+                        e_einheit.set(c)
+                    break
+
+        def open_article_selector(target_entry):
+            self.open_produkt_search(target_entry)
+            new_val = target_entry.get().strip()
+            if new_val:
+                apply_produkt_by_name(new_val)
+
         def _compact_row(label_text, is_combo=False, combo_values=None, command=None, btn_text=None, btn_cmd=None):
-            row = ctk.CTkFrame(dialog, fg_color="transparent", height=25)
-            row.pack(fill="x", padx=8, pady=1)
+            row = ctk.CTkFrame(dialog, fg_color="transparent", height=28)
+            row.pack(fill="x", padx=8, pady=2)
             row.pack_propagate(False)
             ctk.CTkLabel(row, text=label_text, width=95, anchor="w", font=lbl_font).pack(side="left")
             if btn_text and btn_cmd:
-                entry = ctk.CTkEntry(row, height=23, font=fld_font)
+                entry = ctk.CTkEntry(row, height=24, font=fld_font)
                 entry.pack(side="left", fill="x", expand=True, padx=(4, 3))
-                self.create_button(row, text=btn_text, width=28, height=23, font=lbl_font, command=lambda: btn_cmd(entry)).pack(side="right")
+                self.create_button(row, text=btn_text, width=28, height=24, font=lbl_font, command=lambda: btn_cmd(entry)).pack(side="right")
                 return entry
             entry = (
-                ctk.CTkComboBox(row, values=combo_values or [], command=command, height=23, font=fld_font, dropdown_font=fld_font)
+                ctk.CTkComboBox(row, values=combo_values or [], command=command, height=24, font=fld_font, dropdown_font=fld_font)
                 if is_combo
-                else ctk.CTkEntry(row, height=23, font=fld_font)
+                else ctk.CTkEntry(row, height=24, font=fld_font)
             )
             entry.pack(side="left", fill="x", expand=True, padx=(4, 0))
             return entry
 
-        e_bez = _compact_row("Bezeichnung", is_combo=True, combo_values=prod_namen, command=prod_auswahl)
+        e_bez = _compact_row("Bezeichnung", btn_text="🔍", btn_cmd=open_article_selector)
+
+        def on_bez_tab(_event=None):
+            open_article_selector(e_bez)
+            return "break"
+
+        e_bez.bind("<Tab>", on_bez_tab)
+        e_bez.bind("<FocusOut>", lambda _e: apply_produkt_by_name(e_bez.get()), add="+")
         e_menge = _compact_row("Menge")
         e_einheit = _compact_row("Einheit", is_combo=True, combo_values=EINHEITEN_LISTE)
         e_preis = _compact_row("Einzelpreis (€)")
@@ -990,10 +1132,11 @@ class TabManuellMixin:
             e_einheit.set(self.p_config.get("letzte_einheit", "Stück (C62)"))
             e_steuer.insert(0, "19")
             e_anmerkung.set("")
-            e_bez.set("")
+            e_bez.delete(0, "end")
         else:
             p = self.positionen_liste[edit_index]
-            e_bez.set(p.get('Bezeichnung', ''))
+            e_bez.delete(0, "end")
+            e_bez.insert(0, p.get('Bezeichnung', ''))
             e_menge.insert(0, f"{safe_float(p.get('Menge', 1)):g}")
             e_preis.insert(0, p.get('EinzelpreisNetto', ''))
             e_steuer.insert(0, p.get('Steuersatz', '19'))
@@ -1158,7 +1301,7 @@ class TabManuellMixin:
     
         if not r_nr:
             self.entry_r_nr.configure(border_color="red")
-            errors.append("• Rechnungs-Nr. fehlt")
+            errors.append("Rechnungs-Nr. fehlt")
         else:
             self.entry_r_nr.configure(border_color=default_border)
 
@@ -1168,7 +1311,7 @@ class TabManuellMixin:
             self.entry_r_datum.configure(border_color=default_border)
         except Exception:
             self.entry_r_datum.configure(border_color="red")
-            errors.append("• Rechnungsdatum ungültig / fehlt")
+            errors.append("Rechnungsdatum ungültig / fehlt")
 
         try:
             parsed_f = parse_flexible_date(f_datum)
@@ -1176,24 +1319,24 @@ class TabManuellMixin:
             self.entry_f_datum.configure(border_color=default_border)
         except Exception:
             self.entry_f_datum.configure(border_color="red")
-            errors.append("• Fälligkeitsdatum ungültig / fehlt")
+            errors.append("Fälligkeitsdatum ungültig / fehlt")
 
         lz_kopf = self.entry_lz_kopf.get().strip()
         if not lz_kopf:
             self.entry_lz_kopf.configure(border_color="red")
-            errors.append("• Leistungszeitraum fehlt")
+            errors.append("Leistungszeitraum fehlt")
         else:
             self.entry_lz_kopf.configure(border_color=default_border)
 
         if not name:
             self.entry_k_name.configure(border_color="red")
-            errors.append("• Kundenname fehlt")
+            errors.append("Kundenname fehlt")
         else:
             self.entry_k_name.configure(border_color=default_border)
 
         if not strasse:
             self.entry_k_strasse.configure(border_color="red")
-            errors.append("• Straße fehlt")
+            errors.append("Straße fehlt")
         else:
             self.entry_k_strasse.configure(border_color=default_border)
 
@@ -1201,28 +1344,31 @@ class TabManuellMixin:
         if not plz_ort or len(parts) < 2:
             self.entry_k_plz_ort.configure(border_color="red")
             if not plz_ort:
-                errors.append("• PLZ und Ort fehlen")
+                errors.append("PLZ und Ort fehlen")
             else:
-                errors.append("• PLZ/Ort unvollständig (Leerzeichen fehlt)")
+                errors.append("PLZ/Ort unvollständig (Leerzeichen fehlt)")
         else:
             self.entry_k_plz_ort.configure(border_color=default_border)
 
         if not endpoint:
             self.entry_k_endpoint.configure(border_color="red")
-            errors.append("• E-Mail / Leitweg-ID fehlt (für E-Rechnung)")
+            errors.append("E-Mail / Leitweg-ID fehlt (für E-Rechnung)")
         else:
             self.entry_k_endpoint.configure(border_color=default_border)
 
         if not k_az:
             self.entry_k_az.configure(border_color="red")
-            errors.append("• 'Ihr Zeichen' (Kunden-Aktenzeichen) fehlt")
+            errors.append("'Ihr Zeichen' (Kunden-Aktenzeichen) fehlt")
         else:
             self.entry_k_az.configure(border_color=default_border)
 
+        if not getattr(self, "positionen_liste", None):
+            errors.append("Mindestens eine Rechnungsposition erfassen")
+
         if errors:
-            self.lbl_live_errors.configure(text="⚠️ Zu Korrigieren:\n" + "\n".join(errors), text_color="#e06666")
+            self.lbl_live_errors.configure(text="⚠️ Zu Korrigieren: " + " | ".join(errors), text_color=("#a61c1c", "#ff7b7b"))
         else:
-            self.lbl_live_errors.configure(text="✅ Alle Pflichtfelder ausgefüllt", text_color="#289102")
+            self.lbl_live_errors.configure(text="✅ Alle Pflichtfelder ausgefüllt", text_color=("#1e7e00", "#5dc21c"))
 
     def save_manual_invoice(self, silent=False, require_buyer_endpoint=False):
         if hasattr(self, 'check_and_handle_lock') and not self.check_and_handle_lock("📋 ERSTELLEN"):

@@ -57,12 +57,32 @@ def lade_firma(pfad):
     try:
         with open(pfad, mode='r', encoding='utf-8-sig') as f:
             reader = list(csv.DictReader(f, delimiter=';'))
-            if reader: return reader[0]
-    except: pass
-    return {'FirmaName': 'Bitte Firmendaten konfigurieren', 'Strasse': '', 'PLZ': '', 'Ort': '', 'Land': 'DE', 'UStId': '', 'Steuernummer': '', 'BankName': '', 'IBAN': '', 'BIC': '', 'Kontoinhaber': '', 'Girocode': '1'}
+            if reader:
+                return reader[0]
+    except Exception:
+        pass
+    return {
+        'FirmaName': 'Bitte Firmendaten konfigurieren',
+        'Absenderzeile': '',
+        'Strasse': '',
+        'PLZ': '',
+        'Ort': '',
+        'Land': 'DE',
+        'UStId': '',
+        'Steuernummer': '',
+        'BankName': '',
+        'IBAN': '',
+        'BIC': '',
+        'Kontoinhaber': '',
+        'Girocode': '1',
+    }
 
 def speichere_firma(pfad, daten):
-    fieldnames = ['FirmaName', 'Strasse', 'PLZ', 'Ort', 'Land', 'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC', 'Kontoinhaber', 'Girocode', 'Falzmarken', 'Email', 'Telefon']
+    fieldnames = [
+        'FirmaName', 'Absenderzeile', 'Strasse', 'PLZ', 'Ort', 'Land',
+        'UStId', 'Steuernummer', 'BankName', 'IBAN', 'BIC',
+        'Kontoinhaber', 'Girocode', 'Falzmarken', 'Email', 'Telefon'
+    ]
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()

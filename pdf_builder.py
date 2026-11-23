@@ -47,10 +47,24 @@ def zeichne_formatierten_blocksatz_zeile(c, x, y, text, width_limit, size=10):
         c.drawString(current_x, y, wort)
         current_x += c.stringWidth(wort, "Helvetica", size) + extra_abstand
 
+def _normalize_format_markers(text: str) -> str:
+    s = str(text or "")
+    s = re.sub(r"<\s*b\s*>", "~f", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*b\s*>", "f~", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*strong\s*>", "~f", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*strong\s*>", "f~", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*i\s*>", "~k", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*i\s*>", "k~", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*em\s*>", "~k", s, flags=re.IGNORECASE)
+    s = re.sub(r"<\s*/\s*em\s*>", "k~", s, flags=re.IGNORECASE)
+    return s
+
+
 def zeichne_formatierten_text(c, x, y, text, size=10, align="left"):
     is_bold = False
     is_italic = False
-    tokens = re.split(r'(~f|f~|~k|k~)', text)
+    normalized_text = _normalize_format_markers(text)
+    tokens = re.split(r'(~f|f~|~k|k~)', normalized_text)
     
     total_width = 0
     for token in tokens:
@@ -161,7 +175,11 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         c.restoreState()
         
     c.setFont("Helvetica", 7)
-    c.drawString(60, hoehe - 130, f"{firma.get('FirmaName','')}, {firma.get('Strasse','')}, {firma.get('PLZ','')} {firma.get('Ort','')}")
+    absender_name = (firma.get('Absenderzeile') or '').strip() or firma.get('FirmaName', '')
+    absender_zeile = f"{absender_name}, {firma.get('Strasse','')}, {firma.get('PLZ','')} {firma.get('Ort','')}"
+    while len(absender_zeile) > 10 and c.stringWidth(absender_zeile, "Helvetica", 7) > 235:
+        absender_zeile = absender_zeile[:-4] + "..."
+    c.drawString(60, hoehe - 130, absender_zeile)
     
     c.setFont("Helvetica", 9)
     y_adresse = hoehe - 145
@@ -191,43 +209,44 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             y_tabelle -= 18
         y_tabelle -= 10
     
-    r_nr = kopf.get('Rechnungsnummer','')
-    r_dat = formatiere_datum_lesbar(kopf.get('Rechnungsdatum',''))
-    f_dat = formatiere_datum_lesbar(kopf.get('Faelligkeitsdatum',''))
-    
-    rech_zeile = f"Rechnung Nr.: {r_nr}  |  Datum: {r_dat}  |  Fällig bis: {f_dat}"
-    zeichne_formatierten_text(c, 60, y_tabelle, f"~f{rech_zeile}f~", 11, align="left")
-    y_tabelle -= 12
-    
+    max_kopf_breite = (breite - 120) * (2.0 / 3.0)
+
+    r_nr = kopf.get('Rechnungsnummer', '')
+    r_dat = formatiere_datum_lesbar(kopf.get('Rechnungsdatum', ''))
+    f_dat = formatiere_datum_lesbar(kopf.get('Faelligkeitsdatum', ''))
+
+    rech_zeile = f"Rechnung Nr.: {r_nr}  |  Datum: {r_dat}"
+    for z_line in split_text_to_lines(rech_zeile, max_kopf_breite, c, "Helvetica-Bold", 11):
+        zeichne_formatierten_text(c, 60, y_tabelle, f"~f{z_line}f~", 11, align="left")
+        y_tabelle -= 13
+
     kdnr = kopf.get('KundeNr', '').strip()
     az = kopf.get('Aktenzeichen', '').strip()
-    k_az = kopf.get('KundeAktenzeichen', '').strip()
+    k_az_raw = kopf.get('KundeAktenzeichen', '').strip()
+    k_az = "" if k_az_raw.lower() in ("-", "n/a") else k_az_raw
     lz = parse_lz_lesbar(kopf.get('LeistungszeitraumKopf', ''))
 
     teile_zeile1 = []
-    if kdnr: teile_zeile1.append(f"Kunden-Nr.: {kdnr}")
-    if az: teile_zeile1.append(f"Unser Zeichen: {az}")
-    if k_az: teile_zeile1.append(f"Ihr Zeichen: {k_az}")
-    
+    if kdnr:
+        teile_zeile1.append(f"Kunden-Nr.: {kdnr}")
+    if az:
+        teile_zeile1.append(f"Unser Zeichen: {az}")
+    if k_az:
+        teile_zeile1.append(f"Ihr Zeichen: {k_az}")
+
     str_zeile1 = " | ".join(teile_zeile1)
     str_lz = f"Leistungszeitraum: {lz}" if lz else ""
-    
+
     str_komplett = str_zeile1
     if str_lz:
         str_komplett = f"{str_zeile1} | {str_lz}" if str_zeile1 else str_lz
-        
+
     c.setFont("Helvetica", 10)
-    if str_zeile1 and str_lz and c.stringWidth(str_komplett, "Helvetica", 10) > 400:
-        c.drawString(60, y_tabelle, str_zeile1)
-        y_tabelle -= 12
-        c.drawString(60, y_tabelle, str_lz)
-        y_tabelle -= 12
-    else:
-        if str_komplett:
-            c.drawString(60, y_tabelle, str_komplett)
+    if str_komplett:
+        for z_line in split_text_to_lines(str_komplett, max_kopf_breite, c, "Helvetica", 10):
+            c.drawString(60, y_tabelle, z_line)
             y_tabelle -= 12
-            
-    if str_komplett: y_tabelle -= 5
+        y_tabelle -= 5
     y_tabelle -= 5
     
     if einleitung_text:
@@ -483,9 +502,9 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         is_raten = str(kopf.get('Ratenzahlung', '')).lower() in ['true', '1', 'ja', 'yes']
         
         if is_raten:
-            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} auf folgendes Konto bei der {bank_name} oder nehmen Sie bis zu diesem Termin monatliche Ratenzahlungen auf."
+            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} unter Angabe der Rechnungsnr. auf folgendes Konto bei der {bank_name} oder nehmen Sie bis zu diesem Termin monatliche Ratenzahlungen auf."
         else:
-            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} auf folgendes Konto bei der {bank_name}:"
+            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} unter Angabe der Rechnungsnr. auf folgendes Konto bei der {bank_name}:"
             
         zahl_lines = split_text_to_lines(zahl_text, 470, c)
         

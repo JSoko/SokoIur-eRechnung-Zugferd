@@ -176,7 +176,7 @@ class TabAuswertungenMixin:
         f_search.pack(fill="x", padx=12, pady=(10, 5))
         ctk.CTkLabel(f_search, text="🔍 Journal durchsuchen:", font=("Helvetica", 13, "bold")).pack(side="left")
         self.entry_eingang_search = ctk.CTkEntry(
-            f_search, placeholder_text="ER-Nr., Lieferant, externe RE-Nr., Datum oder Betrag..."
+            f_search, placeholder_text="ER-Nr., Lieferant, externe RE-Nr., Konto, Datum oder Betrag..."
         )
         self.entry_eingang_search.pack(side="left", fill="x", expand=True, padx=10)
         self.entry_eingang_search.bind("<KeyRelease>", lambda e: self.refresh_eingang_journal_ui())
@@ -197,7 +197,7 @@ class TabAuswertungenMixin:
         self.refresh_eingang_journal_ui()
 
     def refresh_eingang_journal_ui(self):
-        if not hasattr(self, "eingang_journal_scroll"):
+        if not hasattr(self, "eingang_journal_scroll") or not self.eingang_journal_scroll.winfo_exists():
             return
         from eingangsrechnung import load_all_journal_entries
 
@@ -225,6 +225,7 @@ class TabAuswertungenMixin:
                     r.get("Interne ER-Nr.", ""),
                     r.get("Lieferant", ""),
                     r.get("Externe Rechnungsnummer", ""),
+                    r.get("Konto", ""),
                     r.get("Rechnungsdatum", ""),
                     r.get("Brutto", ""),
                     r.get("Netto", ""),
@@ -243,6 +244,8 @@ class TabAuswertungenMixin:
             update_scrollable_visibility(self.eingang_journal_scroll)
             return
 
+        btn_size = 34
+
         for rec in filtered[:150]:
             row = ctk.CTkFrame(self.eingang_journal_scroll)
             row.pack(fill="x", pady=2, padx=4)
@@ -250,37 +253,77 @@ class TabAuswertungenMixin:
             r_dat = rec.get("Rechnungsdatum", "")
             lief = rec.get("Lieferant", "")
             ext_nr = rec.get("Externe Rechnungsnummer", "")
+            konto = rec.get("Konto", "").strip()
             brutto = rec.get("Brutto", "0,00")
             fmt = rec.get("Format", "")
             arch = rec.get("Archivdatei", "")
 
-            txt = f"[{er_nr}] {r_dat} | {lief[:30]} | RE: {ext_nr} | Brutto: {brutto} € ({fmt})"
-            ctk.CTkLabel(row, text=txt, anchor="w").pack(side="left", padx=8, pady=4, fill="x", expand=True)
+            # Quadratische Aktionsbuttons (34x34) links am Anfang der Zeile,
+            # damit sie bei langem Text oder kleinem Fenster nie verdeckt werden.
+            act_box = ctk.CTkFrame(row, fg_color="transparent")
+            act_box.pack(side="left", padx=(6, 4), pady=3)
 
-            self.create_button(
-                row, text="🗑 Storno / Löschen", width=130, fg_color="#b30000", hover_color="#800000",
+            btn_storno = self.create_button(
+                act_box, text="🗑", width=btn_size, height=btn_size,
+                fg_color="#b30000", hover_color="#800000",
                 command=lambda r_obj=rec: self.delete_incoming_entry_ui(r_obj)
-            ).pack(side="right", padx=4, pady=4)
+            )
+            btn_storno.pack(side="left", padx=2)
+            create_tooltip(
+                btn_storno,
+                f"Eingangsrechnung {er_nr} stornieren / aus dem Journal löschen\n"
+                f"Lieferant: {lief} | Externe RE-Nr.: {ext_nr} | Konto: {konto or '-'} | Brutto: {brutto} €\n"
+                f"Entfernt auf Wunsch auch die Archivkopien, damit der Beleg neu erfasst werden kann."
+            )
 
             if arch and os.path.isfile(arch):
                 begleit_pdf = os.path.join(os.path.dirname(arch), f"{er_nr}_Begleit.pdf")
                 open_fn = self._open_file_external if hasattr(self, "_open_file_external") else os.startfile
 
                 if fmt == "XRechnung" and os.path.isfile(begleit_pdf):
-                    self.create_button(
-                        row, text="👁 Begleit", width=85, fg_color="#6b4c9a", hover_color="#52387a",
-                        command=lambda p=begleit_pdf: open_fn(p)
-                    ).pack(side="right", padx=4, pady=4)
+                    btn_xml = self.create_button(
+                        act_box, text="👁", width=btn_size, height=btn_size,
+                        fg_color="#555", hover_color="#777",
+                        command=lambda p=arch: open_fn(p)
+                    )
+                    btn_xml.pack(side="left", padx=2)
+                    create_tooltip(
+                        btn_xml,
+                        f"Archivierte XRechnungs-XML-Datei zu {er_nr} öffnen\n"
+                        f"Lieferant: {lief} | Externe RE-Nr.: {ext_nr}\n"
+                        f"Datei: {os.path.basename(arch)}"
+                    )
 
-                    self.create_button(
-                        row, text="👁 XML", width=75, fg_color="#555", hover_color="#777",
-                        command=lambda p=arch: open_fn(p)
-                    ).pack(side="right", padx=4, pady=4)
+                    btn_begleit = self.create_button(
+                        act_box, text="📄", width=btn_size, height=btn_size,
+                        fg_color="#6b4c9a", hover_color="#52387a",
+                        command=lambda p=begleit_pdf: open_fn(p)
+                    )
+                    btn_begleit.pack(side="left", padx=2)
+                    create_tooltip(
+                        btn_begleit,
+                        f"Zugehöriges Begleit-PDF zur XRechnung {er_nr} öffnen\n"
+                        f"Datei: {os.path.basename(begleit_pdf)}\n"
+                        f"Hinweis: Rechtlich maßgeblich ist die XRechnungs-XML-Datei."
+                    )
                 else:
-                    self.create_button(
-                        row, text="👁 Beleg", width=80, fg_color="#555", hover_color="#777",
+                    btn_beleg = self.create_button(
+                        act_box, text="👁", width=btn_size, height=btn_size,
+                        fg_color="#555", hover_color="#777",
                         command=lambda p=arch: open_fn(p)
-                    ).pack(side="right", padx=4, pady=4)
+                    )
+                    btn_beleg.pack(side="left", padx=2)
+                    create_tooltip(
+                        btn_beleg,
+                        f"Archivierten Beleg zu Eingangsrechnung {er_nr} öffnen\n"
+                        f"Lieferant: {lief} | Externe RE-Nr.: {ext_nr} | Format: {fmt or 'Beleg'}\n"
+                        f"Datei: {os.path.basename(arch)}"
+                    )
+
+            konto_info = f" | Konto: {konto}" if konto else ""
+            txt = f"[{er_nr}] {r_dat} | {lief[:28]} | RE: {ext_nr}{konto_info} | Brutto: {brutto} € ({fmt})"
+            lbl = ctk.CTkLabel(row, text=txt, anchor="w")
+            lbl.pack(side="left", padx=6, pady=4, fill="x", expand=True)
 
         update_scrollable_visibility(self.eingang_journal_scroll)
 
@@ -317,10 +360,11 @@ class TabAuswertungenMixin:
         if ok:
             last_nr = self.p_config.get("letzte_eingangsrechnungsnummer", "").strip().upper()
             if last_nr == er_nr.strip().upper():
-                m = re.match(r"^(ER\d{2})(\d{4})$", last_nr)
+                m = re.match(r"^(ER\d{2})(\d+)$", last_nr)
                 if m:
+                    width = len(m.group(2))
                     num = int(m.group(2))
-                    prev_nr = f"{m.group(1)}{num-1:04d}" if num > 1 else ""
+                    prev_nr = f"{m.group(1)}{num-1:0{width}d}" if num > 1 else ""
                     self.p_config["letzte_eingangsrechnungsnummer"] = prev_nr
                     speichere_config(self.config)
                     if hasattr(self, "lbl_letzte_er_nr"):
@@ -629,6 +673,8 @@ class TabAuswertungenMixin:
             self.show_info("Fertig", f"DATEV-Export erstellt: {csv_export_pfad}")
 
     def generate_eingang_auswertung_datev(self):
+        from eingangsrechnung import extract_account_number
+
         folder = self.p_config.get("eingangsjournal_ordner", "")
         year = self.combo_eingang_jahr.get()
         month = self.combo_eingang_monat.get()
@@ -678,14 +724,18 @@ class TabAuswertungenMixin:
                 beleg_nr = r.get('Externe Rechnungsnummer', '')[:36]
                 buchungstext = r.get('Lieferant', '')[:60]
                 kreditor = self.p_config.get("datev_kreditor", "70000")
+                erfasstes_konto = extract_account_number(r.get('Konto', ''))
 
                 # Zeilen schreiben (S/H = S, da Aufwandskonto im Soll bebucht wird)
                 if brutto_19 > 0:
-                    writer.writerow([f"{brutto_19:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_19", "3400"), kreditor, date_datev, beleg_nr, buchungstext])
+                    konto_19 = erfasstes_konto or self.p_config.get("datev_aufwand_19", "3400")
+                    writer.writerow([f"{brutto_19:.2f}".replace('.', ','), "S", konto_19, kreditor, date_datev, beleg_nr, buchungstext])
                 if brutto_7 > 0:
-                    writer.writerow([f"{brutto_7:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_7", "3300"), kreditor, date_datev, beleg_nr, buchungstext])
+                    konto_7 = erfasstes_konto or self.p_config.get("datev_aufwand_7", "3300")
+                    writer.writerow([f"{brutto_7:.2f}".replace('.', ','), "S", konto_7, kreditor, date_datev, beleg_nr, buchungstext])
                 if brutto_0 > 0:
-                    writer.writerow([f"{brutto_0:.2f}".replace('.', ','), "S", self.p_config.get("datev_aufwand_0", "3200"), kreditor, date_datev, beleg_nr, buchungstext])
+                    konto_0 = erfasstes_konto or self.p_config.get("datev_aufwand_0", "3200")
+                    writer.writerow([f"{brutto_0:.2f}".replace('.', ','), "S", konto_0, kreditor, date_datev, beleg_nr, buchungstext])
 
         try:
             os.startfile(csv_export_pfad)

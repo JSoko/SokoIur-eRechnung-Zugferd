@@ -25,11 +25,11 @@ from config import init_config, speichere_config, LOCK_FILE
 from crud import ensure_utf8_csv
 from pdf_zugferd import run_auto_generation
 from gui_app import App
-from hilfe_texte import ensure_doku_files, get_doku_target_dir
+from hilfe_texte import get_hilfe_html_path
 from config import get_app_version
 
 v_string = get_app_version()
-ensure_doku_files(get_doku_target_dir(), v_string)
+
 
 def main():
     # 2. Kommandozeilenparameter definieren und auslesen
@@ -64,19 +64,6 @@ def main():
     # 3. Datenbank / Konfiguration initialisieren
     config = init_config()
     
-    # 3b. Hilfsdateien (Handbuch, Changelog, Markdown) im AppData-Ordner aktuell halten
-    try:
-        from hilfe_texte import ensure_doku_files
-        from config import get_appdata_dir, get_app_version
-
-        v_string = get_app_version()
-        ensure_doku_files(get_appdata_dir(), v_string)
-        if config.get("last_run_version") != v_string:
-            config["last_run_version"] = v_string
-            speichere_config(config)
-    except Exception as e:
-        print(f"Konnte Hilfsdateien beim Start nicht aktualisieren: {e}")
-    
     config["cli_no_open"] = args.no_open
     config["cli_no_girocode"] = args.no_girocode
     config["cli_force_girocode"] = args.force_girocode
@@ -109,8 +96,6 @@ def main():
             
             # Wenn nicht vollautomatisch im Hintergrund generiert wird, zeige eine Fehlermeldung
             if not args.auto:
-                import tkinter as tk
-                import tkinter.messagebox as messagebox
                 root = tk.Tk()
                 root.withdraw()
                 messagebox.showerror("Profil nicht gefunden", err_msg)
