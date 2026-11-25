@@ -113,7 +113,20 @@ def split_text_to_lines(text, width_limit, c, font="Helvetica", size=10):
     if current_line: lines.append(current_line)
     return lines
 
-def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text=""):
+def generiere_rechnung_text_pdf(
+    firma,
+    kopf,
+    positionen,
+    gesamt_netto,
+    gesamt_steuer,
+    gesamt_brutto,
+    zusatztexte,
+    gruss_text,
+    header_text,
+    einleitung_text,
+    vor_gruss_text="",
+    briefkopf_rechte_spalte=True,
+):
     packet = BytesIO()
     c = canvas.Canvas(packet, pagesize=A4)
     breite, hoehe = A4
@@ -209,7 +222,8 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             y_tabelle -= 18
         y_tabelle -= 10
     
-    max_kopf_breite = (breite - 120) * (2.0 / 3.0)
+    volle_kopf_breite = breite - 120
+    max_kopf_breite = (volle_kopf_breite * (2.0 / 3.0)) if bool(briefkopf_rechte_spalte) else volle_kopf_breite
 
     r_nr = kopf.get('Rechnungsnummer', '')
     r_dat = formatiere_datum_lesbar(kopf.get('Rechnungsdatum', ''))
@@ -247,6 +261,16 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
             c.drawString(60, y_tabelle, z_line)
             y_tabelle -= 12
         y_tabelle -= 5
+
+    r_vermerk = kopf.get('Rechnungsvermerk', '').strip()
+    if r_vermerk:
+        for absatz in r_vermerk.split('\n'):
+            for v_line in split_text_to_lines(absatz, 470, c, "Helvetica-Bold", 9.5):
+                y_tabelle = check_page_break(y_tabelle, 14, False)
+                zeichne_formatierten_text(c, 60, y_tabelle, f"~f{v_line}f~", 9.5, align="left")
+                y_tabelle -= 12
+        y_tabelle -= 5
+
     y_tabelle -= 5
     
     if einleitung_text:
@@ -276,9 +300,20 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         steuersatz_pos = safe_float(pos.get('Steuersatz', 19.0))
         
         einheit_raw = pos.get('Einheit', 'C62').strip()
-        einheit_codes = re.findall(r'\(([^()]*)\)', einheit_raw)
-        code = einheit_codes[-1].strip() if einheit_codes else einheit_raw
+        einheit_codes = [c_item.strip() for c_item in re.findall(r'\(([^()]*)\)', einheit_raw) if len(c_item.strip()) >= 2]
+        if einheit_codes:
+            code = einheit_codes[-1]
+        elif einheit_raw.lower() in ("monat", "monate", "monat(e)"):
+            code = "MON"
+        elif einheit_raw.lower() in ("tag", "tage", "tag(e)"):
+            code = "DAY"
+        elif einheit_raw.lower() in ("stunde", "stunden", "stunde(n)"):
+            code = "HUR"
+        else:
+            code = einheit_raw
         einheit_lesbar = EINHEITEN_MAPPING.get(code, code)
+        if code == "MON":
+            einheit_lesbar = "Monat" if menge == 1 else "Monate"
         menge_str = f"{f_num(menge)} {einheit_lesbar}"
         
         bez_lines = split_text_to_lines(pos['Bezeichnung'], text_w, c, "Helvetica", 9)
@@ -502,9 +537,9 @@ def generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_st
         is_raten = str(kopf.get('Ratenzahlung', '')).lower() in ['true', '1', 'ja', 'yes']
         
         if is_raten:
-            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} unter Angabe der Rechnungsnr. auf folgendes Konto bei der {bank_name} oder nehmen Sie bis zu diesem Termin monatliche Ratenzahlungen auf."
+            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} unter Angabe der Rechnungsnummer auf folgendes Konto bei der {bank_name} oder nehmen Sie bis zu diesem Termin monatliche Ratenzahlungen auf."
         else:
-            zahl_text = f"Bitte überweisen Sie bis zum {f_dat} unter Angabe der Rechnungsnr. auf folgendes Konto bei der {bank_name}:"
+            zahl_text = f"Bitte unter Angabe der Rechnungsnummer bis zum {f_dat} auf folgendes Konto bei der {bank_name} überweisen:"
             
         zahl_lines = split_text_to_lines(zahl_text, 470, c)
         

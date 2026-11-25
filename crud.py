@@ -1,3 +1,4 @@
+
 """
 crud.py
 -------
@@ -138,23 +139,76 @@ def lade_kunden(pfad):
     return kunden
 
 def speichere_alle_kunden(pfad, kunden_liste):
-    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'Aktenzeichen', 'KundeAktenzeichen', 'Endpoint', 'EndpointScheme']
-    atomic_save_csv(pfad, fieldnames, kunden_liste, delimiter=';')
+    fieldnames = ['Name', 'Strasse', 'PLZ_Ort', 'Land', 'KundeNr', 'UStId', 'Aktenzeichen', 'KundeAktenzeichen', 'Endpoint', 'EndpointScheme']
+    cleaned_rows = []
+    for row in (kunden_liste or []):
+        r_copy = dict(row)
+        if not str(r_copy.get('UStId', '')).strip() and str(r_copy.get('KundeUStId', '')).strip():
+            r_copy['UStId'] = str(r_copy.get('KundeUStId', '')).strip()
+        cleaned_rows.append({fn: str(r_copy.get(fn, '') or '').strip() for fn in fieldnames})
+    atomic_save_csv(pfad, fieldnames, cleaned_rows, delimiter=';')
     with open(pfad, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=';')
         writer.writeheader()
-        writer.writerows(kunden_liste)
+        writer.writerows(cleaned_rows)
 
-def speichere_kunde(pfad, kunde_daten):
+def speichere_kunde(pfad, kunde_daten, original_kunde=None):
     kunden = lade_kunden(pfad)
-    updated = False
-    for k in kunden:
-        if k['Name'].strip().lower() == kunde_daten['Name'].strip().lower():
-            k.update(kunde_daten)
-            updated = True
-            break
-    if not updated:
-        kunden.append(kunde_daten)
+    neu_daten = dict(kunde_daten or {})
+    neu_name = str(neu_daten.get('Name', '')).strip()
+    neu_nr = str(neu_daten.get('KundeNr', '')).strip()
+    neu_ustid = str(neu_daten.get('UStId', '')).strip()
+
+    if original_kunde is not None:
+        orig_name = str(original_kunde.get('Name', '')).strip()
+        orig_nr = str(original_kunde.get('KundeNr', '')).strip()
+        key_changed = (neu_nr != orig_nr) or (neu_name.lower() != orig_name.lower())
+
+        if not key_changed:
+            # Weder Kundennummer noch Name geändert -> bestehenden Datensatz aktualisieren
+            updated = False
+            for k in kunden:
+                if (
+                    str(k.get('Name', '')).strip().lower() == orig_name.lower()
+                    and str(k.get('KundeNr', '')).strip() == orig_nr
+                ):
+                    if not neu_ustid:
+                        neu_daten['UStId'] = str(k.get('UStId', '')).strip()
+                    k.update(neu_daten)
+                    updated = True
+                    break
+            if not updated:
+                kunden.append(neu_daten)
+        else:
+            # Kundennummer und/oder Name geändert -> als neuen Datensatz anlegen (oder ggf. gleichnamigen/-nummerigen aktualisieren)
+            existing_match = None
+            for k in kunden:
+                k_name = str(k.get('Name', '')).strip().lower()
+                k_nr = str(k.get('KundeNr', '')).strip()
+                if (neu_nr and k_nr == neu_nr) or (not neu_nr and k_name == neu_name.lower()):
+                    existing_match = k
+                    break
+            if existing_match is not None:
+                if not neu_ustid:
+                    neu_daten['UStId'] = str(existing_match.get('UStId', '')).strip()
+                existing_match.update(neu_daten)
+            else:
+                kunden.append(neu_daten)
+    else:
+        updated = False
+        for k in kunden:
+            k_name = str(k.get('Name', '')).strip().lower()
+            k_nr = str(k.get('KundeNr', '')).strip()
+            matched = (neu_nr and k_nr == neu_nr) or (k_name == neu_name.lower())
+            if matched:
+                if not neu_ustid:
+                    neu_daten['UStId'] = str(k.get('UStId', '')).strip()
+                k.update(neu_daten)
+                updated = True
+                break
+        if not updated:
+            kunden.append(neu_daten)
+
     speichere_alle_kunden(pfad, kunden)
 
 def lade_produkte(pfad):

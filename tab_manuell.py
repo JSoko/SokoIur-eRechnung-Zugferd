@@ -407,6 +407,9 @@ class TabManuellMixin:
             self.entry_k_endpoint.insert(0, k.get('Endpoint', k.get('Email', '')))
             self.entry_k_endpoint_scheme.delete(0, 'end')
             self.entry_k_endpoint_scheme.insert(0, k.get('EndpointScheme', ''))
+            if k.get('UStId', '').strip():
+                self.entry_k_ustid.delete(0, 'end')
+                self.entry_k_ustid.insert(0, k.get('UStId', '').strip())
             dialog.destroy()
             self.check_live_validation()
 
@@ -544,12 +547,15 @@ class TabManuellMixin:
         btn_choose.pack(side="left", fill="x", expand=True, padx=(0, 0))
         create_tooltip(btn_choose, "Lädt eine alte Rechnung oder einen Entwurf aus einer CSV-Datei.")
 
-        # Auswahlbox Textvorlage direkt unter den Lade-Buttons
-
-        # Direkt darunter: Auswahlbox Textvorlage
+        # Auswahlbox Textvorlage mit Button "Texteditor" links daneben direkt unter den Lade-Buttons
         f_txt_vorlage = ctk.CTkFrame(left_frame, fg_color="transparent")
         f_txt_vorlage.pack(fill="x", padx=10, pady=(2, 10))
-        ctk.CTkLabel(f_txt_vorlage, text="Textvorlage:", width=120, anchor="w").pack(side="left")
+        self.create_button(
+            f_txt_vorlage,
+            text="Texteditor",
+            width=120,
+            command=self.open_texte_popup,
+        ).pack(side="left")
         vorlagen_namen = list(self.p_config.get("text_vorlagen", {"Standard": {}}).keys())
         self.combo_text_vorlage_main = ctk.CTkComboBox(
             f_txt_vorlage,
@@ -612,12 +618,6 @@ class TabManuellMixin:
             self.chk_raten.select()
         create_tooltip(self.chk_raten, "Einen Hinweis auf mögliche Ratenzahlung in die Rechnung aufnehmen")
 
-        self.create_button(
-            left_frame,
-            text="Texte bearbeiten",
-            command=self.open_texte_popup,
-        ).pack(fill="x", padx=10, pady=(8, 4))
-
         # Live-Validierung an Eingabefelder binden (inkl. E-Mail / Leitweg-ID)
         for entry_widget in (
             self.entry_r_nr, self.entry_r_datum, self.entry_f_datum, self.entry_k_name,
@@ -668,7 +668,6 @@ class TabManuellMixin:
 
         right_frame.bind("<Configure>", _update_top_totals_wrap, add="+")
         self.after(60, _update_top_totals_wrap)
-
 
         self.pos_scroll = ctk.CTkScrollableFrame(right_frame)
         self.pos_scroll.pack(fill="both", expand=True, padx=1, pady=1)
@@ -1298,7 +1297,7 @@ class TabManuellMixin:
             default_border = ctk.ThemeManager.theme["CTkEntry"]["border_color"]
         except Exception:
             default_border = ["#979DA2", "#565B5E"]
-    
+
         if not r_nr:
             self.entry_r_nr.configure(border_color="red")
             errors.append("Rechnungs-Nr. fehlt")
@@ -1549,19 +1548,22 @@ class TabManuellMixin:
             speichere_textdatei(self.p_config.get('gruss_csv'), self.gruss_text)
 
             if self.chk_kunde_speichern.get() and name:
+                kunde_save_payload = {
+                    'Name': name,
+                    'Strasse': strasse,
+                    'PLZ_Ort': plz_ort,
+                    'Land': kunde_land,
+                    'KundeNr': self.entry_k_nr.get().strip(),
+                    'Aktenzeichen': self.entry_az.get().strip(),
+                    'KundeAktenzeichen': self.entry_k_az.get().strip(),
+                    'Endpoint': buyer_endpoint,
+                    'EndpointScheme': buyer_scheme
+                }
+                if kunde_ustid:
+                    kunde_save_payload['UStId'] = kunde_ustid
                 speichere_kunde(
                     self.p_config.get("kunden_csv", "kunden.csv"),
-                    {
-                        'Name': name,
-                        'Strasse': strasse,
-                        'PLZ_Ort': plz_ort,
-                        'Land': kunde_land,
-                        'KundeNr': self.entry_k_nr.get().strip(),
-                        'Aktenzeichen': self.entry_az.get().strip(),
-                        'KundeAktenzeichen': self.entry_k_az.get().strip(),
-                        'Endpoint': buyer_endpoint,
-                        'EndpointScheme': buyer_scheme
-                    }
+                    kunde_save_payload
                 )
                 self.kunden_liste = lade_kunden(self.p_config.get("kunden_csv", "kunden.csv"))
 
@@ -1631,12 +1633,14 @@ class TabManuellMixin:
         from pdf_zugferd import erstelle_testrechnung
         act_prof = self.p_config
         firma = lade_firma(act_prof['firma_csv'])
+        briefkopf_rechte_spalte = bool(act_prof.get("briefkopf_rechte_spalte", True))
 
         try:
             pdf_pfad = erstelle_testrechnung(
                 firma, rechnung_daten, act_prof['briefbogen_pdf'],
                 zusatztexte, self.gruss_text, self.header_text, self.einleitung_text,
-                getattr(self, 'vor_gruss_text', '')
+                getattr(self, 'vor_gruss_text', ''),
+                briefkopf_rechte_spalte=briefkopf_rechte_spalte,
             )
             os.startfile(pdf_pfad)
         except Exception as e:
@@ -1666,6 +1670,7 @@ class TabManuellMixin:
         if not daten:
             self._err("Papierrechnung konnte nicht erstellt werden", f"Die gespeicherte Rechnung '{r_nr}' wurde nicht gefunden.")
             return
+        briefkopf_rechte_spalte = bool(act_prof.get("briefkopf_rechte_spalte", True))
         try:
             pdf_pfad = erstelle_papierrechnung(
                 firma, daten, act_prof['briefbogen_pdf'],
@@ -1673,7 +1678,8 @@ class TabManuellMixin:
                 self.header_text, self.einleitung_text,
                 act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'],
                 act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year)),
-                getattr(self, 'vor_gruss_text', '')
+                getattr(self, 'vor_gruss_text', ''),
+                briefkopf_rechte_spalte=briefkopf_rechte_spalte,
             )
         except Exception as e:
             self._err("Papierrechnung konnte nicht erstellt werden", str(e))
@@ -1717,6 +1723,7 @@ class TabManuellMixin:
         rechnungen = lade_rechnungen(act_prof['rechnung_csv'])
         zusatztexte = lade_zusatz_csv(act_prof['zusatz_csv'])
         akt_jahr = act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+        briefkopf_rechte_spalte = bool(act_prof.get("briefkopf_rechte_spalte", True))
 
         r_nr = self.entry_r_nr.get().strip()
         daten = rechnungen.get(r_nr)
@@ -1728,7 +1735,8 @@ class TabManuellMixin:
                 firma, daten, act_prof['briefbogen_pdf'],
                 zusatztexte, self.gruss_text, self.header_text, self.einleitung_text,
                 act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr,
-                getattr(self, 'vor_gruss_text', '')
+                getattr(self, 'vor_gruss_text', ''),
+                briefkopf_rechte_spalte=briefkopf_rechte_spalte,
             )
         except Exception as e:
             self._err("XRechnung konnte nicht erstellt werden", str(e))

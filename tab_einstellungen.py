@@ -319,6 +319,7 @@ class TabEinstellungenMixin:
 
         btn_restore = self.create_button(f_prof_btns2, text="📂 Firmendaten restore", width=150, command=self.restore_profile_data, fg_color="#444", hover_color="#666")
         btn_restore.pack(side="left", padx=10)
+
         def toggle_default_lz_heute():
             self.p_config["default_lz_heute"] = bool(self.chk_default_lz_heute.get())
             speichere_config(self.config)
@@ -341,6 +342,10 @@ class TabEinstellungenMixin:
                 if hasattr(self, "check_live_validation"):
                     self.check_live_validation()
 
+        def toggle_briefkopf_rechte_spalte():
+            self.p_config["briefkopf_rechte_spalte"] = bool(self.chk_briefkopf_rechte_spalte.get())
+            speichere_config(self.config)
+
         f_prof_checks = ctk.CTkFrame(f_prof_card, fg_color="transparent")
         f_prof_checks.pack(fill="x", padx=15, pady=(0, 8))
 
@@ -360,11 +365,22 @@ class TabEinstellungenMixin:
             text="Ihr Zeichen standardmäßig -",
             command=toggle_default_ihr_zeichen,
         )
-        self.chk_default_ihr_zeichen_dash.pack(anchor="w")
+        self.chk_default_ihr_zeichen_dash.pack(anchor="w", pady=(0, 4))
         if self.p_config.get("default_ihr_zeichen_dash", False):
             self.chk_default_ihr_zeichen_dash.select()
         else:
             self.chk_default_ihr_zeichen_dash.deselect()
+
+        self.chk_briefkopf_rechte_spalte = ctk.CTkCheckBox(
+            f_prof_checks,
+            text="Briefkopf mit rechter Spalte",
+            command=toggle_briefkopf_rechte_spalte,
+        )
+        self.chk_briefkopf_rechte_spalte.pack(anchor="w")
+        if self.p_config.get("briefkopf_rechte_spalte", True):
+            self.chk_briefkopf_rechte_spalte.select()
+        else:
+            self.chk_briefkopf_rechte_spalte.deselect()
 
         ctk.CTkButton(
             f_prof_card,

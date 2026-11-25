@@ -1,3 +1,4 @@
+
 """
 utils.py
 --------
@@ -9,12 +10,12 @@ from decimal import Decimal, ROUND_HALF_UP
 
 EINHEITEN_LISTE = [
     "Stück (C62)", "Pauschale (LS)", "Stunde(n) (HUR)", 
-    "Monat(e) (MON)", "Tag(e) (DAY)", "km (KMT)", "Satz (SET)"
+    "Monate (MON)", "Tag(e) (DAY)", "km (KMT)", "Satz (SET)"
 ]
 
 EINHEITEN_MAPPING = {
     "C62": "Stück", "LS": "Pauschale", "HUR": "Stunde(n)",
-    "MON": "Monat(e)", "DAY": "Tag(e)", "KMT": "km", "SET": "Satz"
+    "MON": "Monate", "DAY": "Tag(e)", "KMT": "km", "SET": "Satz"
 }
 
 def berechne_naechste_rechnungsnummer(letzte_nr):

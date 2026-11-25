@@ -117,7 +117,8 @@ def get_default_profile(suffix=""):
         "audit_reason_required": False,
         "default_lz_heute": False,
         "default_ihr_zeichen_dash": False,
-        "email_versand_methode": "Keine",  # Optionen: "Keine", "Outlook", "Thunderbird"
+        "briefkopf_rechte_spalte": True,
+        "email_versand_methode": "Keine",  
         "thunderbird_pfad": r"C:\Program Files\Mozilla Thunderbird\thunderbird.exe"
     }
     

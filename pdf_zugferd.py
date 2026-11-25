@@ -23,7 +23,20 @@ from pdf_builder import generiere_rechnung_text_pdf
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
 from reportlab.lib.styles import ParagraphStyle
 
-def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
+def erstelle_xrechnung(
+    firma,
+    rechnung_daten,
+    brief_pfad,
+    zusatztexte,
+    gruss_text,
+    header_text,
+    einleitung_text,
+    ausgabe_ordner,
+    auswertungen_ordner,
+    rechnungsjahr,
+    vor_gruss_text="",
+    briefkopf_rechte_spalte=True,
+):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     
@@ -36,7 +49,20 @@ def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_tex
 
     netto, steuer, brutto, _ = berechne_summen(positionen)
 
-    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_erweitert, header_text, einleitung_text, vor_gruss_text)
+    text_pdf_stream = generiere_rechnung_text_pdf(
+        firma,
+        kopf,
+        positionen,
+        netto,
+        steuer,
+        brutto,
+        zusatztexte,
+        gruss_erweitert,
+        header_text,
+        einleitung_text,
+        vor_gruss_text,
+        briefkopf_rechte_spalte=briefkopf_rechte_spalte,
+    )
     text_pdf = PdfReader(text_pdf_stream)
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
@@ -72,12 +98,40 @@ def erstelle_xrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_tex
         
     return xml_datei, pdf_datei
     
-def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
+def erstelle_papierrechnung(
+    firma,
+    rechnung_daten,
+    brief_pfad,
+    zusatztexte,
+    gruss_text,
+    header_text,
+    einleitung_text,
+    ausgabe_ordner,
+    auswertungen_ordner,
+    rechnungsjahr,
+    vor_gruss_text="",
+    briefkopf_rechte_spalte=True,
+):
     """Erstellt ausschließlich eine visuelle PDF-Rechnung ohne XML-Anhang."""
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     netto, steuer, brutto, _ = berechne_summen(positionen)
-    text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
+    text_pdf = PdfReader(
+        generiere_rechnung_text_pdf(
+            firma,
+            kopf,
+            positionen,
+            netto,
+            steuer,
+            brutto,
+            zusatztexte,
+            gruss_text,
+            header_text,
+            einleitung_text,
+            vor_gruss_text,
+            briefkopf_rechte_spalte=briefkopf_rechte_spalte,
+        )
+    )
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
     try:
@@ -105,7 +159,17 @@ def erstelle_papierrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, grus
         writer.write(out_pdf)
     return ausgabe_datei
 
-def erstelle_testrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text=""):
+def erstelle_testrechnung(
+    firma,
+    rechnung_daten,
+    brief_pfad,
+    zusatztexte,
+    gruss_text,
+    header_text,
+    einleitung_text,
+    vor_gruss_text="",
+    briefkopf_rechte_spalte=True,
+):
     """Erstellt eine Vorschau-PDF ohne Rechnungsnummer im Temp-Verzeichnis. Es erfolgt kein Journaleintrag."""
     import tempfile
     
@@ -116,7 +180,22 @@ def erstelle_testrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_
     
     netto, steuer, brutto, _ = berechne_summen(positionen)
     
-    text_pdf = PdfReader(generiere_rechnung_text_pdf(firma, kopf, positionen, netto, steuer, brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text))
+    text_pdf = PdfReader(
+        generiere_rechnung_text_pdf(
+            firma,
+            kopf,
+            positionen,
+            netto,
+            steuer,
+            brutto,
+            zusatztexte,
+            gruss_text,
+            header_text,
+            einleitung_text,
+            vor_gruss_text,
+            briefkopf_rechte_spalte=briefkopf_rechte_spalte,
+        )
+    )
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
     
@@ -148,7 +227,20 @@ def erstelle_testrechnung(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_
         
     return ausgabe_datei
 
-def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_text, header_text, einleitung_text, ausgabe_ordner, auswertungen_ordner, rechnungsjahr, vor_gruss_text=""):
+def erstelle_zugferd_pdf(
+    firma,
+    rechnung_daten,
+    brief_pfad,
+    zusatztexte,
+    gruss_text,
+    header_text,
+    einleitung_text,
+    ausgabe_ordner,
+    auswertungen_ordner,
+    rechnungsjahr,
+    vor_gruss_text="",
+    briefkopf_rechte_spalte=True,
+):
     kopf, positionen = rechnung_daten['kopf'], rechnung_daten['positionen']
     r_nr = kopf.get('Rechnungsnummer', '')
     
@@ -159,7 +251,20 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
     
     gesamt_netto, gesamt_steuer, gesamt_brutto, _ = berechne_summen(positionen)
 
-    text_pdf_stream = generiere_rechnung_text_pdf(firma, kopf, positionen, gesamt_netto, gesamt_steuer, gesamt_brutto, zusatztexte, gruss_text, header_text, einleitung_text, vor_gruss_text)
+    text_pdf_stream = generiere_rechnung_text_pdf(
+        firma,
+        kopf,
+        positionen,
+        gesamt_netto,
+        gesamt_steuer,
+        gesamt_brutto,
+        zusatztexte,
+        gruss_text,
+        header_text,
+        einleitung_text,
+        vor_gruss_text,
+        briefkopf_rechte_spalte=briefkopf_rechte_spalte,
+    )
     text_pdf = PdfReader(text_pdf_stream)
     writer = PdfWriter()
     writer._header = b"%PDF-1.7"
@@ -250,9 +355,9 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
             st_7 = steuer_gruppen.get(7.0, 0.0)
             st_0 = steuer_gruppen.get(0.0, 0.0)
             
-            
             existing_rows = []
-            header = ["Rechnungsnummer", "Datum", "Empfaenger", "Netto", "MwSt_19", "MwSt_7", "MwSt_0", "Brutto"]
+            header = ["Rechnungsnummer", "Datum", "Empfaenger", "Netto", "MwSt_19", "MwSt_7", "MwSt_0", "Brutto", "Bezahlt"]
+            existing_paid_status = ""
             
             if os.path.exists(journal_path):
                 with open(journal_path, 'r', encoding='utf-8-sig') as f:
@@ -261,12 +366,16 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
                         # Header überspringen
                         if idx == 0 and row and row[0] == "Rechnungsnummer":
                             continue
-                        # Alte Zeile mit dieser Rechnungsnummer ignorieren (wird überschrieben)
+                        # Alte Zeile mit dieser Rechnungsnummer merken & ignorieren (wird überschrieben)
                         if row and row[0] == str(r_nr):
+                            if len(row) >= 9:
+                                existing_paid_status = row[8]
                             continue
-                        existing_rows.append(row)
+                        while len(row) < 9:
+                            row.append("")
+                        existing_rows.append(row[:9])
                         
-            # Neue Zeile anhängen
+            # Neue Zeile anhängen (Bezahlt-Status bleibt bei Korrektur erhalten)
             new_row = [
                 r_nr, 
                 date_obj.strftime("%d.%m.%Y"), 
@@ -275,7 +384,8 @@ def erstelle_zugferd_pdf(firma, rechnung_daten, brief_pfad, zusatztexte, gruss_t
                 f"{st_19:.2f}".replace('.', ','), 
                 f"{st_7:.2f}".replace('.', ','), 
                 f"{st_0:.2f}".replace('.', ','), 
-                f"{gesamt_brutto:.2f}".replace('.', ',')
+                f"{gesamt_brutto:.2f}".replace('.', ','),
+                existing_paid_status
             ]
             existing_rows.append(new_row)
             
@@ -312,6 +422,7 @@ def run_auto_generation(config):
         einleitung = lade_textdatei(act_prof['einleitung_csv'])
         
         akt_jahr = act_prof.get("aktuelles_rechnungsjahr", str(datetime.now().year))
+        briefkopf_rechte_spalte = bool(act_prof.get("briefkopf_rechte_spalte", True))
         
         for r_nr, daten in rechnungen.items():
             if config.get("cli_renr"):
@@ -319,12 +430,33 @@ def run_auto_generation(config):
                 daten['kopf']['Rechnungsnummer'] = r_nr
             if config.get("cli_kunde_az"):
                 daten['kopf']['KundeAktenzeichen'] = config.get("cli_kunde_az")
+            if config.get("cli_zahlungsbedingungen"):
+                daten['kopf']['Zahlungsbedingungen'] = config.get("cli_zahlungsbedingungen")
+            elif not daten['kopf'].get('Zahlungsbedingungen', '').strip():
+                daten['kopf']['Zahlungsbedingungen'] = act_prof.get('zahlungsbedingungen_default', '').strip()
+            if config.get("cli_rechnungsvermerk"):
+                daten['kopf']['Rechnungsvermerk'] = config.get("cli_rechnungsvermerk")
+            elif not daten['kopf'].get('Rechnungsvermerk', '').strip():
+                daten['kopf']['Rechnungsvermerk'] = act_prof.get('rechnungsvermerk_default', '').strip()
                 
             valid, msg = check_lz_logic(daten['kopf'], daten['positionen'])
             if not valid:
                 print(f"❌ Fehler bei RE '{r_nr}': {msg}\nWird übersprungen.")
                 continue
-            pdf_pfad = erstelle_zugferd_pdf(firma, daten, act_prof['briefbogen_pdf'], zusatztexte, gruss, header, einleitung, act_prof['ausgabe_ordner'], act_prof['auswertungen_ordner'], akt_jahr, vor_gruss)
+            pdf_pfad = erstelle_zugferd_pdf(
+                firma,
+                daten,
+                act_prof['briefbogen_pdf'],
+                zusatztexte,
+                gruss,
+                header,
+                einleitung,
+                act_prof['ausgabe_ordner'],
+                act_prof['auswertungen_ordner'],
+                akt_jahr,
+                vor_gruss,
+                briefkopf_rechte_spalte=briefkopf_rechte_spalte,
+            )
             print(f"✅ Erstellt: RE {r_nr}")
             kopie_dir = config.get("cli_kopie")
             if kopie_dir:

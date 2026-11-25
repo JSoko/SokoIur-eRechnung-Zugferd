@@ -11,6 +11,7 @@ import threading
 import subprocess
 import tempfile
 import urllib.request
+import webbrowser
 import ssl
 import tkinter.messagebox as messagebox
 import customtkinter as ctk
@@ -197,6 +198,87 @@ class UpdaterMixin:
 
         threading.Thread(target=_check, daemon=True).start()
 
+    def _ask_update_with_changelog(self, title, msg):
+        parent = self if hasattr(self, "winfo_exists") and self.winfo_exists() else None
+        dlg = ctk.CTkToplevel(parent)
+        dlg.title(title)
+        if hasattr(self, "apply_window_icon"):
+            self.apply_window_icon(dlg)
+        if hasattr(self, "center_window"):
+            self.center_window(dlg, 500, 210)
+        else:
+            dlg.geometry("500x210")
+
+        try:
+            if parent is not None and parent.winfo_viewable():
+                dlg.transient(parent)
+            else:
+                dlg.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        result = {"install": False}
+
+        ctk.CTkLabel(
+            dlg,
+            text=msg,
+            font=("Helvetica", 13),
+            justify="center",
+            wraplength=450,
+        ).pack(expand=True, padx=20, pady=(18, 10))
+
+        f_btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        f_btns.pack(pady=(0, 16))
+
+        def on_yes():
+            result["install"] = True
+            dlg.destroy()
+
+        def on_no():
+            result["install"] = False
+            dlg.destroy()
+
+        def on_changelog():
+            webbrowser.open("https://erech.6078.de/changelog")
+
+        ctk.CTkButton(
+            f_btns,
+            text="Ja",
+            width=100,
+            fg_color="#289102",
+            hover_color="#1e6e01",
+            command=on_yes,
+        ).pack(side="left", padx=6)
+
+        ctk.CTkButton(
+            f_btns,
+            text="Nein",
+            width=100,
+            fg_color="#6c757d",
+            hover_color="#5a6268",
+            command=on_no,
+        ).pack(side="left", padx=6)
+
+        ctk.CTkButton(
+            f_btns,
+            text="Changelog aufrufen",
+            width=165,
+            fg_color="#1f538d",
+            hover_color="#14375d",
+            command=on_changelog,
+        ).pack(side="left", padx=6)
+
+        dlg.protocol("WM_DELETE_WINDOW", on_no)
+        dlg.update_idletasks()
+        try:
+            dlg.wait_visibility()
+            dlg.grab_set()
+        except Exception:
+            pass
+
+        dlg.wait_window()
+        return result["install"]
+
     def prompt_update(self, latest_version, download_url, force=False, local_setup_path="", target_version=""):
         if hasattr(self, "btn_update"):
             self.btn_update.configure(text="🔄 Auf Updates prüfen", state="normal")
@@ -208,7 +290,7 @@ class UpdaterMixin:
         if force:
             msg = f"Zwingendes Update auf Version {latest_version} {source} gefunden!\nJetzt installieren und neu starten?"
 
-        if messagebox.askyesno("Update verfügbar!", msg):
+        if self._ask_update_with_changelog("Update verfügbar!", msg):
             self.download_and_install_update(
                 download_url,
                 local_setup_path=local_setup_path,

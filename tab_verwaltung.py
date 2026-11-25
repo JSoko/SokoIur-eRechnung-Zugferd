@@ -1,3 +1,4 @@
+
 """
 tab_verwaltung.py
 -----------------
@@ -137,6 +138,7 @@ class TabVerwaltungMixin:
                 "PLZ_Ort",
                 "Land",
                 "KundeNr",
+                "UStId",
                 "Aktenzeichen",
                 "KundeAktenzeichen",
                 "Endpoint",
@@ -192,6 +194,10 @@ class TabVerwaltungMixin:
         self.vw_clear_form()
         for record in data:
             if record.get(key, "") == val:
+                if mode == "Kunden":
+                    self.vw_selected_original_kunde = dict(record)
+                else:
+                    self.vw_selected_original_kunde = None
                 for k, entry in self.vw_entries.items():
                     rec_val = record.get(k, "")
                     # ComboBoxen benötigen .set(), normale Textfelder .insert()
@@ -202,6 +208,7 @@ class TabVerwaltungMixin:
                 break
 
     def vw_clear_form(self):
+        self.vw_selected_original_kunde = None
         for entry in self.vw_entries.values():
             if isinstance(entry, ctk.CTkComboBox):
                 entry.set("")
@@ -222,7 +229,9 @@ class TabVerwaltungMixin:
         new_data = {k: entry.get().strip() for k, entry in self.vw_entries.items()}
 
         if mode == "Kunden":
-            speichere_kunde(self.p_config.get("kunden_csv"), new_data)
+            orig = getattr(self, "vw_selected_original_kunde", None)
+            speichere_kunde(self.p_config.get("kunden_csv"), new_data, original_kunde=orig)
+            self.vw_selected_original_kunde = dict(new_data)
         else:
             # Menge hart auf "1" setzen, damit die Produkte-CSV nicht beschädigt wird
             new_data["Menge"] = "1"

@@ -1,3 +1,4 @@
+
 """
 main.py
 -------
@@ -74,6 +75,10 @@ def main():
         config["cli_kunde_az"] = args.kunde_az
     if args.kopie:
         config["cli_kopie"] = args.kopie
+    if args.zahlungsbedingungen:
+        config["cli_zahlungsbedingungen"] = args.zahlungsbedingungen
+    if args.rechnungsvermerk:
+        config["cli_rechnungsvermerk"] = args.rechnungsvermerk
 
     # 4. Profil wechseln, falls per Kommandozeile gefordert
     if args.profil:
@@ -160,12 +165,15 @@ def main():
     if args.textvorlage:
         vorlagen = config["profiles"][idx].get("text_vorlagen", {})
         if args.textvorlage in vorlagen:
-            from datenbank import speichere_textdatei
+            from crud import speichere_textdatei
             v = vorlagen[args.textvorlage]
             speichere_textdatei(config["profiles"][idx].get('header_csv'), v.get("header", ""))
             speichere_textdatei(config["profiles"][idx].get('einleitung_csv'), v.get("einleitung", ""))
             speichere_textdatei(config["profiles"][idx].get('vor_gruss_csv'), v.get("vor_gruss", ""))
             speichere_textdatei(config["profiles"][idx].get('gruss_csv'), v.get("gruss", ""))
+            config["profiles"][idx]["zahlungsbedingungen_default"] = v.get("zahlungsbedingungen", "")
+            config["profiles"][idx]["rechnungsvermerk_default"] = v.get("rechnungsvermerk", "")
+            config["profiles"][idx]["aktive_text_vorlage"] = args.textvorlage
     
     # 7. Start-Weiche: GUI oder Auto-Generierung (CLI)
     if args.auto:

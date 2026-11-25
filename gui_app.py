@@ -32,6 +32,8 @@ from updater import UpdaterMixin
 from tab_verwaltung import TabVerwaltungMixin
 from gui_utils import create_tooltip
 from tab_dashboard import TabDashboardMixin
+from tab_auswertungen import TabAuswertungenMixin
+from tab_eingang_journal import TabEingangJournalMixin
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -58,6 +60,7 @@ class App(
     TabManuellMixin,
     TabErfassenMixin,
     TabAuswertungenMixin,
+    TabEingangJournalMixin,
     TabEinstellungenMixin,
     TabHilfeMixin,
     UpdaterMixin,
@@ -381,7 +384,6 @@ class App(
             seen.add(norm)
 
             if os.path.exists(lfile):
-                # Nur eigene Lockdateien (oder unlesbare/verwaiste) entfernen
                 can_remove = True
                 try:
                     with open(lfile, "r") as f:
@@ -757,6 +759,16 @@ class App(
             self.lock_firm(self.p_config, "erechnung.lock")
             self.lock_firm(self.p_config, "erfassung.lock")
 
+        elif selected_tab == self.name_ausgang:
+            self.unlock_firm()
+            if hasattr(self, "refresh_ausgang_journal_ui"):
+                self.refresh_ausgang_journal_ui()
+
+        elif selected_tab == self.name_eingang:
+            self.unlock_firm()
+            if hasattr(self, "refresh_eingang_journal_ui"):
+                self.refresh_eingang_journal_ui()
+
         else:
             self.unlock_firm()
 
@@ -782,7 +794,6 @@ class App(
         saved_geometry = self.config.get("window_geometry", "950x700")
         win_state = self.config.get("window_state", "normal")
 
-        # Immer zuerst die Normalgeometrie ohne zusätzliche CustomTkinter-DPI-Skalierung setzen
         try:
             tk.Tk.geometry(self, saved_geometry)
         except Exception:
@@ -1133,7 +1144,7 @@ class App(
             )
             create_csv_if_missing(
                 p_dict["kunden_csv"],
-                "Name;Strasse;PLZ_Ort;Land;KundeNr;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme",
+                "Name;Strasse;PLZ_Ort;Land;KundeNr;UStId;Aktenzeichen;KundeAktenzeichen;Endpoint;EndpointScheme",
             )
             create_csv_if_missing(p_dict["produkte_csv"], "Bezeichnung;Menge;Einheit;EinzelpreisNetto;Steuersatz")
             for f in ["zusatz_csv", "gruss_csv", "vor_gruss_csv", "header_csv", "einleitung_csv"]:
