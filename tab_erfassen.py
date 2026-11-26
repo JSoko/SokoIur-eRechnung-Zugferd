@@ -126,6 +126,8 @@ class TabErfassenMixin:
 
     def launch_drop_helper(self):
         """Startet das eigenständige Drop-Helper-Programm im Kontext der aktiven Firma."""
+        if hasattr(self, "license_mgr"):
+            self.license_mgr.record_pro_feature_use("Drop-Helper starten")
         profil_name = ""
         if hasattr(self, "p_config") and isinstance(self.p_config, dict):
             profil_name = str(self.p_config.get("profil_name", "")).strip()
@@ -255,7 +257,7 @@ class TabErfassenMixin:
         self._retry_incoming_deletions()
         if not folder or not os.path.isdir(folder):
             ctk.CTkLabel(self.incoming_scroll, text="Eingangsordner noch nicht angelegt.", text_color="gray").pack(pady=15)
-            update_scrollable_visibility(self.incoming_scroll)
+            self.incoming_scroll.after_idle(lambda: update_scrollable_visibility(self.incoming_scroll))
             return
 
         waiting_list = self.p_config.get('eingang_loesch_warteliste', []) or []
@@ -275,7 +277,7 @@ class TabErfassenMixin:
             if len(all_files) > len(files):
                 hinweis += f" ({len(all_files) - len(files)} bereits erfasste Datei(en) warten auf automatische Löschung nach Schließen des PDF-Viewers)."
             ctk.CTkLabel(self.incoming_scroll, text=hinweis, text_color="gray", wraplength=680).pack(pady=15)
-            update_scrollable_visibility(self.incoming_scroll)
+            self.incoming_scroll.after_idle(lambda: update_scrollable_visibility(self.incoming_scroll))
             return
 
         journal_folder = self.p_config.get('eingangsjournal_ordner', '')
@@ -302,7 +304,6 @@ class TabErfassenMixin:
             elif is_skipped:
                 status_tag = " (Zurückgestellt)"
 
-            # Quadratische Buttons zuerst links platzieren, damit sie bei schmalen Fenstern nie verdeckt werden
             act_box = ctk.CTkFrame(row, fg_color="transparent")
             act_box.pack(side="left", padx=(6, 4), pady=3)
 
@@ -349,7 +350,7 @@ class TabErfassenMixin:
                 lbl_kwargs["text_color"] = lbl_color
             ctk.CTkLabel(row, **lbl_kwargs).pack(side="left", padx=6, pady=4, fill="x", expand=True)
 
-        update_scrollable_visibility(self.incoming_scroll)
+        self.incoming_scroll.after_idle(lambda: update_scrollable_visibility(self.incoming_scroll))
 
     def process_next_incoming(self, specific_path=None):
         from eingangsrechnung import (

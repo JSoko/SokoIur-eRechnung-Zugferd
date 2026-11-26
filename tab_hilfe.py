@@ -1,8 +1,6 @@
 import customtkinter as ctk
 import tkinter.messagebox as messagebox
 import os
-import sys
-import json
 import re
 import csv
 import threading
@@ -10,13 +8,6 @@ import webbrowser
 from datetime import datetime
 from config import get_appdata_dir
 import hilfe_texte
-
-def _get_doku_dir() -> str:
-    if getattr(sys, "frozen", False):
-        prog_dir = os.path.abspath(os.path.dirname(sys.executable))
-    else:
-        prog_dir = os.path.abspath(os.path.dirname(__file__))
-    return os.path.join(prog_dir, "html")
 
 
 class TabHilfeMixin:
@@ -41,9 +32,58 @@ class TabHilfeMixin:
             f, text="📜 Changelog im Browser öffnen", width=250, height=35, command=self.open_changelog_html
         ).pack(pady=(0, 15))
 
-        f_stat = ctk.CTkFrame(
-            f, fg_color="#2b2b2b" if ctk.get_appearance_mode() == "Dark" else "#e6e6e6", corner_radius=8
+        card_bg = "#2b2b2b" if ctk.get_appearance_mode() == "Dark" else "#e6e6e6"
+
+        # Lizenzstatus & B2B-Kaufmoeglichkeiten
+        f_lic = ctk.CTkFrame(f, fg_color=card_bg, corner_radius=8)
+        f_lic.pack(fill="x", padx=20, pady=10)
+
+        ctk.CTkLabel(
+            f_lic, text="🔑 Lizenzstatus & B2B-Lizenzierung", font=("Helvetica", 14, "bold")
+        ).pack(pady=(10, 4))
+
+        self.lbl_info_license = ctk.CTkLabel(
+            f_lic,
+            text="",
+            justify="center",
+            font=("Helvetica", 12),
+            wraplength=680,
         )
+        self.lbl_info_license.pack(pady=(2, 8), padx=20)
+        self.refresh_info_license_status()
+
+        lbl_shop = ctk.CTkLabel(
+            f_lic,
+            text="🌐 B2B-Preise & Angebot anfordern: https://erech.6078.de/#bestellen",
+            text_color=("#1f538d", "#6cb2ff"),
+            cursor="hand2",
+            font=("Helvetica", 12, "underline"),
+        )
+        lbl_shop.pack(pady=(0, 4))
+        lbl_shop.bind("<Button-1>", lambda e: webbrowser.open("https://erech.6078.de/#bestellen"))
+
+        lbl_agb = ctk.CTkLabel(
+            f_lic,
+            text="📄 Allgemeine Geschäftsbedingungen (B2B): https://erech.6078.de/agb.html",
+            text_color=("#1f538d", "#6cb2ff"),
+            cursor="hand2",
+            font=("Helvetica", 11, "underline"),
+        )
+        lbl_agb.pack(pady=(0, 10))
+        lbl_agb.bind("<Button-1>", lambda e: webbrowser.open("https://erech.6078.de/agb.html"))
+
+        if hasattr(self, "license_mgr"):
+            self.create_button(
+                f_lic,
+                text="🔑 Lizenzschlüssel eingeben / Lizenzdatei laden",
+                width=310,
+                height=34,
+                fg_color="#0f766e",
+                hover_color="#115e59",
+                command=self._open_license_and_refresh_info,
+            ).pack(pady=(0, 14))
+
+        f_stat = ctk.CTkFrame(f, fg_color=card_bg, corner_radius=8)
         f_stat.pack(fill="x", padx=20, pady=10)
 
         ctk.CTkLabel(
@@ -54,9 +94,7 @@ class TabHilfeMixin:
         )
         self.lbl_stats.pack(pady=(0, 15), padx=20)
 
-        f_stat_net = ctk.CTkFrame(
-            f, fg_color="#2b2b2b" if ctk.get_appearance_mode() == "Dark" else "#e6e6e6", corner_radius=8
-        )
+        f_stat_net = ctk.CTkFrame(f, fg_color=card_bg, corner_radius=8)
         f_stat_net.pack(fill="x", padx=20, pady=10)
 
         ctk.CTkLabel(
@@ -71,6 +109,26 @@ class TabHilfeMixin:
 
         akt_jahr = str(datetime.now().year)
         threading.Thread(target=self._load_stats_async, args=(akt_jahr,), daemon=True).start()
+
+    def refresh_info_license_status(self):
+        if not hasattr(self, "lbl_info_license") or not self.lbl_info_license.winfo_exists():
+            return
+        if hasattr(self, "license_mgr"):
+            st = self.license_mgr.get_license_status()
+            txt = (
+                f"Status: {st.get('mode_label', '')}\n"
+                f"{st.get('details', '')}\n"
+                f"B2B-Konditionen (Deutschland): 1. Arbeitsplatz 75,00 € netto (89,25 € inkl. USt.) | "
+                f"jeder weitere Arbeitsplatz 50,00 € netto (59,50 € inkl. USt.) inkl. 1 Jahr Updates."
+            )
+            self.lbl_info_license.configure(text=txt)
+        else:
+            self.lbl_info_license.configure(text="Lizenzinformationen nicht verfügbar.")
+
+    def _open_license_and_refresh_info(self):
+        if hasattr(self, "license_mgr"):
+            self.license_mgr.open_license_dialog()
+            self.refresh_info_license_status()
 
     def _count_rows_in_folder(self, base_folder: str, year: str, prefix: str) -> int:
         if not base_folder or not os.path.isdir(base_folder):
@@ -142,34 +200,32 @@ class TabHilfeMixin:
         except Exception:
             pass
 
-    def _write_and_open_doc(self, filename: str, html_content: str, title_label: str):
-        target_dir = _get_doku_dir()
-        try:
-            os.makedirs(target_dir, exist_ok=True)
-            out_path = os.path.join(target_dir, filename)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-        except OSError:
-            app_dir = get_appdata_dir()
-            os.makedirs(app_dir, exist_ok=True)
-            out_path = os.path.join(app_dir, filename)
-            with open(out_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
+    def _get_doku_dir(self) -> str:
+        doku_dir = os.path.join(get_appdata_dir(), "html")
+        os.makedirs(doku_dir, exist_ok=True)
+        return doku_dir
 
+    def _open_file_in_browser(self, file_path: str):
         if hasattr(os, "startfile"):
-            os.startfile(out_path)
+            os.startfile(file_path)
         else:
-            doc_url = os.path.abspath(out_path).replace("\\", "/")
+            doc_url = os.path.abspath(file_path).replace("\\", "/")
             webbrowser.open(f"file:///{doc_url}")
+
+    def _write_and_open_doc(self, filename: str, html_content: str, title_label: str):
+        target_dir = self._get_doku_dir()
+        out_path = os.path.join(target_dir, filename)
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        self._open_file_in_browser(out_path)
 
     def open_html_help(self):
         try:
-            out_path = hilfe_texte.get_hilfe_html_path()
-            if hasattr(os, "startfile"):
-                os.startfile(out_path)
-            else:
-                doc_url = os.path.abspath(out_path).replace("\\", "/")
-                webbrowser.open(f"file:///{doc_url}")
+            version = str(getattr(self, "current_version", "1.000"))
+            stand = datetime.now().strftime("%d.%m.%Y")
+            raw_html = hilfe_texte.get_doku_html(version)
+            rendered_html = raw_html.replace("__VERSION__", version).replace("__STAND__", stand)
+            self._write_and_open_doc("SokoIur_Hilfe_rendered.html", rendered_html, "Handbuch")
         except Exception as e:
             messagebox.showerror(
                 "Fehler",
@@ -179,9 +235,18 @@ class TabHilfeMixin:
 
     def open_changelog_html(self):
         try:
-            version = getattr(self, "current_version", "1.000")
-            changelog_content = hilfe_texte.get_changelog_html(version)
-            self._write_and_open_doc("changelog.html", changelog_content, "Changelog")
+            version = str(getattr(self, "current_version", "1.000"))
+            stand = datetime.now().strftime("%d.%m.%Y")
+            raw_html = hilfe_texte.get_changelog_html(version)
+            if "__VERSION__" in raw_html or "__STAND__" in raw_html:
+                rendered_html = raw_html.replace("__VERSION__", version).replace("__STAND__", stand)
+                self._write_and_open_doc("changelog_rendered.html", rendered_html, "Changelog")
+            else:
+                local_changelog = os.path.join(self._get_doku_dir(), "changelog.html")
+                if os.path.isfile(local_changelog):
+                    self._open_file_in_browser(local_changelog)
+                else:
+                    self._write_and_open_doc("changelog.html", raw_html, "Changelog")
         except Exception as e:
             messagebox.showerror(
                 "Fehler",

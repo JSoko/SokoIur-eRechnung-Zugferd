@@ -1276,8 +1276,11 @@ class TabManuellMixin:
             create_tooltip(lbl, hover_text, font=("Helvetica", 12))
             create_tooltip(f, hover_text, font=("Helvetica", 12))
 
+        
         self.update_totals_ui()
-        update_scrollable_visibility(self.pos_scroll)
+        if hasattr(self, "pos_scroll") and self.pos_scroll.winfo_exists():
+            self.pos_scroll.update_idletasks()
+            self.pos_scroll.after_idle(lambda: update_scrollable_visibility(self.pos_scroll))
 
     def check_live_validation(self, *args):
         if not hasattr(self, 'lbl_live_errors'):

@@ -2,14 +2,6 @@
 gui_app.py
 ----------
 Hauptklasse und Fensterverwaltung für die grafische Benutzeroberfläche (GUI).
-Dieses Modul definiert die zentrale `App`-Klasse der SokoIur eRechnung basierend auf
-CustomTkinter. Es übernimmt die Initialisierung des Hauptfensters, das Routing
-der Tastenkürzel und den Aufbau der Basis-UI (Header mit Profilwahl, Tab-Navigation
-und Footer mit Versionsanzeige). Die fachliche Logik und die Inhalte der
-einzelnen Reiter (Tabs) werden strukturiert über Mixin-Klassen aus dem `gui_module`
-eingebunden. Zudem steuert dieses Modul das wichtige Lock-Management
-(Sperrdateien) beim netzwerkbasierten Betrieb, um Datenverlust durch gleichzeitige
-Bearbeitung derselben Firma zu verhindern.
 """
 import customtkinter as ctk
 import tkinter as tk
@@ -21,7 +13,7 @@ import time
 from datetime import datetime, timedelta
 import webbrowser
 
-from config import speichere_config, get_resource_path, LOCK_FILE
+from config import speichere_config, get_resource_path, LOCK_FILE, get_app_version, get_default_profile
 from utils import berechne_naechste_rechnungsnummer
 from tab_hilfe import TabHilfeMixin
 from tab_auswertungen import TabAuswertungenMixin
@@ -32,8 +24,8 @@ from updater import UpdaterMixin
 from tab_verwaltung import TabVerwaltungMixin
 from gui_utils import create_tooltip
 from tab_dashboard import TabDashboardMixin
-from tab_auswertungen import TabAuswertungenMixin
 from tab_eingang_journal import TabEingangJournalMixin
+from license_manager import LicenseManager
 
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("blue")
@@ -780,15 +772,10 @@ class App(
         self.start_in_edit = start_in_edit
         self._initializing = True
         self.title("SokoIur eRechnung")
-
-        # 1. Versionsnummer aus der .exe auslesen
-        from config import get_app_version
+        self.license_mgr = LicenseManager(self)
 
         self.current_version = get_app_version()
-
-        # 2. Fenster-Setup & Tastenkürzel
         self.apply_window_icon(self)
-
         self.minsize(650, 550)
 
         saved_geometry = self.config.get("window_geometry", "950x700")
@@ -836,11 +823,9 @@ class App(
         self.bind("<Control-y>", lambda e: self.perform_redo() if hasattr(self, "perform_redo") else None)
         self.bind("<Control-Y>", lambda e: self.perform_redo() if hasattr(self, "perform_redo") else None)
 
-        # Gemeinsame Kopfzeile für Firmenauswahl (links) und Tabs (daneben/rechts)
         self.header_container = ctk.CTkFrame(self, fg_color="transparent")
         self.header_container.pack(fill="x", padx=5, pady=(1, 0))
 
-        # Footer VOR dem Hauptbereich packen
         f_footer = ctk.CTkFrame(self, fg_color="transparent")
         f_footer.pack(side="bottom", fill="x", padx=5, pady=2)
 
@@ -881,7 +866,6 @@ class App(
         )
         self.btn_footer_update.pack(side="right")
 
-        # Sauberer Hauptcontainer für die Tab-Inhalte
         self.content_host = ctk.CTkFrame(
             self,
             corner_radius=10,
@@ -917,26 +901,23 @@ class App(
 
         self.build_profile_header()
 
-        # 3. DATENSPEICHERORT PRÜFEN & ORDNER SETUP
         if not self.config.get("base_data_path"):
             try:
                 import pyi_splash
-
                 pyi_splash.close()
             except ImportError:
                 pass
 
             new_path = self.ask_for_base_path("Zentralen Datenspeicherort festlegen")
-
             if not new_path:
                 sys.exit(0)
             self.config["base_data_path"] = new_path
+            self.license_mgr._load_and_sync_state()
 
             shared_config_path = os.path.join(new_path, "shared_firms.json")
             firmen_gefunden = False
             if os.path.exists(shared_config_path):
                 import json
-
                 try:
                     with open(shared_config_path, "r", encoding="utf-8") as f:
                         net_profiles = json.load(f)
@@ -958,11 +939,9 @@ class App(
         else:
             self.setup_firm_folders(self.p_config)
 
-        # 4. Netzwerk-Version erzwingen
         if not self.enforce_network_version():
             return
 
-        # 5. Lock-Prüfung beim Programmstart
         lock_file = self.get_firm_lock_path()
         while lock_file and os.path.exists(lock_file):
             is_other_process = True
@@ -979,7 +958,6 @@ class App(
 
             try:
                 import pyi_splash
-
                 pyi_splash.close()
             except ImportError:
                 pass
@@ -1013,7 +991,6 @@ class App(
             else:
                 sys.exit(0)
 
-        # 6. Start-Firma als aktiv sperren und UI aufbauen
         self.set_firm_lock()
         self.refresh_all_ui()
         self.show_tab(self.name_manuell, run_change_logic=False)
@@ -1067,7 +1044,6 @@ class App(
 
     def setup_firm_folders(self, p_dict, show_message=False):
         base_path = self.config.get("base_data_path")
-
         if not base_path:
             return
 
@@ -1178,8 +1154,6 @@ class App(
                 break
 
     def add_profile(self):
-        from config import get_default_profile
-
         d_name = ctk.CTkInputDialog(text="Name der neuen Firma:", title="Neues Profil")
         self.apply_window_icon(d_name)
         name = d_name.get_input()
@@ -1196,6 +1170,9 @@ class App(
             speichere_config(self.config)
             self.build_profile_header()
             self.refresh_all_ui()
+
+            if len(self.config["profiles"]) >= 3 and hasattr(self, "license_mgr"):
+                self.license_mgr.record_pro_feature_use("Mehr-Firmen-Betrieb (ab dem 3. Firmenprofil)")
 
     def rename_profile(self):
         d_name = ctk.CTkInputDialog(text="Neuer Name für das Profil:", title="Profil umbenennen")

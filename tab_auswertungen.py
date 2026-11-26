@@ -383,6 +383,8 @@ class TabAuswertungenMixin:
             self.show_info("Fertig", f"CSV erstellt: {csv_export_pfad}")
 
     def generate_auswertung_datev(self):
+        if hasattr(self, "license_mgr"):
+            self.license_mgr.record_pro_feature_use("DATEV-Export (Ausgang)")
         ordner = self.entry_ausw_ordner.get().strip()
         jahr = self.combo_ausw_jahr.get()
         monat = self.combo_ausw_monat.get()

@@ -1,18 +1,30 @@
 """
 hilfe_texte.py
 --------------
-Stellt die Handbuch-Datei SokoIur_Hilfe.html direkt bereit.
+Stellt Handbuch- und Changelog-HTML aus dem lokalen Programmdatenverzeichnis bereit.
 """
 import os
-from config import get_resource_path, get_program_dir
+from config import get_appdata_dir, get_resource_path, get_program_dir
+
+
+def get_local_html_dir() -> str:
+    return os.path.join(get_appdata_dir(), "html")
+
+
+def _resolve_html_file(filename: str) -> str:
+    candidates = [
+        os.path.join(get_local_html_dir(), filename),
+        os.path.join(get_program_dir(), "html", filename),
+        get_resource_path(os.path.join("html", filename)),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            return path
+    return candidates[0]
 
 
 def get_hilfe_html_path() -> str:
-    """Sucht SokoIur_Hilfe.html bevorzugt im Programmordner/html, sonst in den Ressourcen."""
-    prog_path = os.path.join(get_program_dir(), "html", "SokoIur_Hilfe.html")
-    if os.path.isfile(prog_path):
-        return prog_path
-    return get_resource_path(os.path.join("html", "SokoIur_Hilfe.html"))
+    return _resolve_html_file("SokoIur_Hilfe.html")
 
 
 def get_doku_html(version_string: str = "") -> str:
@@ -22,7 +34,7 @@ def get_doku_html(version_string: str = "") -> str:
 
 
 def get_changelog_html(version_string: str = "") -> str:
-    pfad = get_resource_path(os.path.join("html", "changelog.html"))
+    pfad = _resolve_html_file("changelog.html")
     if pfad and os.path.isfile(pfad):
         with open(pfad, "r", encoding="utf-8") as f:
             return f.read()

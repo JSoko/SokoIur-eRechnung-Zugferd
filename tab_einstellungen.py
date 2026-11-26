@@ -1,3 +1,5 @@
+
+
 """
 tab_einstellungen.py
 --------------------
@@ -177,6 +179,8 @@ class TabEinstellungenMixin:
                 self.unlock_firm()
                 self.lock_firm(new_p)
                 self.refresh_all_ui()
+                if len(self.config["profiles"]) >= 3 and hasattr(self, "license_mgr"):
+                    self.license_mgr.record_pro_feature_use("Mehr-Firmen-Betrieb (ab dem 3. Firmenprofil)")
                 self.show_info("Restore", f"Daten wurden erfolgreich in die neue Firma '{new_name}' importiert.")
             except Exception as e:
                 self.show_error("Fehler", f"Fehler beim Erstellen der Firma: {e}")
@@ -319,6 +323,10 @@ class TabEinstellungenMixin:
 
         btn_restore = self.create_button(f_prof_btns2, text="📂 Firmendaten restore", width=150, command=self.restore_profile_data, fg_color="#444", hover_color="#666")
         btn_restore.pack(side="left", padx=10)
+
+        btn_lizenz = self.create_button(f_prof_btns2, text="🔑 Lizenz & Registrierung", width=175, command=self.license_mgr.open_license_dialog, fg_color="#0f766e", hover_color="#115e59")
+        btn_lizenz.pack(side="left", padx=10)
+        create_tooltip(btn_lizenz, "Lizenzstatus anzeigen sowie 1-Monats- oder 12-Monats-Schlüssel\neingeben bzw. aus einer Lizenzdatei einlesen (100 % lokal).")
 
         def toggle_default_lz_heute():
             self.p_config["default_lz_heute"] = bool(self.chk_default_lz_heute.get())
@@ -1000,3 +1008,6 @@ class TabEinstellungenMixin:
             self.show_info("Import erfolgreich", f"{len(importierte_produkte)} Produkte wurden erfolgreich angehängt!")
         except Exception as e:
             self.show_error("Fehler", f"Fehler beim Import: {e}")
+
+
+

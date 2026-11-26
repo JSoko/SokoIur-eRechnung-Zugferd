@@ -324,6 +324,8 @@ class TabEingangJournalMixin:
             self.show_info("Fertig", f"CSV erstellt: {csv_export_pfad}")
 
     def generate_eingang_auswertung_datev(self):
+        if hasattr(self, "license_mgr"):
+            self.license_mgr.record_pro_feature_use("DATEV-Export (Eingang)")
         folder = self.p_config.get("eingangsjournal_ordner", "")
         year = self.combo_eingang_jahr.get()
         month = self.combo_eingang_monat.get()
@@ -336,6 +338,8 @@ class TabEingangJournalMixin:
             self.show_info("Fertig", f"DATEV-Export erstellt: {csv_export_pfad}")
 
     def generate_audit_pdf(self, bereich):
+        if hasattr(self, "license_mgr"):
+            self.license_mgr.record_pro_feature_use(f"GoBD Audit-Log PDF ({bereich})")
         base_data_path = self.config.get("base_data_path", "")
         jahr = self.combo_ausw_jahr.get() if bereich == "Ausgang" else self.combo_eingang_jahr.get()
         firma_name = self.p_config.get("profil_name", "Unbekannte Firma")

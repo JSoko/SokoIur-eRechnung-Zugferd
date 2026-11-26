@@ -33,7 +33,6 @@ def get_app_version():
                 
                 r_length = ctypes.c_uint()
                 r_address = ctypes.c_void_p()
-                # Zuerst die Sprache und Codepage (Translation) ermitteln
                 ctypes.windll.version.VerQueryValueW(res, "\\VarFileInfo\\Translation", ctypes.byref(r_address), ctypes.byref(r_length))
                 
                 if r_length.value >= 4:
@@ -41,7 +40,6 @@ def get_app_version():
                     lang = lang_codepage & 0xFFFF
                     codepage = lang_codepage >> 16
                     
-                    # Pfad zur Produktversion zusammensetzen
                     sub_block = f"\\StringFileInfo\\{lang:04x}{codepage:04x}\\ProductVersion"
                     ctypes.windll.version.VerQueryValueW(res, sub_block, ctypes.byref(r_address), ctypes.byref(r_length))
                     
@@ -124,7 +122,14 @@ def get_default_profile(suffix=""):
     
 
 def init_config():
-    config = {"window_geometry": "950x850", "terms_accepted": False, "base_data_path": "", "active_profile_index": 0, "background_update_check": False}
+    config = {
+        "window_geometry": "950x850",
+        "terms_accepted": False,
+        "base_data_path": "",
+        "active_profile_index": 0,
+        "background_update_check": False,
+        "license_key": "",
+    }
     if os.path.exists(LOCAL_CONFIG):
         try:
             with open(LOCAL_CONFIG, 'r', encoding='utf-8') as f:
@@ -157,7 +162,8 @@ def speichere_config(config):
         "cli_keep_open": config.get("cli_keep_open", False),
         "cli_no_open": config.get("cli_no_open", False),
         "last_run_version": config.get("last_run_version", ""),
-        "background_update_check": bool(config.get("background_update_check", False))
+        "background_update_check": bool(config.get("background_update_check", False)),
+        "license_key": config.get("license_key", ""),
     }
     with open(LOCAL_CONFIG, 'w', encoding='utf-8') as f:
         json.dump(local_data, f, indent=4)
